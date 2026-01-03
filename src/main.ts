@@ -1,24 +1,159 @@
-import './style.css'
-import typescriptLogo from './typescript.svg'
-import viteLogo from '/vite.svg'
-import { setupCounter } from './counter.ts'
+import "./style.css";
+import "monaco-editor/min/vs/editor/editor.main.css";
+import * as monaco from "monaco-editor";
+import { setupMonacoWorkers } from "./monaco/monacoWorkers";
+import { diffLines } from "./diffEngine/diffLines";
+import { pairReplace } from "./diffEngine/pairReplace";
+import { diffInline } from "./diffEngine/diffInline";
+import type { PairedOp } from "./diffEngine/types";
 
-document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
-  <div>
-    <a href="https://vite.dev" target="_blank">
-      <img src="${viteLogo}" class="logo" alt="Vite logo" />
-    </a>
-    <a href="https://www.typescriptlang.org/" target="_blank">
-      <img src="${typescriptLogo}" class="logo vanilla" alt="TypeScript logo" />
-    </a>
-    <h1>Vite + TypeScript</h1>
-    <div class="card">
-      <button id="counter" type="button"></button>
+// Run once before creating any editor instances.
+setupMonacoWorkers();
+
+const app = document.querySelector<HTMLDivElement>("#app");
+
+if (!app) {
+  throw new Error("App container is missing.");
+}
+
+app.innerHTML = `
+  <div class="app">
+    <header class="toolbar">
+      <div class="toolbar-left">
+        <div class="title">Diff Viewer</div>
+      </div>
+      <div class="toolbar-right">
+        <button id="recalc" class="button" type="button">差分再計算</button>
+        <label class="toggle">
+          <input id="sync-toggle" type="checkbox" checked />
+          <span>スクロール連動</span>
+        </label>
+      </div>
+    </header>
+    <div class="editors">
+      <section class="editor-pane">
+        <div class="pane-title">Left</div>
+        <div id="left-editor" class="editor"></div>
+      </section>
+      <section class="editor-pane">
+        <div class="pane-title">Right</div>
+        <div id="right-editor" class="editor"></div>
+      </section>
     </div>
-    <p class="read-the-docs">
-      Click on the Vite and TypeScript logos to learn more
-    </p>
   </div>
-`
+`;
 
-setupCounter(document.querySelector<HTMLButtonElement>('#counter')!)
+const leftContainer = document.querySelector<HTMLDivElement>("#left-editor");
+const rightContainer = document.querySelector<HTMLDivElement>("#right-editor");
+
+if (!leftContainer || !rightContainer) {
+  throw new Error("Editor containers are missing.");
+}
+
+const leftInitial = `a
+x
+b`;
+
+const rightInitial = `a
+y
+b`;
+
+const leftEditor = monaco.editor.create(leftContainer, {
+  value: leftInitial,
+  language: "plaintext",
+  theme: "vs",
+  automaticLayout: true,
+  minimap: { enabled: false },
+});
+
+const rightEditor = monaco.editor.create(rightContainer, {
+  value: rightInitial,
+  language: "plaintext",
+  theme: "vs",
+  automaticLayout: true,
+  minimap: { enabled: false },
+});
+
+let leftDecorationIds: string[] = [];
+let rightDecorationIds: string[] = [];
+
+function addLineDecoration(
+  target: monaco.editor.IModelDeltaDecoration[],
+  lineNo: number,
+  className: string,
+) {
+  target.push({
+    range: new monaco.Range(lineNo + 1, 1, lineNo + 1, 1),
+    options: { isWholeLine: true, className },
+  });
+}
+
+function addInlineDecorations(
+  target: monaco.editor.IModelDeltaDecoration[],
+  lineNo: number,
+  ranges: { start: number; end: number }[],
+  className: string,
+) {
+  for (const range of ranges) {
+    if (range.start >= range.end) {
+      continue;
+    }
+    target.push({
+      range: new monaco.Range(lineNo + 1, range.start + 1, lineNo + 1, range.end + 1),
+      options: { inlineClassName: className },
+    });
+  }
+}
+
+function buildDecorations(ops: PairedOp[]): {
+  left: monaco.editor.IModelDeltaDecoration[];
+  right: monaco.editor.IModelDeltaDecoration[];
+} {
+  const left: monaco.editor.IModelDeltaDecoration[] = [];
+  const right: monaco.editor.IModelDeltaDecoration[] = [];
+
+  for (const op of ops) {
+    if (op.type === "insert" && op.rightLineNo !== undefined) {
+      addLineDecoration(right, op.rightLineNo, "line-insert");
+      continue;
+    }
+
+    if (op.type === "delete" && op.leftLineNo !== undefined) {
+      addLineDecoration(left, op.leftLineNo, "line-delete");
+      continue;
+    }
+
+    if (op.type === "replace" && op.leftLineNo !== undefined && op.rightLineNo !== undefined) {
+      addLineDecoration(left, op.leftLineNo, "line-replace");
+      addLineDecoration(right, op.rightLineNo, "line-replace");
+
+      const inline = diffInline(op.leftLine ?? "", op.rightLine ?? "");
+      addInlineDecorations(left, op.leftLineNo, inline.leftRanges, "inline-delete");
+      addInlineDecorations(right, op.rightLineNo, inline.rightRanges, "inline-insert");
+    }
+  }
+
+  return { left, right };
+}
+
+function recalcDiff() {
+  const leftText = leftEditor.getValue();
+  const rightText = rightEditor.getValue();
+  const ops = pairReplace(diffLines(leftText, rightText));
+  const { left, right } = buildDecorations(ops);
+
+  leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
+  rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
+}
+
+const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
+recalcButton?.addEventListener("click", () => {
+  recalcDiff();
+});
+
+recalcDiff();
+
+// Worker確認手順:
+// 1) npm install
+// 2) npm run dev
+// 3) ブラウザコンソールで "Could not create web worker(s)" が出ないことを確認
