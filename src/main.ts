@@ -7,6 +7,7 @@ import { pairReplace } from "./diffEngine/pairReplace";
 import { diffInline } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
+import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -25,6 +26,8 @@ app.innerHTML = `
       </div>
       <div class="toolbar-right">
         <button id="recalc" class="button" type="button">差分再計算</button>
+        <button id="diff-prev" class="button" type="button">前の差分</button>
+        <button id="diff-next" class="button" type="button">次の差分</button>
         <label class="toggle">
           <input id="sync-toggle" type="checkbox" checked />
           <span>スクロール連動</span>
@@ -102,6 +105,9 @@ let leftDecorationIds: string[] = [];
 let rightDecorationIds: string[] = [];
 let leftZoneIds: string[] = [];
 let rightZoneIds: string[] = [];
+let pairedOps: PairedOp[] = [];
+let diffBlockStarts: number[] = [];
+let currentBlockIndex = 0;
 
 type ZoneSide = "insert" | "delete";
 
@@ -265,14 +271,17 @@ function applyViewZones(
 function recalcDiff() {
   const leftText = leftEditor.getValue();
   const rightText = rightEditor.getValue();
-  const ops = pairReplace(diffLines(leftText, rightText));
-  const { left, right } = buildDecorations(ops);
-  const zones = buildViewZones(ops);
+  pairedOps = pairReplace(diffLines(leftText, rightText));
+  diffBlockStarts = getDiffBlockStarts(pairedOps);
+  currentBlockIndex = 0;
+  const { left, right } = buildDecorations(pairedOps);
+  const zones = buildViewZones(pairedOps);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
   rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
   leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left);
   rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right);
+  updateDiffJumpButtons();
 }
 
 const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
@@ -283,6 +292,46 @@ recalcButton?.addEventListener("click", () => {
 const syncToggle = document.querySelector<HTMLInputElement>("#sync-toggle");
 syncToggle?.addEventListener("change", (event) => {
   scrollSync.setEnabled((event.target as HTMLInputElement).checked);
+});
+
+const prevButton = document.querySelector<HTMLButtonElement>("#diff-prev");
+const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
+
+function updateDiffJumpButtons() {
+  const hasDiffs = diffBlockStarts.length > 0;
+  if (prevButton) {
+    prevButton.disabled = !hasDiffs;
+  }
+  if (nextButton) {
+    nextButton.disabled = !hasDiffs;
+  }
+}
+
+function revealBlock(index: number) {
+  if (diffBlockStarts.length === 0) {
+    return;
+  }
+  const rowIndex = diffBlockStarts[index];
+  const { leftLineNo, rightLineNo } = mapRowToLineNumbers(pairedOps, rowIndex);
+
+  leftEditor.revealLineInCenter(leftLineNo + 1);
+  rightEditor.revealLineInCenter(rightLineNo + 1);
+}
+
+prevButton?.addEventListener("click", () => {
+  if (diffBlockStarts.length === 0) {
+    return;
+  }
+  currentBlockIndex = Math.max(0, currentBlockIndex - 1);
+  revealBlock(currentBlockIndex);
+});
+
+nextButton?.addEventListener("click", () => {
+  if (diffBlockStarts.length === 0) {
+    return;
+  }
+  currentBlockIndex = Math.min(diffBlockStarts.length - 1, currentBlockIndex + 1);
+  revealBlock(currentBlockIndex);
 });
 
 recalcDiff();
