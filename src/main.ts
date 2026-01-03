@@ -10,7 +10,14 @@ import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
 import { decodeArrayBuffer, type FileEncoding } from "./file/decode";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
-import { diffWithAnchors, validateAnchors, type Anchor } from "./diffEngine/anchors";
+import {
+  addAnchor,
+  diffWithAnchors,
+  removeAnchorByLeft,
+  removeAnchorByRight,
+  validateAnchors,
+  type Anchor,
+} from "./diffEngine/anchors";
 import { normalizeText } from "./diffEngine/normalize";
 
 // Run once before creating any editor instances.
@@ -103,41 +110,29 @@ app.innerHTML = `
   </div>
 `;
 
-const leftContainer = document.querySelector<HTMLDivElement>("#left-editor");
-const rightContainer = document.querySelector<HTMLDivElement>("#right-editor");
-const leftDropZone = document.querySelector<HTMLDivElement>("#left-drop");
-const rightDropZone = document.querySelector<HTMLDivElement>("#right-drop");
-const leftMessage = document.querySelector<HTMLDivElement>("#left-message");
-const rightMessage = document.querySelector<HTMLDivElement>("#right-message");
-const leftEncodingSelect = document.querySelector<HTMLSelectElement>("#left-encoding");
-const rightEncodingSelect = document.querySelector<HTMLSelectElement>("#right-encoding");
-const leftFileInput = document.querySelector<HTMLInputElement>("#left-file");
-const rightFileInput = document.querySelector<HTMLInputElement>("#right-file");
-const leftFileButton = document.querySelector<HTMLButtonElement>("#left-file-button");
-const rightFileButton = document.querySelector<HTMLButtonElement>("#right-file-button");
-const anchorMessage = document.querySelector<HTMLDivElement>("#anchor-message");
-const anchorWarning = document.querySelector<HTMLDivElement>("#anchor-warning");
-const anchorList = document.querySelector<HTMLUListElement>("#anchor-list");
-
-if (
-  !leftContainer ||
-  !rightContainer ||
-  !leftDropZone ||
-  !rightDropZone ||
-  !leftMessage ||
-  !rightMessage ||
-  !leftEncodingSelect ||
-  !rightEncodingSelect ||
-  !leftFileInput ||
-  !rightFileInput ||
-  !leftFileButton ||
-  !rightFileButton ||
-  !anchorMessage ||
-  !anchorWarning ||
-  !anchorList
-) {
-  throw new Error("Editor containers are missing.");
+function getRequiredElement<T extends Element>(selector: string): T {
+  const element = document.querySelector<T>(selector);
+  if (!element) {
+    throw new Error(`Missing required element: ${selector}`);
+  }
+  return element;
 }
+
+const leftContainer = getRequiredElement<HTMLDivElement>("#left-editor");
+const rightContainer = getRequiredElement<HTMLDivElement>("#right-editor");
+const leftDropZone = getRequiredElement<HTMLDivElement>("#left-drop");
+const rightDropZone = getRequiredElement<HTMLDivElement>("#right-drop");
+const leftMessage = getRequiredElement<HTMLDivElement>("#left-message");
+const rightMessage = getRequiredElement<HTMLDivElement>("#right-message");
+const leftEncodingSelect = getRequiredElement<HTMLSelectElement>("#left-encoding");
+const rightEncodingSelect = getRequiredElement<HTMLSelectElement>("#right-encoding");
+const leftFileInput = getRequiredElement<HTMLInputElement>("#left-file");
+const rightFileInput = getRequiredElement<HTMLInputElement>("#right-file");
+const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button");
+const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
+const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
+const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
+const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
 
 const leftInitial = `a
 x
@@ -154,6 +149,7 @@ const leftEditor = monaco.editor.create(leftContainer, {
   language: "plaintext",
   theme: "vs",
   automaticLayout: true,
+  glyphMargin: true,
   minimap: { enabled: false },
 });
 
@@ -162,6 +158,7 @@ const rightEditor = monaco.editor.create(rightContainer, {
   language: "plaintext",
   theme: "vs",
   automaticLayout: true,
+  glyphMargin: true,
   minimap: { enabled: false },
 });
 
@@ -297,8 +294,32 @@ leftEditor.onMouseDown((event) => {
   if (!lineNumber) {
     return;
   }
-  pendingLeftLineNo = lineNumber - 1;
-  setAnchorMessage("左行を選択しました。右行を選んでください。");
+  const leftLineNo = lineNumber - 1;
+  const removal = removeAnchorByLeft(anchors, leftLineNo);
+  if (removal.removed) {
+    anchors = removal.next;
+    pendingLeftLineNo = null;
+    pendingRightLineNo = null;
+    setAnchorMessage(`Anchor removed: ${formatAnchor(removal.removed)}`);
+  } else if (pendingRightLineNo !== null) {
+    const anchor = { leftLineNo, rightLineNo: pendingRightLineNo };
+    anchors = addAnchor(anchors, anchor);
+    pendingLeftLineNo = null;
+    pendingRightLineNo = null;
+    setAnchorMessage(`Anchor added: ${formatAnchor(anchor)}`);
+    recalcDiff();
+  } else {
+    pendingLeftLineNo = leftLineNo;
+    setAnchorMessage("左行を選択しました。右行を選んでください。");
+  }
+  updatePendingAnchorDecoration();
+  const validation = validateAnchors(
+    anchors,
+    getNormalizedLineCount(leftEditor.getValue()),
+    getNormalizedLineCount(rightEditor.getValue()),
+  );
+  updateAnchorWarning(validation.invalid);
+  renderAnchors(validation.invalid, validation.valid);
 });
 
 rightEditor.onMouseDown((event) => {
@@ -309,21 +330,33 @@ rightEditor.onMouseDown((event) => {
   if (!lineNumber) {
     return;
   }
-  if (pendingLeftLineNo === null) {
-    setAnchorMessage("左行を先に選んでください。");
-    return;
+  const rightLineNo = lineNumber - 1;
+  const removal = removeAnchorByRight(anchors, rightLineNo);
+  if (removal.removed) {
+    anchors = removal.next;
+    pendingLeftLineNo = null;
+    pendingRightLineNo = null;
+    setAnchorMessage(`Anchor removed: ${formatAnchor(removal.removed)}`);
+  } else if (pendingLeftLineNo === null) {
+    pendingRightLineNo = rightLineNo;
+    setAnchorMessage("右行を選択しました。左行を選んでください。");
+  } else {
+    const leftLineNo = pendingLeftLineNo;
+    const anchor = { leftLineNo, rightLineNo };
+    anchors = addAnchor(anchors, anchor);
+    pendingLeftLineNo = null;
+    pendingRightLineNo = null;
+    setAnchorMessage(`Anchor added: ${formatAnchor(anchor)}`);
+    recalcDiff();
   }
-
-  anchors.push({ leftLineNo: pendingLeftLineNo, rightLineNo: lineNumber - 1 });
-  pendingLeftLineNo = null;
-  setAnchorMessage("アンカーを追加しました。差分再計算で反映されます。");
+  updatePendingAnchorDecoration();
   const validation = validateAnchors(
     anchors,
     getNormalizedLineCount(leftEditor.getValue()),
     getNormalizedLineCount(rightEditor.getValue()),
   );
   updateAnchorWarning(validation.invalid);
-  renderAnchors(validation.invalid);
+  renderAnchors(validation.invalid, validation.valid);
 });
 
 let leftDecorationIds: string[] = [];
@@ -338,8 +371,14 @@ let foldRanges: FoldRange[] = [];
 let leftFoldZoneIds: string[] = [];
 let rightFoldZoneIds: string[] = [];
 const expandedFoldStarts = new Set<number>();
-const anchors: Anchor[] = [];
+let anchors: Anchor[] = [];
 let pendingLeftLineNo: number | null = null;
+let pendingRightLineNo: number | null = null;
+let leftAnchorDecorationIds: string[] = [];
+let rightAnchorDecorationIds: string[] = [];
+let selectedAnchorKey: string | null = null;
+let pendingLeftDecorationIds: string[] = [];
+let pendingRightDecorationIds: string[] = [];
 
 type ZoneSide = "insert" | "delete";
 
@@ -367,6 +406,49 @@ function setAnchorMessage(message: string) {
   anchorMessage.textContent = message;
 }
 
+function formatAnchor(anchor: Anchor): string {
+  return `L${anchor.leftLineNo + 1} ↔ R${anchor.rightLineNo + 1}`;
+}
+
+function anchorKey(anchor: Anchor): string {
+  return `${anchor.leftLineNo}:${anchor.rightLineNo}`;
+}
+
+function updatePendingAnchorDecoration() {
+  if (pendingLeftLineNo === null) {
+    pendingLeftDecorationIds = leftEditor.deltaDecorations(pendingLeftDecorationIds, []);
+  } else {
+    pendingLeftDecorationIds = leftEditor.deltaDecorations(pendingLeftDecorationIds, [
+      {
+        range: new monaco.Range(pendingLeftLineNo + 1, 1, pendingLeftLineNo + 1, 1),
+        options: {
+          isWholeLine: true,
+          className: "anchor-pending-line",
+          glyphMarginClassName: "anchor-pending-glyph",
+        },
+      },
+    ]);
+  }
+
+  if (pendingRightLineNo === null) {
+    pendingRightDecorationIds = rightEditor.deltaDecorations(
+      pendingRightDecorationIds,
+      [],
+    );
+  } else {
+    pendingRightDecorationIds = rightEditor.deltaDecorations(pendingRightDecorationIds, [
+      {
+        range: new monaco.Range(pendingRightLineNo + 1, 1, pendingRightLineNo + 1, 1),
+        options: {
+          isWholeLine: true,
+          className: "anchor-pending-line",
+          glyphMarginClassName: "anchor-pending-glyph",
+        },
+      },
+    ]);
+  }
+}
+
 function updateAnchorWarning(invalid: { anchor: Anchor; reasons: string[] }[]) {
   if (invalid.length === 0) {
     anchorWarning.textContent = "";
@@ -385,6 +467,7 @@ function updateAnchorWarning(invalid: { anchor: Anchor; reasons: string[] }[]) {
 
 function renderAnchors(
   invalid: { anchor: Anchor; reasons: string[] }[],
+  valid: Anchor[],
 ) {
   anchorList.innerHTML = "";
   if (anchors.length === 0) {
@@ -399,19 +482,36 @@ function renderAnchors(
   invalid.forEach((item) => {
     invalidMap.set(item.anchor, item.reasons.join(" / "));
   });
+  const validSet = new Set(valid);
 
   anchors.forEach((anchor, index) => {
     const item = document.createElement("li");
     item.className = "anchor-item";
+    if (selectedAnchorKey === anchorKey(anchor)) {
+      item.classList.add("is-selected");
+    }
     const left = anchor.leftLineNo + 1;
     const right = anchor.rightLineNo + 1;
     const reason = invalidMap.get(anchor);
 
     const label = document.createElement("span");
     label.textContent = `L${left} ↔ R${right}`;
+    label.className = "anchor-link";
     if (reason) {
       label.classList.add("anchor-invalid");
       label.textContent += `（無効: ${reason}）`;
+    } else if (!validSet.has(anchor)) {
+      label.classList.add("anchor-disabled");
+    }
+
+    if (validSet.has(anchor)) {
+      label.addEventListener("click", () => {
+        selectedAnchorKey = anchorKey(anchor);
+        renderAnchors(invalid, valid);
+        leftEditor.revealLineInCenter(anchor.leftLineNo + 1);
+        rightEditor.revealLineInCenter(anchor.rightLineNo + 1);
+        setAnchorMessage(`Anchor jump: ${formatAnchor(anchor)}`);
+      });
     }
 
     const removeButton = document.createElement("button");
@@ -419,15 +519,21 @@ function renderAnchors(
     removeButton.className = "anchor-remove";
     removeButton.textContent = "削除";
     removeButton.addEventListener("click", () => {
-      anchors.splice(index, 1);
-      setAnchorMessage("アンカーを削除しました。差分再計算で反映されます。");
+      removeButton.blur();
+      const removed = anchors[index];
+      anchors = anchors.filter((_, anchorIndex) => anchorIndex !== index);
+      if (selectedAnchorKey === anchorKey(removed)) {
+        selectedAnchorKey = null;
+      }
+      setAnchorMessage(`Anchor removed: ${formatAnchor(removed)}`);
+      recalcDiff();
       const validation = validateAnchors(
         anchors,
         getNormalizedLineCount(leftEditor.getValue()),
         getNormalizedLineCount(rightEditor.getValue()),
       );
       updateAnchorWarning(validation.invalid);
-      renderAnchors(validation.invalid);
+      renderAnchors(validation.invalid, validation.valid);
     });
 
     item.appendChild(label);
@@ -495,6 +601,43 @@ function buildDecorations(ops: PairedOp[]): {
       addInlineDecorations(right, op.rightLineNo, inline.rightRanges, "inline-insert");
     }
   }
+
+  return { left, right };
+}
+
+function buildAnchorDecorations(validAnchors: Anchor[]): {
+  left: monaco.editor.IModelDeltaDecoration[];
+  right: monaco.editor.IModelDeltaDecoration[];
+} {
+  const left: monaco.editor.IModelDeltaDecoration[] = [];
+  const right: monaco.editor.IModelDeltaDecoration[] = [];
+
+  validAnchors.forEach((anchor) => {
+    const leftRange = new monaco.Range(anchor.leftLineNo + 1, 1, anchor.leftLineNo + 1, 1);
+    left.push({
+      range: leftRange,
+      options: {
+        isWholeLine: true,
+        className: "diff-anchor-line",
+        glyphMarginClassName: "diff-anchor-glyph",
+      },
+    });
+
+    const rightRange = new monaco.Range(
+      anchor.rightLineNo + 1,
+      1,
+      anchor.rightLineNo + 1,
+      1,
+    );
+    right.push({
+      range: rightRange,
+      options: {
+        isWholeLine: true,
+        className: "diff-anchor-line",
+        glyphMarginClassName: "diff-anchor-glyph",
+      },
+    });
+  });
 
   return { left, right };
 }
@@ -679,20 +822,35 @@ function buildFoldZones(folds: FoldRange[]): { left: FoldZoneSpec[]; right: Fold
 
 function applyFolding() {
   if (!foldEnabled) {
-    leftEditor.setHiddenAreas([]);
-    rightEditor.setHiddenAreas([]);
+    setEditorHiddenAreas(leftEditor, []);
+    setEditorHiddenAreas(rightEditor, []);
     leftFoldZoneIds = applyFoldZones(leftEditor, leftFoldZoneIds, []);
     rightFoldZoneIds = applyFoldZones(rightEditor, rightFoldZoneIds, []);
     return;
   }
 
   const hiddenAreas = buildHiddenAreas(foldRanges);
-  leftEditor.setHiddenAreas(hiddenAreas.left);
-  rightEditor.setHiddenAreas(hiddenAreas.right);
+  setEditorHiddenAreas(leftEditor, hiddenAreas.left);
+  setEditorHiddenAreas(rightEditor, hiddenAreas.right);
 
   const zones = buildFoldZones(foldRanges);
   leftFoldZoneIds = applyFoldZones(leftEditor, leftFoldZoneIds, zones.left);
   rightFoldZoneIds = applyFoldZones(rightEditor, rightFoldZoneIds, zones.right);
+}
+
+function setEditorHiddenAreas(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  ranges: monaco.IRange[],
+) {
+  // Monaco's type definitions may not expose setHiddenAreas, so we guard at runtime.
+  const editorWithHidden = editor as monaco.editor.IStandaloneCodeEditor & {
+    setHiddenAreas?: (areas: monaco.IRange[]) => void;
+  };
+  if (editorWithHidden.setHiddenAreas) {
+    editorWithHidden.setHiddenAreas(ranges);
+  } else {
+    console.warn("setHiddenAreas is not available on this Monaco build.");
+  }
 }
 
 function recalcDiff() {
@@ -709,7 +867,7 @@ function recalcDiff() {
   }
 
   updateAnchorWarning(validation.invalid);
-  renderAnchors(validation.invalid);
+  renderAnchors(validation.invalid, validation.valid);
 
   if (validation.valid.length > 0) {
     pairedOps = diffWithAnchors(leftText, rightText, validation.valid);
@@ -722,10 +880,20 @@ function recalcDiff() {
   foldRanges = buildFoldRanges(pairedOps, foldOptions);
   expandedFoldStarts.clear();
   const { left, right } = buildDecorations(pairedOps);
+  const anchorDecorations = buildAnchorDecorations(validation.valid);
   const zones = buildViewZones(pairedOps);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
   rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
+  leftAnchorDecorationIds = leftEditor.deltaDecorations(
+    leftAnchorDecorationIds,
+    anchorDecorations.left,
+  );
+  rightAnchorDecorationIds = rightEditor.deltaDecorations(
+    rightAnchorDecorationIds,
+    anchorDecorations.right,
+  );
+  updatePendingAnchorDecoration();
   leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left);
   rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right);
   updateDiffJumpButtons();

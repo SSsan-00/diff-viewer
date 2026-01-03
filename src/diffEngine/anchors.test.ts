@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { diffWithAnchors, validateAnchors, type Anchor } from "./anchors";
+import {
+  addAnchor,
+  diffWithAnchors,
+  removeAnchorByLeft,
+  removeAnchorByRight,
+  validateAnchors,
+  type Anchor,
+} from "./anchors";
 
 describe("validateAnchors", () => {
   it("filters out of range anchors", () => {
@@ -72,5 +79,41 @@ describe("diffWithAnchors", () => {
     );
 
     expect(anchorOp).toBeDefined();
+  });
+});
+
+describe("anchor helpers", () => {
+  it("adds an anchor by returning a new list", () => {
+    const anchors: Anchor[] = [{ leftLineNo: 1, rightLineNo: 2 }];
+    const next = addAnchor(anchors, { leftLineNo: 3, rightLineNo: 4 });
+
+    expect(next).toEqual([
+      { leftLineNo: 1, rightLineNo: 2 },
+      { leftLineNo: 3, rightLineNo: 4 },
+    ]);
+  });
+
+  it("removes an anchor by left line number", () => {
+    const anchors: Anchor[] = [
+      { leftLineNo: 1, rightLineNo: 2 },
+      { leftLineNo: 3, rightLineNo: 4 },
+    ];
+
+    const result = removeAnchorByLeft(anchors, 1);
+
+    expect(result.removed).toEqual({ leftLineNo: 1, rightLineNo: 2 });
+    expect(result.next).toEqual([{ leftLineNo: 3, rightLineNo: 4 }]);
+  });
+
+  it("removes an anchor by right line number", () => {
+    const anchors: Anchor[] = [
+      { leftLineNo: 1, rightLineNo: 2 },
+      { leftLineNo: 3, rightLineNo: 4 },
+    ];
+
+    const result = removeAnchorByRight(anchors, 4);
+
+    expect(result.removed).toEqual({ leftLineNo: 3, rightLineNo: 4 });
+    expect(result.next).toEqual([{ leftLineNo: 1, rightLineNo: 2 }]);
   });
 });

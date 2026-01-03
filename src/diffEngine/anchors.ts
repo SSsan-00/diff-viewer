@@ -18,6 +18,36 @@ export type AnchorValidationResult = {
   invalid: AnchorValidationIssue[];
 };
 
+export function addAnchor(anchors: Anchor[], anchor: Anchor): Anchor[] {
+  return [...anchors, anchor];
+}
+
+export function removeAnchorByLeft(
+  anchors: Anchor[],
+  leftLineNo: number,
+): { next: Anchor[]; removed?: Anchor } {
+  const index = anchors.findIndex((anchor) => anchor.leftLineNo === leftLineNo);
+  if (index === -1) {
+    return { next: anchors };
+  }
+  const removed = anchors[index];
+  const next = anchors.slice(0, index).concat(anchors.slice(index + 1));
+  return { next, removed };
+}
+
+export function removeAnchorByRight(
+  anchors: Anchor[],
+  rightLineNo: number,
+): { next: Anchor[]; removed?: Anchor } {
+  const index = anchors.findIndex((anchor) => anchor.rightLineNo === rightLineNo);
+  if (index === -1) {
+    return { next: anchors };
+  }
+  const removed = anchors[index];
+  const next = anchors.slice(0, index).concat(anchors.slice(index + 1));
+  return { next, removed };
+}
+
 function splitNormalizedLines(text: string): string[] {
   return normalizeText(text).split("\n");
 }
