@@ -54,11 +54,7 @@ function buildMyersTrace(left: string[], right: string[]): MyersTrace {
   return trace;
 }
 
-function backtrackOps(
-  left: string[],
-  right: string[],
-  trace: MyersTrace,
-): LineOp[] {
+function backtrackOps(left: string[], right: string[], trace: MyersTrace): LineOp[] {
   const n = left.length;
   const m = right.length;
   const max = n + m;
@@ -121,12 +117,16 @@ function backtrackOps(
   return ops.reverse();
 }
 
+export function diffLinesFromLines(leftLines: string[], rightLines: string[]): LineOp[] {
+  const trace = buildMyersTrace(leftLines, rightLines);
+  return backtrackOps(leftLines, rightLines, trace);
+}
+
 export function diffLines(leftText: string, rightText: string): LineOp[] {
   const leftNormalized = normalizeText(leftText);
   const rightNormalized = normalizeText(rightText);
   const leftLines = splitLines(leftNormalized);
   const rightLines = splitLines(rightNormalized);
 
-  const trace = buildMyersTrace(leftLines, rightLines);
-  return backtrackOps(leftLines, rightLines, trace);
+  return diffLinesFromLines(leftLines, rightLines);
 }

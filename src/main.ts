@@ -8,6 +8,10 @@ import { diffInline } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
+import { decodeArrayBuffer, type FileEncoding } from "./file/decode";
+import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
+import { diffWithAnchors, validateAnchors, type Anchor } from "./diffEngine/anchors";
+import { normalizeText } from "./diffEngine/normalize";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -29,18 +33,70 @@ app.innerHTML = `
         <button id="diff-prev" class="button" type="button">前の差分</button>
         <button id="diff-next" class="button" type="button">次の差分</button>
         <label class="toggle">
+          <input id="fold-toggle" type="checkbox" />
+          <span>差分なしの箇所を折りたたみ</span>
+        </label>
+        <label class="toggle">
           <input id="sync-toggle" type="checkbox" checked />
           <span>スクロール連動</span>
         </label>
       </div>
     </header>
+    <section class="anchor-panel">
+      <div class="anchor-header">
+        <div class="anchor-title">アンカー</div>
+        <div id="anchor-message" class="anchor-message" aria-live="polite"></div>
+      </div>
+      <div id="anchor-warning" class="anchor-warning" aria-live="polite"></div>
+      <ul id="anchor-list" class="anchor-list"></ul>
+    </section>
     <div class="editors">
       <section class="editor-pane">
-        <div class="pane-title">Left</div>
+        <div class="pane-title">
+          <span>Left</span>
+          <label class="pane-select">
+            文字コード
+            <select id="left-encoding">
+              <option value="utf-8" selected>UTF-8</option>
+              <option value="shift_jis">Shift_JIS</option>
+              <option value="euc-jp">EUC-JP</option>
+              <option value="auto">自動（BOM/UTF-8判定）</option>
+            </select>
+          </label>
+        </div>
+        <div id="left-drop" class="drop-zone">ここにファイルをドロップ</div>
+        <div class="file-picker">
+          <input id="left-file" class="file-input" type="file" />
+          <button id="left-file-button" class="button button-subtle" type="button">
+            ファイルを選択
+          </button>
+          <span class="file-hint">またはドラッグ&ドロップ</span>
+        </div>
+        <div id="left-message" class="pane-message" aria-live="polite"></div>
         <div id="left-editor" class="editor"></div>
       </section>
       <section class="editor-pane">
-        <div class="pane-title">Right</div>
+        <div class="pane-title">
+          <span>Right</span>
+          <label class="pane-select">
+            文字コード
+            <select id="right-encoding">
+              <option value="utf-8" selected>UTF-8</option>
+              <option value="shift_jis">Shift_JIS</option>
+              <option value="euc-jp">EUC-JP</option>
+              <option value="auto">自動（BOM/UTF-8判定）</option>
+            </select>
+          </label>
+        </div>
+        <div id="right-drop" class="drop-zone">ここにファイルをドロップ</div>
+        <div class="file-picker">
+          <input id="right-file" class="file-input" type="file" />
+          <button id="right-file-button" class="button button-subtle" type="button">
+            ファイルを選択
+          </button>
+          <span class="file-hint">またはドラッグ&ドロップ</span>
+        </div>
+        <div id="right-message" class="pane-message" aria-live="polite"></div>
         <div id="right-editor" class="editor"></div>
       </section>
     </div>
@@ -49,8 +105,37 @@ app.innerHTML = `
 
 const leftContainer = document.querySelector<HTMLDivElement>("#left-editor");
 const rightContainer = document.querySelector<HTMLDivElement>("#right-editor");
+const leftDropZone = document.querySelector<HTMLDivElement>("#left-drop");
+const rightDropZone = document.querySelector<HTMLDivElement>("#right-drop");
+const leftMessage = document.querySelector<HTMLDivElement>("#left-message");
+const rightMessage = document.querySelector<HTMLDivElement>("#right-message");
+const leftEncodingSelect = document.querySelector<HTMLSelectElement>("#left-encoding");
+const rightEncodingSelect = document.querySelector<HTMLSelectElement>("#right-encoding");
+const leftFileInput = document.querySelector<HTMLInputElement>("#left-file");
+const rightFileInput = document.querySelector<HTMLInputElement>("#right-file");
+const leftFileButton = document.querySelector<HTMLButtonElement>("#left-file-button");
+const rightFileButton = document.querySelector<HTMLButtonElement>("#right-file-button");
+const anchorMessage = document.querySelector<HTMLDivElement>("#anchor-message");
+const anchorWarning = document.querySelector<HTMLDivElement>("#anchor-warning");
+const anchorList = document.querySelector<HTMLUListElement>("#anchor-list");
 
-if (!leftContainer || !rightContainer) {
+if (
+  !leftContainer ||
+  !rightContainer ||
+  !leftDropZone ||
+  !rightDropZone ||
+  !leftMessage ||
+  !rightMessage ||
+  !leftEncodingSelect ||
+  !rightEncodingSelect ||
+  !leftFileInput ||
+  !rightFileInput ||
+  !leftFileButton ||
+  !rightFileButton ||
+  !anchorMessage ||
+  !anchorWarning ||
+  !anchorList
+) {
   throw new Error("Editor containers are missing.");
 }
 
@@ -80,6 +165,101 @@ const rightEditor = monaco.editor.create(rightContainer, {
   minimap: { enabled: false },
 });
 
+function setPaneMessage(target: HTMLDivElement, message: string, isError: boolean) {
+  target.textContent = message;
+  target.classList.toggle("is-error", isError);
+}
+
+async function handleFileDrop(
+  file: File,
+  encoding: FileEncoding,
+  editor: monaco.editor.IStandaloneCodeEditor,
+  messageTarget: HTMLDivElement,
+) {
+  try {
+    const buffer = await file.arrayBuffer();
+    const text = decodeArrayBuffer(buffer, encoding);
+    editor.setValue(text);
+    setPaneMessage(messageTarget, `読み込み完了: ${file.name}`, false);
+    recalcDiff();
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "読み込みに失敗しました";
+    console.error(error);
+    setPaneMessage(messageTarget, message, true);
+  }
+}
+
+function bindDropZone(
+  zone: HTMLDivElement,
+  editor: monaco.editor.IStandaloneCodeEditor,
+  messageTarget: HTMLDivElement,
+  encodingSelect: HTMLSelectElement,
+) {
+  zone.addEventListener("dragover", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    zone.classList.add("is-dragover");
+  });
+
+  zone.addEventListener("dragleave", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    zone.classList.remove("is-dragover");
+  });
+
+  zone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    zone.classList.remove("is-dragover");
+
+    const file = event.dataTransfer?.files?.[0];
+    if (!file) {
+      setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
+      return;
+    }
+
+    const encoding = encodingSelect.value as FileEncoding;
+    void handleFileDrop(file, encoding, editor, messageTarget);
+  });
+}
+
+bindDropZone(leftDropZone, leftEditor, leftMessage, leftEncodingSelect);
+bindDropZone(rightDropZone, rightEditor, rightMessage, rightEncodingSelect);
+
+function bindFilePicker(
+  input: HTMLInputElement,
+  button: HTMLButtonElement,
+  editor: monaco.editor.IStandaloneCodeEditor,
+  messageTarget: HTMLDivElement,
+  encodingSelect: HTMLSelectElement,
+) {
+  button.addEventListener("click", () => {
+    input.click();
+  });
+
+  input.addEventListener("change", () => {
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+    const encoding = encodingSelect.value as FileEncoding;
+    void handleFileDrop(file, encoding, editor, messageTarget);
+    input.value = "";
+  });
+}
+
+bindFilePicker(leftFileInput, leftFileButton, leftEditor, leftMessage, leftEncodingSelect);
+bindFilePicker(rightFileInput, rightFileButton, rightEditor, rightMessage, rightEncodingSelect);
+
+function preventWindowDrop(event: DragEvent) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+window.addEventListener("dragover", preventWindowDrop);
+window.addEventListener("drop", preventWindowDrop);
+
 const scrollSync = new ScrollSyncController(
   {
     onDidScrollChange: (handler) => {
@@ -101,6 +281,51 @@ const scrollSync = new ScrollSyncController(
   },
 );
 
+function isGutterClick(event: monaco.editor.IEditorMouseEvent): boolean {
+  const targetType = event.target.type;
+  return (
+    targetType === monaco.editor.MouseTargetType.GUTTER_LINE_NUMBERS ||
+    targetType === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN
+  );
+}
+
+leftEditor.onMouseDown((event) => {
+  if (!isGutterClick(event)) {
+    return;
+  }
+  const lineNumber = event.target.position?.lineNumber;
+  if (!lineNumber) {
+    return;
+  }
+  pendingLeftLineNo = lineNumber - 1;
+  setAnchorMessage("左行を選択しました。右行を選んでください。");
+});
+
+rightEditor.onMouseDown((event) => {
+  if (!isGutterClick(event)) {
+    return;
+  }
+  const lineNumber = event.target.position?.lineNumber;
+  if (!lineNumber) {
+    return;
+  }
+  if (pendingLeftLineNo === null) {
+    setAnchorMessage("左行を先に選んでください。");
+    return;
+  }
+
+  anchors.push({ leftLineNo: pendingLeftLineNo, rightLineNo: lineNumber - 1 });
+  pendingLeftLineNo = null;
+  setAnchorMessage("アンカーを追加しました。差分再計算で反映されます。");
+  const validation = validateAnchors(
+    anchors,
+    getNormalizedLineCount(leftEditor.getValue()),
+    getNormalizedLineCount(rightEditor.getValue()),
+  );
+  updateAnchorWarning(validation.invalid);
+  renderAnchors(validation.invalid);
+});
+
 let leftDecorationIds: string[] = [];
 let rightDecorationIds: string[] = [];
 let leftZoneIds: string[] = [];
@@ -108,6 +333,13 @@ let rightZoneIds: string[] = [];
 let pairedOps: PairedOp[] = [];
 let diffBlockStarts: number[] = [];
 let currentBlockIndex = 0;
+let foldEnabled = false;
+let foldRanges: FoldRange[] = [];
+let leftFoldZoneIds: string[] = [];
+let rightFoldZoneIds: string[] = [];
+const expandedFoldStarts = new Set<number>();
+const anchors: Anchor[] = [];
+let pendingLeftLineNo: number | null = null;
 
 type ZoneSide = "insert" | "delete";
 
@@ -116,6 +348,97 @@ type ViewZoneSpec = {
   heightInLines: number;
   className: string;
 };
+
+type FoldZoneSpec = {
+  afterLineNumber: number;
+  heightInLines: number;
+  className: string;
+  label: string;
+  onClick: () => void;
+};
+
+const foldOptions = {
+  threshold: 8,
+  keepHead: 3,
+  keepTail: 3,
+};
+
+function setAnchorMessage(message: string) {
+  anchorMessage.textContent = message;
+}
+
+function updateAnchorWarning(invalid: { anchor: Anchor; reasons: string[] }[]) {
+  if (invalid.length === 0) {
+    anchorWarning.textContent = "";
+    return;
+  }
+
+  const message = invalid
+    .map((item) => {
+      const left = item.anchor.leftLineNo + 1;
+      const right = item.anchor.rightLineNo + 1;
+      return `L${left} ↔ R${right}: ${item.reasons.join(" / ")}`;
+    })
+    .join(" | ");
+  anchorWarning.textContent = `無効なアンカーがあります: ${message}`;
+}
+
+function renderAnchors(
+  invalid: { anchor: Anchor; reasons: string[] }[],
+) {
+  anchorList.innerHTML = "";
+  if (anchors.length === 0) {
+    const empty = document.createElement("li");
+    empty.className = "anchor-empty";
+    empty.textContent = "アンカーはありません";
+    anchorList.appendChild(empty);
+    return;
+  }
+
+  const invalidMap = new Map<Anchor, string>();
+  invalid.forEach((item) => {
+    invalidMap.set(item.anchor, item.reasons.join(" / "));
+  });
+
+  anchors.forEach((anchor, index) => {
+    const item = document.createElement("li");
+    item.className = "anchor-item";
+    const left = anchor.leftLineNo + 1;
+    const right = anchor.rightLineNo + 1;
+    const reason = invalidMap.get(anchor);
+
+    const label = document.createElement("span");
+    label.textContent = `L${left} ↔ R${right}`;
+    if (reason) {
+      label.classList.add("anchor-invalid");
+      label.textContent += `（無効: ${reason}）`;
+    }
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "anchor-remove";
+    removeButton.textContent = "削除";
+    removeButton.addEventListener("click", () => {
+      anchors.splice(index, 1);
+      setAnchorMessage("アンカーを削除しました。差分再計算で反映されます。");
+      const validation = validateAnchors(
+        anchors,
+        getNormalizedLineCount(leftEditor.getValue()),
+        getNormalizedLineCount(rightEditor.getValue()),
+      );
+      updateAnchorWarning(validation.invalid);
+      renderAnchors(validation.invalid);
+    });
+
+    item.appendChild(label);
+    item.appendChild(removeButton);
+    anchorList.appendChild(item);
+  });
+}
+
+function getNormalizedLineCount(text: string): number {
+  return normalizeText(text).split("\n").length;
+}
 
 function addLineDecoration(
   target: monaco.editor.IModelDeltaDecoration[],
@@ -268,12 +591,136 @@ function applyViewZones(
   return nextZoneIds;
 }
 
+function applyFoldZones(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  currentZoneIds: string[],
+  zones: FoldZoneSpec[],
+): string[] {
+  const nextZoneIds: string[] = [];
+
+  editor.changeViewZones((accessor) => {
+    for (const zoneId of currentZoneIds) {
+      accessor.removeZone(zoneId);
+    }
+
+    for (const zone of zones) {
+      const domNode = document.createElement("div");
+      domNode.className = zone.className;
+      domNode.textContent = zone.label;
+      domNode.addEventListener("click", zone.onClick);
+      const zoneId = accessor.addZone({
+        afterLineNumber: zone.afterLineNumber,
+        heightInLines: zone.heightInLines,
+        domNode,
+      });
+      nextZoneIds.push(zoneId);
+    }
+  });
+
+  return nextZoneIds;
+}
+
+function buildHiddenAreas(folds: FoldRange[]): {
+  left: monaco.IRange[];
+  right: monaco.IRange[];
+} {
+  const left: monaco.IRange[] = [];
+  const right: monaco.IRange[] = [];
+
+  for (const fold of folds) {
+    if (expandedFoldStarts.has(fold.startRow)) {
+      continue;
+    }
+    const startLines = mapRowToLineNumbers(pairedOps, fold.hiddenStartRow);
+    const endLines = mapRowToLineNumbers(pairedOps, fold.hiddenEndRow);
+
+    left.push(new monaco.Range(startLines.leftLineNo + 1, 1, endLines.leftLineNo + 1, 1));
+    right.push(
+      new monaco.Range(startLines.rightLineNo + 1, 1, endLines.rightLineNo + 1, 1),
+    );
+  }
+
+  return { left, right };
+}
+
+function buildFoldZones(folds: FoldRange[]): { left: FoldZoneSpec[]; right: FoldZoneSpec[] } {
+  const left: FoldZoneSpec[] = [];
+  const right: FoldZoneSpec[] = [];
+
+  for (const fold of folds) {
+    if (expandedFoldStarts.has(fold.startRow)) {
+      continue;
+    }
+    const label = `... 省略（${fold.hiddenCount}行） ...`;
+    const startLines = mapRowToLineNumbers(pairedOps, fold.hiddenStartRow);
+    const onClick = () => {
+      expandedFoldStarts.add(fold.startRow);
+      applyFolding();
+    };
+
+    left.push({
+      afterLineNumber: startLines.leftLineNo,
+      heightInLines: 1,
+      className: "diff-fold-placeholder",
+      label,
+      onClick,
+    });
+    right.push({
+      afterLineNumber: startLines.rightLineNo,
+      heightInLines: 1,
+      className: "diff-fold-placeholder",
+      label,
+      onClick,
+    });
+  }
+
+  return { left, right };
+}
+
+function applyFolding() {
+  if (!foldEnabled) {
+    leftEditor.setHiddenAreas([]);
+    rightEditor.setHiddenAreas([]);
+    leftFoldZoneIds = applyFoldZones(leftEditor, leftFoldZoneIds, []);
+    rightFoldZoneIds = applyFoldZones(rightEditor, rightFoldZoneIds, []);
+    return;
+  }
+
+  const hiddenAreas = buildHiddenAreas(foldRanges);
+  leftEditor.setHiddenAreas(hiddenAreas.left);
+  rightEditor.setHiddenAreas(hiddenAreas.right);
+
+  const zones = buildFoldZones(foldRanges);
+  leftFoldZoneIds = applyFoldZones(leftEditor, leftFoldZoneIds, zones.left);
+  rightFoldZoneIds = applyFoldZones(rightEditor, rightFoldZoneIds, zones.right);
+}
+
 function recalcDiff() {
   const leftText = leftEditor.getValue();
   const rightText = rightEditor.getValue();
-  pairedOps = pairReplace(diffLines(leftText, rightText));
+  const validation = validateAnchors(
+    anchors,
+    getNormalizedLineCount(leftText),
+    getNormalizedLineCount(rightText),
+  );
+
+  if (validation.invalid.length > 0) {
+    console.warn("無効なアンカーが検出されました:", validation.invalid);
+  }
+
+  updateAnchorWarning(validation.invalid);
+  renderAnchors(validation.invalid);
+
+  if (validation.valid.length > 0) {
+    pairedOps = diffWithAnchors(leftText, rightText, validation.valid);
+  } else {
+    pairedOps = pairReplace(diffLines(leftText, rightText));
+  }
+
   diffBlockStarts = getDiffBlockStarts(pairedOps);
   currentBlockIndex = 0;
+  foldRanges = buildFoldRanges(pairedOps, foldOptions);
+  expandedFoldStarts.clear();
   const { left, right } = buildDecorations(pairedOps);
   const zones = buildViewZones(pairedOps);
 
@@ -282,6 +729,7 @@ function recalcDiff() {
   leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left);
   rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right);
   updateDiffJumpButtons();
+  applyFolding();
 }
 
 const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
@@ -292,6 +740,12 @@ recalcButton?.addEventListener("click", () => {
 const syncToggle = document.querySelector<HTMLInputElement>("#sync-toggle");
 syncToggle?.addEventListener("change", (event) => {
   scrollSync.setEnabled((event.target as HTMLInputElement).checked);
+});
+
+const foldToggle = document.querySelector<HTMLInputElement>("#fold-toggle");
+foldToggle?.addEventListener("change", (event) => {
+  foldEnabled = (event.target as HTMLInputElement).checked;
+  applyFolding();
 });
 
 const prevButton = document.querySelector<HTMLButtonElement>("#diff-prev");
@@ -307,11 +761,23 @@ function updateDiffJumpButtons() {
   }
 }
 
+function ensureRowVisible(rowIndex: number) {
+  if (!foldEnabled) {
+    return;
+  }
+  const fold = findFoldContainingRow(foldRanges, rowIndex);
+  if (fold && !expandedFoldStarts.has(fold.startRow)) {
+    expandedFoldStarts.add(fold.startRow);
+    applyFolding();
+  }
+}
+
 function revealBlock(index: number) {
   if (diffBlockStarts.length === 0) {
     return;
   }
   const rowIndex = diffBlockStarts[index];
+  ensureRowVisible(rowIndex);
   const { leftLineNo, rightLineNo } = mapRowToLineNumbers(pairedOps, rowIndex);
 
   leftEditor.revealLineInCenter(leftLineNo + 1);

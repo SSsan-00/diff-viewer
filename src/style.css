@@ -53,6 +53,75 @@ body {
   align-items: center;
 }
 
+.anchor-panel {
+  padding: 10px 24px;
+  background-color: rgba(255, 255, 255, 0.65);
+  border-bottom: 1px solid #d7cbb6;
+}
+
+.anchor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.anchor-title {
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.anchor-message {
+  font-size: 0.8rem;
+  color: #4b3b2a;
+}
+
+.anchor-warning {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #b24b3f;
+}
+
+.anchor-list {
+  list-style: none;
+  padding: 8px 0 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.anchor-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.8rem;
+}
+
+.anchor-empty {
+  font-size: 0.8rem;
+  color: #6b5a46;
+}
+
+.anchor-invalid {
+  color: #b24b3f;
+}
+
+.anchor-remove {
+  border: 1px solid #c9bea9;
+  border-radius: 10px;
+  padding: 2px 10px;
+  background-color: #fffdf8;
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.anchor-remove:hover {
+  background-color: #f7efe2;
+}
+
 .button {
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
   font-size: 0.95rem;
@@ -68,6 +137,12 @@ body {
 .button:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(60, 47, 34, 0.15);
+}
+
+.button-subtle {
+  font-size: 0.85rem;
+  padding: 6px 16px;
+  border-radius: 12px;
 }
 
 .button:disabled {
@@ -115,11 +190,79 @@ body {
   text-transform: uppercase;
   background-color: #f7efe2;
   border-bottom: 1px solid #e1d6c2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.pane-select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+.pane-select select {
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid #c9bea9;
+  background-color: #fffdf8;
+}
+
+.drop-zone {
+  margin: 12px 16px 0;
+  padding: 8px 12px;
+  border: 1px dashed #b6ab97;
+  border-radius: 10px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #5b4a37;
+  background-color: #fbf7ee;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.drop-zone.is-dragover {
+  border-color: #3f6ed0;
+  background-color: rgba(63, 110, 208, 0.1);
+}
+
+.file-picker {
+  margin: 8px 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.file-input {
+  display: none;
+}
+
+.file-hint {
+  font-size: 0.72rem;
+  color: #6b5a46;
+}
+
+.pane-message {
+  min-height: 20px;
+  margin: 6px 16px 0;
+  font-size: 0.75rem;
+  color: #5b4a37;
+}
+
+.pane-message.is-error {
+  color: #b24b3f;
 }
 
 .editor {
   flex: 1;
   min-height: 0;
+  margin-top: 8px;
 }
 
 .monaco-editor .line-insert {
@@ -150,6 +293,19 @@ body {
 
 .diff-zone-delete {
   background: rgba(210, 90, 70, 0.08);
+}
+
+.diff-fold-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: #5b4a37;
+  background: rgba(120, 110, 90, 0.1);
+  border: 1px dashed rgba(120, 110, 90, 0.4);
+  border-radius: 10px;
+  margin: 4px 12px;
+  cursor: pointer;
 }
 
 @media (max-width: 900px) {
