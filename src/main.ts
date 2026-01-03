@@ -6,6 +6,7 @@ import { diffLines } from "./diffEngine/diffLines";
 import { pairReplace } from "./diffEngine/pairReplace";
 import { diffInline } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
+import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -73,6 +74,27 @@ const rightEditor = monaco.editor.create(rightContainer, {
   automaticLayout: true,
   minimap: { enabled: false },
 });
+
+const scrollSync = new ScrollSyncController(
+  {
+    onDidScrollChange: (handler) => {
+      leftEditor.onDidScrollChange((event) =>
+        handler({ scrollTop: event.scrollTop, scrollLeft: event.scrollLeft }),
+      );
+    },
+    setScrollTop: (value) => leftEditor.setScrollTop(value),
+    setScrollLeft: (value) => leftEditor.setScrollLeft(value),
+  },
+  {
+    onDidScrollChange: (handler) => {
+      rightEditor.onDidScrollChange((event) =>
+        handler({ scrollTop: event.scrollTop, scrollLeft: event.scrollLeft }),
+      );
+    },
+    setScrollTop: (value) => rightEditor.setScrollTop(value),
+    setScrollLeft: (value) => rightEditor.setScrollLeft(value),
+  },
+);
 
 let leftDecorationIds: string[] = [];
 let rightDecorationIds: string[] = [];
@@ -149,6 +171,11 @@ function recalcDiff() {
 const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
 recalcButton?.addEventListener("click", () => {
   recalcDiff();
+});
+
+const syncToggle = document.querySelector<HTMLInputElement>("#sync-toggle");
+syncToggle?.addEventListener("change", (event) => {
+  scrollSync.setEnabled((event.target as HTMLInputElement).checked);
 });
 
 recalcDiff();
