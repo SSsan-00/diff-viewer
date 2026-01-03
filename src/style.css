@@ -200,14 +200,54 @@ body {
 }
 
 .toggle {
-  display: flex;
-  gap: 8px;
+  display: inline-flex;
   align-items: center;
-  font-size: 0.9rem;
+  gap: 8px;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid #c9bea9;
+  background-color: #fffdf8;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
 }
 
 .toggle input {
-  accent-color: #8a7b65;
+  appearance: none;
+  width: 34px;
+  height: 20px;
+  border-radius: 999px;
+  border: 1px solid #c9bea9;
+  background-color: #e8e0d2;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.toggle input::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background-color: #fffdf8;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease;
+}
+
+.toggle input:checked {
+  background-color: rgba(63, 110, 208, 0.4);
+  border-color: rgba(63, 110, 208, 0.6);
+}
+
+.toggle input:checked::after {
+  transform: translateX(14px);
+}
+
+.toggle:hover {
+  border-color: #8a7b65;
 }
 
 .editors {

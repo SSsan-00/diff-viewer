@@ -40,13 +40,14 @@ app.innerHTML = `
         <button id="diff-prev" class="button" type="button">前の差分</button>
         <button id="diff-next" class="button" type="button">次の差分</button>
         <label class="toggle">
-          <input id="fold-toggle" type="checkbox" />
-          <span>差分なしの箇所を折りたたみ</span>
-        </label>
-        <label class="toggle">
           <input id="sync-toggle" type="checkbox" checked />
           <span>スクロール連動</span>
         </label>
+        <label class="toggle">
+          <input id="fold-toggle" type="checkbox" />
+          <span>差分なしの箇所を折りたたみ</span>
+        </label>
+        <button id="clear" class="button button-subtle" type="button">クリア</button>
       </div>
     </header>
     <section class="anchor-panel">
@@ -133,16 +134,105 @@ const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-butto
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
+const clearButton = getRequiredElement<HTMLButtonElement>("#clear");
 
-const leftInitial = `a
-x
-b
-c`;
+const leftInitial = `// Left sample (47 lines)
+const config = {
+  app: "diff-viewer",
+  version: "0.1.0",
+  features: ["diff", "anchors", "folding"],
+};
 
-const rightInitial = `a
-b
-y
-c`;
+function greet(name) {
+  return "Hello, " + name;
+}
+
+function add(a, b) {
+  return a + b;
+}
+
+function sumList(values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function format(value) {
+  return \`[\${value}]\`;
+}
+
+const numbers = [1, 2, 3, 4];
+const total = sumList(numbers);
+
+const message = greet("World");
+const count = add(2, 3);
+
+const output = [];
+output.push(format(message));
+output.push(format(total));
+
+if (count > 3) {
+  console.log(output.join(" | "));
+} else {
+  console.log("Small count");
+}
+
+for (let i = 0; i < 3; i += 1) {
+  console.log("step", i);
+}
+
+const flags = new Map();
+flags.set("ready", true);
+
+export { config, greet, add, sumList };
+`;
+
+const rightInitial = `// Right sample (47 lines)
+const config = {
+  app: "diff-viewer",
+  version: "0.1.1",
+  features: ["diff", "anchors", "folding", "drop"],
+};
+
+function greet(name) {
+  return "Hello, " + name + "!";
+}
+
+function add(a, b) {
+  return a + b;
+}
+
+function sumList(values) {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function format(value) {
+  return \`{\${value}}\`;
+}
+
+const numbers = [1, 2, 3, 4, 5];
+const total = sumList(numbers);
+
+const message = greet("Codex");
+const count = add(2, 4);
+
+const output = [];
+output.push(format(message));
+output.push(format(total));
+
+if (count > 3) {
+  console.log(output.join(" / "));
+} else {
+  console.log("Small count");
+}
+
+for (let i = 0; i < 4; i += 1) {
+  console.log("step", i);
+}
+
+const flags = new Map();
+flags.set("ready", true);
+
+export { config, greet, add, sumList };
+`;
 
 const leftEditor = monaco.editor.create(leftContainer, {
   value: leftInitial,
@@ -903,6 +993,21 @@ function recalcDiff() {
 const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
 recalcButton?.addEventListener("click", () => {
   recalcDiff();
+});
+
+clearButton.addEventListener("click", () => {
+  const confirmed = window.confirm("左右の内容とアンカーを全てクリアします。よろしいですか？");
+  if (!confirmed) {
+    return;
+  }
+  anchors = [];
+  pendingLeftLineNo = null;
+  pendingRightLineNo = null;
+  selectedAnchorKey = null;
+  leftEditor.setValue("");
+  rightEditor.setValue("");
+  recalcDiff();
+  setAnchorMessage("アンカーを全てクリアしました。");
 });
 
 const syncToggle = document.querySelector<HTMLInputElement>("#sync-toggle");
