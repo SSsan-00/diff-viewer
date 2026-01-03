@@ -53,11 +53,13 @@ if (!leftContainer || !rightContainer) {
 
 const leftInitial = `a
 x
-b`;
+b
+c`;
 
 const rightInitial = `a
+b
 y
-b`;
+c`;
 
 const leftEditor = monaco.editor.create(leftContainer, {
   value: leftInitial,
@@ -98,6 +100,16 @@ const scrollSync = new ScrollSyncController(
 
 let leftDecorationIds: string[] = [];
 let rightDecorationIds: string[] = [];
+let leftZoneIds: string[] = [];
+let rightZoneIds: string[] = [];
+
+type ZoneSide = "insert" | "delete";
+
+type ViewZoneSpec = {
+  afterLineNumber: number;
+  heightInLines: number;
+  className: string;
+};
 
 function addLineDecoration(
   target: monaco.editor.IModelDeltaDecoration[],
@@ -158,14 +170,109 @@ function buildDecorations(ops: PairedOp[]): {
   return { left, right };
 }
 
+function buildViewZones(ops: PairedOp[]): {
+  left: ViewZoneSpec[];
+  right: ViewZoneSpec[];
+} {
+  const left: ViewZoneSpec[] = [];
+  const right: ViewZoneSpec[] = [];
+  let consumedLeftLines = 0;
+  let consumedRightLines = 0;
+
+  const pushZone = (
+    target: ViewZoneSpec[],
+    side: ZoneSide,
+    afterLineNumber: number,
+    heightInLines: number,
+  ) => {
+    if (heightInLines <= 0) {
+      return;
+    }
+    const className = side === "insert" ? "diff-zone-insert" : "diff-zone-delete";
+    target.push({ afterLineNumber, heightInLines, className });
+  };
+
+  const appendOrExtendZone = (
+    target: ViewZoneSpec[],
+    side: ZoneSide,
+    afterLineNumber: number,
+    heightInLines: number,
+  ) => {
+    const className = side === "insert" ? "diff-zone-insert" : "diff-zone-delete";
+    const last = target[target.length - 1];
+    if (
+      last &&
+      last.className === className &&
+      last.afterLineNumber === afterLineNumber
+    ) {
+      last.heightInLines += heightInLines;
+      return;
+    }
+    pushZone(target, side, afterLineNumber, heightInLines);
+  };
+
+  for (const op of ops) {
+    if (op.type === "equal" || op.type === "replace") {
+      consumedLeftLines += 1;
+      consumedRightLines += 1;
+      continue;
+    }
+
+    if (op.type === "insert") {
+      consumedRightLines += 1;
+      const afterLineNumber = Math.max(consumedLeftLines, 0);
+      appendOrExtendZone(left, "insert", afterLineNumber, 1);
+      continue;
+    }
+
+    if (op.type === "delete") {
+      consumedLeftLines += 1;
+      const afterLineNumber = Math.max(consumedRightLines, 0);
+      appendOrExtendZone(right, "delete", afterLineNumber, 1);
+    }
+  }
+
+  return { left, right };
+}
+
+function applyViewZones(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  currentZoneIds: string[],
+  zones: ViewZoneSpec[],
+): string[] {
+  const nextZoneIds: string[] = [];
+
+  editor.changeViewZones((accessor) => {
+    for (const zoneId of currentZoneIds) {
+      accessor.removeZone(zoneId);
+    }
+
+    for (const zone of zones) {
+      const domNode = document.createElement("div");
+      domNode.className = zone.className;
+      const zoneId = accessor.addZone({
+        afterLineNumber: zone.afterLineNumber,
+        heightInLines: zone.heightInLines,
+        domNode,
+      });
+      nextZoneIds.push(zoneId);
+    }
+  });
+
+  return nextZoneIds;
+}
+
 function recalcDiff() {
   const leftText = leftEditor.getValue();
   const rightText = rightEditor.getValue();
   const ops = pairReplace(diffLines(leftText, rightText));
   const { left, right } = buildDecorations(ops);
+  const zones = buildViewZones(ops);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
   rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
+  leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left);
+  rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right);
 }
 
 const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");

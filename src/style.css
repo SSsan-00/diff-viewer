@@ -137,6 +137,14 @@ body {
   border-radius: 3px;
 }
 
+.diff-zone-insert {
+  background: rgba(80, 170, 90, 0.08);
+}
+
+.diff-zone-delete {
+  background: rgba(210, 90, 70, 0.08);
+}
+
 @media (max-width: 900px) {
   .editors {
     grid-template-columns: 1fr;
