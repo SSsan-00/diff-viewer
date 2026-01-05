@@ -1076,6 +1076,6 @@ nextButton?.addEventListener("click", () => {
 recalcDiff();
 
 // Worker確認手順:
-// 1) npm install
-// 2) npm run dev
+// 1) pnpm install
+// 2) pnpm run dev
 // 3) ブラウザコンソールで "Could not create web worker(s)" が出ないことを確認

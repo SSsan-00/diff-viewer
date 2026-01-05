@@ -23,5 +23,6 @@
   },
   "dependencies": {
     "monaco-editor": "^0.55.1"
-  }
+  },
+  "packageManager": "pnpm@10.22.0"
 }
