@@ -283,19 +283,19 @@ function bindDropZone(
   messageTarget: HTMLDivElement,
   encodingSelect: HTMLSelectElement,
 ) {
-  zone.addEventListener("dragover", (event) => {
+  zone.addEventListener("dragover", (event: DragEvent) => {
     event.preventDefault();
     event.stopPropagation();
     zone.classList.add("is-dragover");
   });
 
-  zone.addEventListener("dragleave", (event) => {
+  zone.addEventListener("dragleave", (event: DragEvent) => {
     event.preventDefault();
     event.stopPropagation();
     zone.classList.remove("is-dragover");
   });
 
-  zone.addEventListener("drop", (event) => {
+  zone.addEventListener("drop", (event: DragEvent) => {
     event.preventDefault();
     event.stopPropagation();
     zone.classList.remove("is-dragover");
@@ -456,6 +456,8 @@ let rightZoneIds: string[] = [];
 let pairedOps: PairedOp[] = [];
 let diffBlockStarts: number[] = [];
 let currentBlockIndex = 0;
+let leftFocusDecorationIds: string[] = [];
+let rightFocusDecorationIds: string[] = [];
 let foldEnabled = false;
 let foldRanges: FoldRange[] = [];
 let leftFoldZoneIds: string[] = [];
@@ -804,7 +806,7 @@ function applyViewZones(
 ): string[] {
   const nextZoneIds: string[] = [];
 
-  editor.changeViewZones((accessor) => {
+  editor.changeViewZones((accessor: monaco.editor.IViewZoneChangeAccessor) => {
     for (const zoneId of currentZoneIds) {
       accessor.removeZone(zoneId);
     }
@@ -831,7 +833,7 @@ function applyFoldZones(
 ): string[] {
   const nextZoneIds: string[] = [];
 
-  editor.changeViewZones((accessor) => {
+  editor.changeViewZones((accessor: monaco.editor.IViewZoneChangeAccessor) => {
     for (const zoneId of currentZoneIds) {
       accessor.removeZone(zoneId);
     }
@@ -988,6 +990,7 @@ function recalcDiff() {
   rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right);
   updateDiffJumpButtons();
   applyFolding();
+  focusDiffLines(null, null);
 }
 
 const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
@@ -1011,12 +1014,12 @@ clearButton.addEventListener("click", () => {
 });
 
 const syncToggle = document.querySelector<HTMLInputElement>("#sync-toggle");
-syncToggle?.addEventListener("change", (event) => {
+syncToggle?.addEventListener("change", (event: Event) => {
   scrollSync.setEnabled((event.target as HTMLInputElement).checked);
 });
 
 const foldToggle = document.querySelector<HTMLInputElement>("#fold-toggle");
-foldToggle?.addEventListener("change", (event) => {
+foldToggle?.addEventListener("change", (event: Event) => {
   foldEnabled = (event.target as HTMLInputElement).checked;
   applyFolding();
 });
@@ -1032,6 +1035,53 @@ function updateDiffJumpButtons() {
   if (nextButton) {
     nextButton.disabled = !hasDiffs;
   }
+}
+
+function focusDiffLines(
+  leftLineNo: number | null,
+  rightLineNo: number | null,
+) {
+  if (leftLineNo === null || rightLineNo === null) {
+    leftFocusDecorationIds = leftEditor.deltaDecorations(
+      leftFocusDecorationIds,
+      [],
+    );
+    rightFocusDecorationIds = rightEditor.deltaDecorations(
+      rightFocusDecorationIds,
+      [],
+    );
+    return;
+  }
+
+  const leftDecorations: monaco.editor.IModelDeltaDecoration[] = [
+    {
+      range: new monaco.Range(leftLineNo + 1, 1, leftLineNo + 1, 1),
+      options: {
+        isWholeLine: true,
+        className: "line-focus",
+        glyphMarginClassName: "line-focus-glyph",
+      },
+    },
+  ];
+  const rightDecorations: monaco.editor.IModelDeltaDecoration[] = [
+    {
+      range: new monaco.Range(rightLineNo + 1, 1, rightLineNo + 1, 1),
+      options: {
+        isWholeLine: true,
+        className: "line-focus",
+        glyphMarginClassName: "line-focus-glyph",
+      },
+    },
+  ];
+
+  leftFocusDecorationIds = leftEditor.deltaDecorations(
+    leftFocusDecorationIds,
+    leftDecorations,
+  );
+  rightFocusDecorationIds = rightEditor.deltaDecorations(
+    rightFocusDecorationIds,
+    rightDecorations,
+  );
 }
 
 function ensureRowVisible(rowIndex: number) {
@@ -1055,6 +1105,7 @@ function revealBlock(index: number) {
 
   leftEditor.revealLineInCenter(leftLineNo + 1);
   rightEditor.revealLineInCenter(rightLineNo + 1);
+  focusDiffLines(leftLineNo, rightLineNo);
 }
 
 prevButton?.addEventListener("click", () => {
