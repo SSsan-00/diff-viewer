@@ -19,9 +19,23 @@ import {
   type Anchor,
 } from "./diffEngine/anchors";
 import { normalizeText } from "./diffEngine/normalize";
+import { THIRD_PARTY_LICENSES } from "./licenses";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
+
+function attachLicenses(): void {
+  if (document.getElementById("third-party-licenses")) {
+    return;
+  }
+  const node = document.createElement("script");
+  node.id = "third-party-licenses";
+  node.type = "application/json";
+  node.textContent = JSON.stringify({ thirdPartyLicenses: THIRD_PARTY_LICENSES });
+  document.head.appendChild(node);
+}
+
+attachLicenses();
 
 const app = document.querySelector<HTMLDivElement>("#app");
 
