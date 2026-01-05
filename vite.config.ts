@@ -8,6 +8,7 @@ export default defineConfig({
   build: {
     assetsInlineLimit: 10_000_000,
     cssCodeSplit: false,
+    sourcemap: false,
     rollupOptions: {
       output: {
         inlineDynamicImports: true,

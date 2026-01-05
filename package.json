@@ -6,11 +6,14 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:single": "vite build",
+    "build:single:raw": "vite build",
+    "build:single": "pnpm run build:single:raw && pnpm run sanitize:dist && pnpm run verify:dist",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "sanitize:dist": "node scripts/sanitize-dist.mjs",
+    "verify:dist": "node scripts/verify-dist.mjs"
   },
   "devDependencies": {
     "vite-plugin-singlefile": "^2.0.3",

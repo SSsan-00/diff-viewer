@@ -60,7 +60,13 @@ pnpm install
 pnpm run build:single
 ```
 
-### 3) Open
+### 3) Verify dist artifact
+
+```bash
+pnpm run verify:dist
+```
+
+### 4) Open
 
 - `dist/index.html` をブラウザで開く（`file://` 直開き）
 
