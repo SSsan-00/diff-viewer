@@ -1,6 +1,6 @@
 import "./style.css";
 import "monaco-editor/min/vs/editor/editor.main.css";
-import * as monaco from "monaco-editor";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
 import { setupMonacoWorkers } from "./monaco/monacoWorkers";
 import { diffLines } from "./diffEngine/diffLines";
 import { pairReplace } from "./diffEngine/pairReplace";

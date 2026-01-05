@@ -11,35 +11,45 @@ if (!existsSync(distPath)) {
 const content = readFileSync(distPath, "utf8");
 
 const patterns = [
-  { name: "ban-word:http://", regex: /http:\/\//g },
-  { name: "ban-word:https://", regex: /https:\/\//g },
-  { name: "ban-word:GITHUB_WORKSPACE", regex: /GITHUB_WORKSPACE/g },
-  { name: "sourcemap:sourceMappingURL", regex: /sourceMappingURL=/g },
-  { name: "sourcemap:data-application-json", regex: /data:application\/json(?:;base64)?/g },
+  { name: "ban-word:http://", kind: "BAN_WORD", regex: /http:\/\//g },
+  { name: "ban-word:https://", kind: "BAN_WORD", regex: /https:\/\//g },
+  { name: "ban-word:GITHUB_WORKSPACE", kind: "BAN_WORD", regex: /GITHUB_WORKSPACE/g },
+  { name: "sourcemap:sourceMappingURL", kind: "SOURCEMAP", regex: /sourceMappingURL=/g },
+  {
+    name: "sourcemap:data-application-json",
+    kind: "SOURCEMAP",
+    regex: /data:application\/json(?:;base64)?/g,
+  },
 ];
 
 const failures = [];
+const contextRadius = 40;
+const maxSamples = 3;
 
-for (const { name, regex } of patterns) {
+for (const { name, kind, regex } of patterns) {
   regex.lastIndex = 0;
   const matches = [];
   let match;
   while ((match = regex.exec(content)) !== null) {
-    matches.push(match.index);
-    if (matches.length >= 5) {
-      break;
-    }
+    const index = match.index;
+    const start = Math.max(0, index - contextRadius);
+    const end = Math.min(content.length, index + match[0].length + contextRadius);
+    const snippet = content.slice(start, end).replace(/\s+/g, " ");
+    matches.push({ index, snippet });
   }
 
   if (matches.length > 0) {
-    failures.push({ name, matches });
+    failures.push({ name, kind, matches });
   }
 }
 
 if (failures.length > 0) {
   console.error("[verify:dist] Forbidden patterns detected in dist/index.html:");
   for (const failure of failures) {
-    console.error(`- ${failure.name} (sample indices: ${failure.matches.join(", ")})`);
+    console.error(`- ${failure.kind}: ${failure.name} (count: ${failure.matches.length})`);
+    failure.matches.slice(0, maxSamples).forEach((sample, idx) => {
+      console.error(`  [${idx + 1}] @${sample.index}: ${sample.snippet}`);
+    });
   }
   process.exit(1);
 }

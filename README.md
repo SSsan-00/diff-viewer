@@ -96,6 +96,9 @@ pnpm run verify:dist
 - `https://`
 - `GITHUB_WORKSPACE`
 
+加えて、`dist/index.html` に SourceMap 参照や inline sourcemap が含まれていないことを確認してください。  
+これらは **置換で回避しない**（ビルド/バンドル段階で含まれない状態を保証する）。
+
 また、`dist/index.html` は **単一ファイル**で完結していること（追加の `.js` / `.css` / `.map` が不要）を条件とします。
 
 > 目的: 外部参照を想起させる文字列や CI 環境由来のパス/メタ情報が、成果物に混入するのを防ぐため。
