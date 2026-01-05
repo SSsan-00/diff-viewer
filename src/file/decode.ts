@@ -16,6 +16,26 @@ function decodeUtf8(bytes: Uint8Array, fatal: boolean): string {
   return decoder.decode(bytes);
 }
 
+function countReplacementCharacters(text: string): number {
+  return Array.from(text).filter((char) => char === "\uFFFD").length;
+}
+
+function decodeAuto(bytes: Uint8Array): string {
+  if (hasUtf8Bom(bytes)) {
+    return decodeUtf8(bytes.slice(3), false);
+  }
+
+  try {
+    return decodeUtf8(bytes, true);
+  } catch (error) {
+    const shiftJis = new TextDecoder("shift_jis").decode(bytes);
+    const eucJp = new TextDecoder("euc-jp").decode(bytes);
+    const shiftJisCount = countReplacementCharacters(shiftJis);
+    const eucJpCount = countReplacementCharacters(eucJp);
+    return shiftJisCount <= eucJpCount ? shiftJis : eucJp;
+  }
+}
+
 export function decodeArrayBuffer(buffer: ArrayBuffer, encoding: FileEncoding): string {
   const bytes = new Uint8Array(buffer);
 
@@ -31,14 +51,5 @@ export function decodeArrayBuffer(buffer: ArrayBuffer, encoding: FileEncoding): 
     return new TextDecoder("euc-jp").decode(bytes);
   }
 
-  // auto mode: UTF-8 BOM -> UTF-8, otherwise try UTF-8 (fatal).
-  if (hasUtf8Bom(bytes)) {
-    return decodeUtf8(bytes.slice(3), false);
-  }
-
-  try {
-    return decodeUtf8(bytes, true);
-  } catch (error) {
-    throw new Error("文字コードを選択してください");
-  }
+  return decodeAuto(bytes);
 }

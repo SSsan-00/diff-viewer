@@ -79,16 +79,16 @@ app.innerHTML = `
           <label class="pane-select">
             文字コード
             <select id="left-encoding">
-              <option value="utf-8" selected>UTF-8</option>
+              <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
+              <option value="utf-8">UTF-8</option>
               <option value="shift_jis">Shift_JIS</option>
               <option value="euc-jp">EUC-JP</option>
-              <option value="auto">自動（BOM/UTF-8判定）</option>
             </select>
           </label>
         </div>
         <div id="left-drop" class="drop-zone">ここにファイルをドロップ</div>
         <div class="file-picker">
-          <input id="left-file" class="file-input" type="file" />
+          <input id="left-file" class="file-input" type="file" multiple />
           <button id="left-file-button" class="button button-subtle" type="button">
             ファイルを選択
           </button>
@@ -103,16 +103,16 @@ app.innerHTML = `
           <label class="pane-select">
             文字コード
             <select id="right-encoding">
-              <option value="utf-8" selected>UTF-8</option>
+              <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
+              <option value="utf-8">UTF-8</option>
               <option value="shift_jis">Shift_JIS</option>
               <option value="euc-jp">EUC-JP</option>
-              <option value="auto">自動（BOM/UTF-8判定）</option>
             </select>
           </label>
         </div>
         <div id="right-drop" class="drop-zone">ここにファイルをドロップ</div>
         <div class="file-picker">
-          <input id="right-file" class="file-input" type="file" />
+          <input id="right-file" class="file-input" type="file" multiple />
           <button id="right-file-button" class="button button-subtle" type="button">
             ファイルを選択
           </button>
@@ -271,23 +271,51 @@ function setPaneMessage(target: HTMLDivElement, message: string, isError: boolea
   target.classList.toggle("is-error", isError);
 }
 
-async function handleFileDrop(
-  file: File,
+function appendTextToEditor(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  text: string,
+) {
+  const current = editor.getValue();
+  if (!current) {
+    editor.setValue(text);
+    return;
+  }
+  const separator = current.endsWith("\n") ? "" : "\n";
+  editor.setValue(current + separator + text);
+}
+
+async function appendFilesToEditor(
+  files: FileList | File[],
   encoding: FileEncoding,
   editor: monaco.editor.IStandaloneCodeEditor,
   messageTarget: HTMLDivElement,
 ) {
+  const fileList = Array.from(files);
+  if (fileList.length === 0) {
+    setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
+    return;
+  }
+
+  let currentFileName = "";
   try {
-    const buffer = await file.arrayBuffer();
-    const text = decodeArrayBuffer(buffer, encoding);
-    editor.setValue(text);
-    setPaneMessage(messageTarget, `読み込み完了: ${file.name}`, false);
+    for (const file of fileList) {
+      currentFileName = file.name;
+      const buffer = await file.arrayBuffer();
+      const text = normalizeText(decodeArrayBuffer(buffer, encoding));
+      appendTextToEditor(editor, text);
+    }
+    const label =
+      fileList.length === 1
+        ? fileList[0].name
+        : `${fileList[0].name} (+${fileList.length - 1})`;
+    setPaneMessage(messageTarget, `読み込み完了: ${label}`, false);
     recalcDiff();
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "読み込みに失敗しました";
     console.error(error);
-    setPaneMessage(messageTarget, message, true);
+    const detail = currentFileName ? `${message} (${currentFileName})` : message;
+    setPaneMessage(messageTarget, detail, true);
   }
 }
 
@@ -314,14 +342,14 @@ function bindDropZone(
     event.stopPropagation();
     zone.classList.remove("is-dragover");
 
-    const file = event.dataTransfer?.files?.[0];
-    if (!file) {
+    const files = event.dataTransfer?.files;
+    if (!files || files.length === 0) {
       setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
       return;
     }
 
     const encoding = encodingSelect.value as FileEncoding;
-    void handleFileDrop(file, encoding, editor, messageTarget);
+    void appendFilesToEditor(files, encoding, editor, messageTarget);
   });
 }
 
@@ -340,12 +368,12 @@ function bindFilePicker(
   });
 
   input.addEventListener("change", () => {
-    const file = input.files?.[0];
-    if (!file) {
+    const files = input.files;
+    if (!files || files.length === 0) {
       return;
     }
     const encoding = encodingSelect.value as FileEncoding;
-    void handleFileDrop(file, encoding, editor, messageTarget);
+    void appendFilesToEditor(files, encoding, editor, messageTarget);
     input.value = "";
   });
 }
@@ -650,6 +678,30 @@ function renderAnchors(
 
 function getNormalizedLineCount(text: string): number {
   return normalizeText(text).split("\n").length;
+}
+
+function findDoctypeLineIndex(text: string): number {
+  const lines = normalizeText(text).split("\n");
+  const pattern = /<(!|！)DOCTYPE/i;
+  for (let index = 0; index < lines.length; index += 1) {
+    if (pattern.test(lines[index])) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function getAutoDoctypeAnchor(leftText: string, rightText: string): Anchor | null {
+  const leftIndex = findDoctypeLineIndex(leftText);
+  const rightIndex = findDoctypeLineIndex(rightText);
+  if (leftIndex === -1 || rightIndex === -1) {
+    return null;
+  }
+  return { leftLineNo: leftIndex, rightLineNo: rightIndex };
+}
+
+function anchorsEqual(left: Anchor, right: Anchor): boolean {
+  return left.leftLineNo === right.leftLineNo && left.rightLineNo === right.rightLineNo;
 }
 
 function addLineDecoration(
@@ -975,8 +1027,27 @@ function recalcDiff() {
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
 
-  if (validation.valid.length > 0) {
-    pairedOps = diffWithAnchors(leftText, rightText, validation.valid);
+  let anchorsForDiff = validation.valid;
+  const autoAnchor = getAutoDoctypeAnchor(leftText, rightText);
+  if (autoAnchor) {
+    const candidate = addAnchor(validation.valid, autoAnchor);
+    const candidateValidation = validateAnchors(
+      candidate,
+      getNormalizedLineCount(leftText),
+      getNormalizedLineCount(rightText),
+    );
+    const autoValid =
+      candidateValidation.valid.some((anchor) => anchorsEqual(anchor, autoAnchor)) &&
+      candidateValidation.invalid.every((issue) => !anchorsEqual(issue.anchor, autoAnchor));
+    if (autoValid) {
+      anchorsForDiff = candidateValidation.valid;
+    } else {
+      console.warn("Auto DOCTYPE anchor skipped due to conflicts.");
+    }
+  }
+
+  if (anchorsForDiff.length > 0) {
+    pairedOps = diffWithAnchors(leftText, rightText, anchorsForDiff);
   } else {
     pairedOps = pairReplace(diffLines(leftText, rightText));
   }
@@ -986,7 +1057,7 @@ function recalcDiff() {
   foldRanges = buildFoldRanges(pairedOps, foldOptions);
   expandedFoldStarts.clear();
   const { left, right } = buildDecorations(pairedOps);
-  const anchorDecorations = buildAnchorDecorations(validation.valid);
+  const anchorDecorations = buildAnchorDecorations(anchorsForDiff);
   const zones = buildViewZones(pairedOps);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);

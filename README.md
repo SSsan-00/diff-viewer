@@ -8,10 +8,15 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` のみ）
 - 2ペインの Monaco Editor で差分表示（行/行内ハイライト）
 - スクロール連動 ON/OFF
 - 差分再計算 / 前後ジャンプ
-- アンカー行の追加・削除・ジャンプ
+- アンカー行（手動）の追加・削除・ジャンプ
+- **自動アンカー（DOCTYPE）**：左右に `<!DOCTYPE`（または `<！DOCTYPE`）がある場合、その行同士を再計算時にアンカーとして扱う
 - 差分なし領域の折りたたみ（クリックで展開）
-- ファイル読み込み（ドラッグ&ドロップ / ファイル選択）
+- ファイル読み込み
+  - ファイル選択（複数選択対応）
+  - ドラッグ&ドロップ（複数ファイル対応）
+  - 既存内容がある場合は **末尾に改行を挟んで追記**
 - 文字コード選択（UTF-8 / Shift_JIS / EUC-JP / 自動）
+  - **混在文字コードに対応**：複数ファイル読み込み時も、ファイル単位でデコードして文字化けを防止
 - クリア（左右の内容とアンカーを全消去）
 
 > 注意: エディタでの編集はメモリ上のみで、ファイルの保存/上書きは行いません。
@@ -24,6 +29,19 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` のみ）
 2) 左右それぞれにファイルを読み込み or テキストを貼り付け  
 3) `差分再計算` を押して差分表示  
 4) アンカーは左右の行番号を順にクリックして追加（同じ行をクリックすると削除）
+
+### ファイル読み込み（複数ファイルの連結）
+
+- **ファイル選択**で複数選んだ場合、選択された順（FileList の順）に連結します。
+- **ドラッグ&ドロップ**でも複数ファイルを同様に連結します。
+- 読み込み先エディタに既に内容がある場合、**末尾が改行でなければ `\n` を1つ追加**してから追記します。
+- 複数ファイル連結時も、ファイル境界は **改行で区切られる**ようにします（改行を過剰に増やさない）。
+
+### 自動アンカー（DOCTYPE）
+
+- `差分再計算` 実行時、左右のテキスト内に `<!DOCTYPE`（または `<！DOCTYPE`）を含む行が存在する場合、
+  - 左右それぞれで **最初に見つかった DOCTYPE 行同士**を **自動アンカー（1件）**として扱います。
+- 既存アンカーと矛盾（順序逆転・重複など）する場合は、自動アンカーは追加しません（安定性優先）。
 
 ---
 
@@ -83,9 +101,11 @@ pnpm run verify:dist
 - Scroll sync ON/OFF
 - Next/previous diff jump
 - Folding（差分なし領域の折りたたみ）
-- File load（drag & drop + file input）
-- Shift_JIS / EUC-JP decoding
+- File load（file input / drag & drop）
+  - multiple files append + newline rules
+  - mixed encodings decode correctly（UTF-8 / Shift_JIS / EUC-JP）
 - Anchors add/remove/jump/decorations
+- Auto anchor for DOCTYPE works on diff recalculation
 - Clear button resets both editors + anchors
 
 ### Release gate（配布物の禁止事項）
@@ -109,3 +129,11 @@ pnpm run verify:dist
 
 - 本プロジェクトは「VS Code と同一アルゴリズム」を目指すのではなく、ユーザーが違和感の少ない “VS Code っぽい体験” を優先します。
 - 詳細な仕様は `spec.md` を参照してください。
+
+---
+
+## Documentation policy
+
+- `spec.md` は本プロジェクトの Single Source of Truth（仕様の唯一の正）です。
+- `README.md` は **常に最新の仕様（spec.md）に追従**する方針で更新します。
+  - 機能追加・挙動変更・ビルド手順変更が入った場合は、同じPR/コミット内で README も更新します。

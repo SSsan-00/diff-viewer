@@ -18,11 +18,15 @@ describe("decodeArrayBuffer", () => {
     expect(decodeArrayBuffer(utf8Bom, "auto")).toBe("abc");
   });
 
-  it("prompts for encoding selection when auto decoding fails", () => {
-    const invalidUtf8 = toBuffer([0xc3, 0x28]);
+  it("falls back to Shift_JIS when UTF-8 strict decoding fails", () => {
+    const shiftJisBytes = toBuffer([0x82, 0xa0]);
 
-    expect(() => decodeArrayBuffer(invalidUtf8, "auto")).toThrow(
-      "文字コードを選択してください",
-    );
+    expect(decodeArrayBuffer(shiftJisBytes, "auto")).toBe("あ");
+  });
+
+  it("uses UTF-8 when auto decoding succeeds", () => {
+    const utf8Bytes = toBuffer([0x68, 0x69]);
+
+    expect(decodeArrayBuffer(utf8Bytes, "auto")).toBe("hi");
   });
 });
