@@ -78,6 +78,9 @@ pnpm install
 pnpm run build:single
 ```
 
+> 読みやすい出力を維持しつつコメントのみ削除する設定が既定です。
+> フル minify が必要な場合は `pnpm run build:single:minify` を使ってください。
+
 ### 3) Verify dist artifact
 
 ```bash
