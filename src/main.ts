@@ -427,15 +427,24 @@ leftEditor.onMouseDown((event) => {
     return;
   }
   const leftLineNo = lineNumber - 1;
-  const removal = removeAnchorByLeft(anchors, leftLineNo);
+  const removal = removeAnchorByLeft(manualAnchors, leftLineNo);
   if (removal.removed) {
-    anchors = removal.next;
+    manualAnchors = removal.next;
     pendingLeftLineNo = null;
     pendingRightLineNo = null;
     setAnchorMessage(`Anchor removed: ${formatAnchor(removal.removed)}`);
+  } else if (autoAnchor && autoAnchor.leftLineNo === leftLineNo) {
+    suppressedAutoAnchorKey = autoAnchorKey(autoAnchor);
+    autoAnchor = null;
+    if (selectedAnchorKey === suppressedAutoAnchorKey) {
+      selectedAnchorKey = null;
+    }
+    pendingLeftLineNo = null;
+    pendingRightLineNo = null;
+    setAnchorMessage("Auto anchor removed.");
   } else if (pendingRightLineNo !== null) {
     const anchor = { leftLineNo, rightLineNo: pendingRightLineNo };
-    anchors = addAnchor(anchors, anchor);
+    manualAnchors = addAnchor(manualAnchors, anchor);
     pendingLeftLineNo = null;
     pendingRightLineNo = null;
     setAnchorMessage(`Anchor added: ${formatAnchor(anchor)}`);
@@ -446,7 +455,7 @@ leftEditor.onMouseDown((event) => {
   }
   updatePendingAnchorDecoration();
   const validation = validateAnchors(
-    anchors,
+    manualAnchors,
     getNormalizedLineCount(leftEditor.getValue()),
     getNormalizedLineCount(rightEditor.getValue()),
   );
@@ -463,19 +472,28 @@ rightEditor.onMouseDown((event) => {
     return;
   }
   const rightLineNo = lineNumber - 1;
-  const removal = removeAnchorByRight(anchors, rightLineNo);
+  const removal = removeAnchorByRight(manualAnchors, rightLineNo);
   if (removal.removed) {
-    anchors = removal.next;
+    manualAnchors = removal.next;
     pendingLeftLineNo = null;
     pendingRightLineNo = null;
     setAnchorMessage(`Anchor removed: ${formatAnchor(removal.removed)}`);
+  } else if (autoAnchor && autoAnchor.rightLineNo === rightLineNo) {
+    suppressedAutoAnchorKey = autoAnchorKey(autoAnchor);
+    autoAnchor = null;
+    if (selectedAnchorKey === suppressedAutoAnchorKey) {
+      selectedAnchorKey = null;
+    }
+    pendingLeftLineNo = null;
+    pendingRightLineNo = null;
+    setAnchorMessage("Auto anchor removed.");
   } else if (pendingLeftLineNo === null) {
     pendingRightLineNo = rightLineNo;
     setAnchorMessage("右行を選択しました。左行を選んでください。");
   } else {
     const leftLineNo = pendingLeftLineNo;
     const anchor = { leftLineNo, rightLineNo };
-    anchors = addAnchor(anchors, anchor);
+    manualAnchors = addAnchor(manualAnchors, anchor);
     pendingLeftLineNo = null;
     pendingRightLineNo = null;
     setAnchorMessage(`Anchor added: ${formatAnchor(anchor)}`);
@@ -483,7 +501,7 @@ rightEditor.onMouseDown((event) => {
   }
   updatePendingAnchorDecoration();
   const validation = validateAnchors(
-    anchors,
+    manualAnchors,
     getNormalizedLineCount(leftEditor.getValue()),
     getNormalizedLineCount(rightEditor.getValue()),
   );
@@ -505,7 +523,9 @@ let foldRanges: FoldRange[] = [];
 let leftFoldZoneIds: string[] = [];
 let rightFoldZoneIds: string[] = [];
 const expandedFoldStarts = new Set<number>();
-let anchors: Anchor[] = [];
+let manualAnchors: Anchor[] = [];
+let autoAnchor: Anchor | null = null;
+let suppressedAutoAnchorKey: string | null = null;
 let pendingLeftLineNo: number | null = null;
 let pendingRightLineNo: number | null = null;
 let leftAnchorDecorationIds: string[] = [];
@@ -546,6 +566,14 @@ function formatAnchor(anchor: Anchor): string {
 
 function anchorKey(anchor: Anchor): string {
   return `${anchor.leftLineNo}:${anchor.rightLineNo}`;
+}
+
+function manualAnchorKey(anchor: Anchor): string {
+  return `manual:${anchorKey(anchor)}`;
+}
+
+function autoAnchorKey(anchor: Anchor): string {
+  return `auto:${anchorKey(anchor)}`;
 }
 
 function updatePendingAnchorDecoration() {
@@ -599,12 +627,24 @@ function updateAnchorWarning(invalid: { anchor: Anchor; reasons: string[] }[]) {
   anchorWarning.textContent = `無効なアンカーがあります: ${message}`;
 }
 
+type AnchorEntry = {
+  anchor: Anchor;
+  source: "manual" | "auto";
+};
+
 function renderAnchors(
   invalid: { anchor: Anchor; reasons: string[] }[],
   valid: Anchor[],
 ) {
   anchorList.innerHTML = "";
-  if (anchors.length === 0) {
+  const entries: AnchorEntry[] = [];
+  if (autoAnchor) {
+    entries.push({ anchor: autoAnchor, source: "auto" });
+  }
+  manualAnchors.forEach((anchor) => {
+    entries.push({ anchor, source: "manual" });
+  });
+  if (entries.length === 0) {
     const empty = document.createElement("li");
     empty.className = "anchor-empty";
     empty.textContent = "アンカーはありません";
@@ -618,32 +658,49 @@ function renderAnchors(
   });
   const validSet = new Set(valid);
 
-  anchors.forEach((anchor, index) => {
+  entries.forEach((entry) => {
+    const anchor = entry.anchor;
     const item = document.createElement("li");
     item.className = "anchor-item";
-    if (selectedAnchorKey === anchorKey(anchor)) {
+    if (entry.source === "auto") {
+      item.classList.add("is-auto");
+    }
+    const entryKey =
+      entry.source === "auto" ? autoAnchorKey(anchor) : manualAnchorKey(anchor);
+    if (selectedAnchorKey === entryKey) {
       item.classList.add("is-selected");
     }
     const left = anchor.leftLineNo + 1;
     const right = anchor.rightLineNo + 1;
-    const reason = invalidMap.get(anchor);
+    const reason = entry.source === "manual" ? invalidMap.get(anchor) : undefined;
 
     const label = document.createElement("span");
-    label.textContent = `L${left} ↔ R${right}`;
+    label.textContent =
+      entry.source === "auto"
+        ? `AUTO:DOCTYPE L${left} ↔ R${right}`
+        : `L${left} ↔ R${right}`;
     label.className = "anchor-link";
+    if (entry.source === "auto") {
+      label.classList.add("anchor-auto");
+    }
     if (reason) {
       label.classList.add("anchor-invalid");
       label.textContent += `（無効: ${reason}）`;
-    } else if (!validSet.has(anchor)) {
+    } else if (entry.source === "manual" && !validSet.has(anchor)) {
       label.classList.add("anchor-disabled");
     }
 
-    if (validSet.has(anchor)) {
-      label.addEventListener("click", () => {
-        selectedAnchorKey = anchorKey(anchor);
+    const canJump = entry.source === "auto" || validSet.has(anchor);
+    if (canJump) {
+      item.addEventListener("click", (event) => {
+        if ((event.target as HTMLElement).closest(".anchor-remove")) {
+          return;
+        }
+        selectedAnchorKey = entryKey;
         renderAnchors(invalid, valid);
         leftEditor.revealLineInCenter(anchor.leftLineNo + 1);
         rightEditor.revealLineInCenter(anchor.rightLineNo + 1);
+        focusDiffLines(anchor.leftLineNo, anchor.rightLineNo);
         setAnchorMessage(`Anchor jump: ${formatAnchor(anchor)}`);
       });
     }
@@ -652,17 +709,32 @@ function renderAnchors(
     removeButton.type = "button";
     removeButton.className = "anchor-remove";
     removeButton.textContent = "削除";
-    removeButton.addEventListener("click", () => {
+    removeButton.addEventListener("click", (event) => {
+      event.stopPropagation();
       removeButton.blur();
-      const removed = anchors[index];
-      anchors = anchors.filter((_, anchorIndex) => anchorIndex !== index);
-      if (selectedAnchorKey === anchorKey(removed)) {
-        selectedAnchorKey = null;
+      if (entry.source === "auto") {
+        suppressedAutoAnchorKey = autoAnchorKey(anchor);
+        autoAnchor = null;
+        if (selectedAnchorKey === entryKey) {
+          selectedAnchorKey = null;
+        }
+        setAnchorMessage("Auto anchor removed.");
+        recalcDiff();
+      } else {
+        const manualIndex = manualAnchors.indexOf(anchor);
+        if (manualIndex === -1) {
+          return;
+        }
+        const removed = manualAnchors[manualIndex];
+        manualAnchors = manualAnchors.filter((_, anchorIndex) => anchorIndex !== manualIndex);
+        if (selectedAnchorKey === entryKey) {
+          selectedAnchorKey = null;
+        }
+        setAnchorMessage(`Anchor removed: ${formatAnchor(removed)}`);
+        recalcDiff();
       }
-      setAnchorMessage(`Anchor removed: ${formatAnchor(removed)}`);
-      recalcDiff();
       const validation = validateAnchors(
-        anchors,
+        manualAnchors,
         getNormalizedLineCount(leftEditor.getValue()),
         getNormalizedLineCount(rightEditor.getValue()),
       );
@@ -763,21 +835,24 @@ function buildDecorations(ops: PairedOp[]): {
   return { left, right };
 }
 
-function buildAnchorDecorations(validAnchors: Anchor[]): {
+function buildAnchorDecorations(
+  validAnchors: Anchor[],
+  autoAnchorTarget: Anchor | null,
+): {
   left: monaco.editor.IModelDeltaDecoration[];
   right: monaco.editor.IModelDeltaDecoration[];
 } {
   const left: monaco.editor.IModelDeltaDecoration[] = [];
   const right: monaco.editor.IModelDeltaDecoration[] = [];
 
-  validAnchors.forEach((anchor) => {
+  const pushAnchor = (anchor: Anchor, lineClass: string, glyphClass: string) => {
     const leftRange = new monaco.Range(anchor.leftLineNo + 1, 1, anchor.leftLineNo + 1, 1);
     left.push({
       range: leftRange,
       options: {
         isWholeLine: true,
-        className: "diff-anchor-line",
-        glyphMarginClassName: "diff-anchor-glyph",
+        className: lineClass,
+        glyphMarginClassName: glyphClass,
       },
     });
 
@@ -791,11 +866,19 @@ function buildAnchorDecorations(validAnchors: Anchor[]): {
       range: rightRange,
       options: {
         isWholeLine: true,
-        className: "diff-anchor-line",
-        glyphMarginClassName: "diff-anchor-glyph",
+        className: lineClass,
+        glyphMarginClassName: glyphClass,
       },
     });
+  };
+
+  validAnchors.forEach((anchor) => {
+    pushAnchor(anchor, "diff-anchor-line", "diff-anchor-glyph");
   });
+
+  if (autoAnchorTarget) {
+    pushAnchor(autoAnchorTarget, "diff-anchor-auto-line", "diff-anchor-auto-glyph");
+  }
 
   return { left, right };
 }
@@ -1015,7 +1098,7 @@ function recalcDiff() {
   const leftText = leftEditor.getValue();
   const rightText = rightEditor.getValue();
   const validation = validateAnchors(
-    anchors,
+    manualAnchors,
     getNormalizedLineCount(leftText),
     getNormalizedLineCount(rightText),
   );
@@ -1024,27 +1107,39 @@ function recalcDiff() {
     console.warn("無効なアンカーが検出されました:", validation.invalid);
   }
 
-  updateAnchorWarning(validation.invalid);
-  renderAnchors(validation.invalid, validation.valid);
-
   let anchorsForDiff = validation.valid;
-  const autoAnchor = getAutoDoctypeAnchor(leftText, rightText);
-  if (autoAnchor) {
-    const candidate = addAnchor(validation.valid, autoAnchor);
-    const candidateValidation = validateAnchors(
-      candidate,
-      getNormalizedLineCount(leftText),
-      getNormalizedLineCount(rightText),
-    );
-    const autoValid =
-      candidateValidation.valid.some((anchor) => anchorsEqual(anchor, autoAnchor)) &&
-      candidateValidation.invalid.every((issue) => !anchorsEqual(issue.anchor, autoAnchor));
-    if (autoValid) {
-      anchorsForDiff = candidateValidation.valid;
-    } else {
-      console.warn("Auto DOCTYPE anchor skipped due to conflicts.");
+  autoAnchor = null;
+  const autoCandidate = getAutoDoctypeAnchor(leftText, rightText);
+  if (autoCandidate) {
+    const candidateKey = autoAnchorKey(autoCandidate);
+    if (suppressedAutoAnchorKey && suppressedAutoAnchorKey !== candidateKey) {
+      suppressedAutoAnchorKey = null;
+    }
+    if (suppressedAutoAnchorKey !== candidateKey) {
+      const candidate = addAnchor(validation.valid, autoCandidate);
+      const candidateValidation = validateAnchors(
+        candidate,
+        getNormalizedLineCount(leftText),
+        getNormalizedLineCount(rightText),
+      );
+      const autoValid =
+        candidateValidation.valid.some((anchor) =>
+          anchorsEqual(anchor, autoCandidate),
+        ) &&
+        candidateValidation.invalid.every(
+          (issue) => !anchorsEqual(issue.anchor, autoCandidate),
+        );
+      if (autoValid) {
+        anchorsForDiff = candidateValidation.valid;
+        autoAnchor = autoCandidate;
+      } else {
+        console.warn("Auto DOCTYPE anchor skipped due to conflicts.");
+      }
     }
   }
+
+  updateAnchorWarning(validation.invalid);
+  renderAnchors(validation.invalid, validation.valid);
 
   if (anchorsForDiff.length > 0) {
     pairedOps = diffWithAnchors(leftText, rightText, anchorsForDiff);
@@ -1057,7 +1152,7 @@ function recalcDiff() {
   foldRanges = buildFoldRanges(pairedOps, foldOptions);
   expandedFoldStarts.clear();
   const { left, right } = buildDecorations(pairedOps);
-  const anchorDecorations = buildAnchorDecorations(anchorsForDiff);
+  const anchorDecorations = buildAnchorDecorations(validation.valid, autoAnchor);
   const zones = buildViewZones(pairedOps);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
@@ -1088,7 +1183,9 @@ clearButton.addEventListener("click", () => {
   if (!confirmed) {
     return;
   }
-  anchors = [];
+  manualAnchors = [];
+  autoAnchor = null;
+  suppressedAutoAnchorKey = null;
   pendingLeftLineNo = null;
   pendingRightLineNo = null;
   selectedAnchorKey = null;

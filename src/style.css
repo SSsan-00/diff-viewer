@@ -139,12 +139,28 @@ body {
   background-color: rgba(63, 110, 208, 0.6);
 }
 
+.anchor-item.is-selected .anchor-link.anchor-auto::before {
+  background-color: rgba(26, 156, 145, 0.7);
+}
+
 .anchor-item:hover .anchor-link::before {
   background-color: rgba(63, 110, 208, 0.25);
 }
 
 .anchor-item:hover .anchor-link.anchor-disabled::before {
   background-color: rgba(63, 110, 208, 0);
+}
+
+.anchor-link.anchor-auto {
+  color: #1a5f5a;
+}
+
+.anchor-link.anchor-auto::before {
+  background-color: rgba(26, 156, 145, 0.35);
+}
+
+.anchor-item.is-auto {
+  color: #1a5f5a;
 }
 
 .anchor-empty {
@@ -376,6 +392,20 @@ body {
   background-color: #3f6ed0;
 }
 
+.monaco-editor .diff-anchor-auto-line {
+  background-color: rgba(26, 156, 145, 0.18);
+  box-shadow: inset 3px 0 0 rgba(26, 156, 145, 0.7);
+}
+
+.monaco-editor .diff-anchor-auto-glyph {
+  width: 8px;
+  height: 8px;
+  margin-left: 6px;
+  border-radius: 3px;
+  background-color: rgba(26, 156, 145, 0.9);
+  box-shadow: 0 0 0 1px rgba(12, 96, 90, 0.7);
+}
+
 .monaco-editor .margin-view-overlays .line-numbers {
   position: relative;
 }
@@ -383,13 +413,13 @@ body {
 .monaco-editor .margin-view-overlays .line-numbers:hover::before {
   content: "";
   position: absolute;
-  left: 2px;
+  left: -12px;
   top: 50%;
-  width: 8px;
-  height: 8px;
+  width: 18px;
+  height: 18px;
   transform: translateY(-50%);
   border-radius: 999px;
-  background-color: rgba(63, 110, 208, 0.35);
+  background-color: rgba(63, 110, 208, 0.2);
 }
 
 .monaco-editor .anchor-pending-line {
@@ -409,12 +439,12 @@ body {
 .monaco-editor .line-focus {
   background: linear-gradient(
     90deg,
-    rgba(255, 210, 92, 0.45),
-    rgba(255, 210, 92, 0.22)
+    rgba(255, 210, 92, 0.6),
+    rgba(255, 210, 92, 0.28)
   );
   box-shadow:
-    inset 0 0 0 1px rgba(160, 120, 20, 0.7),
-    inset 4px 0 0 rgba(210, 150, 35, 0.7);
+    inset 0 0 0 1px rgba(160, 120, 20, 0.8),
+    inset 5px 0 0 rgba(210, 150, 35, 0.85);
 }
 
 .monaco-editor .line-focus-glyph {
