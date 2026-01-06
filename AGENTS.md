@@ -36,5 +36,6 @@
 ## リリース上の注意
 - `dist/index.html` / `dist/index.min.html` は単一ファイルで完結。外部 URL / sourcemap / CI パス混入は不可。
 - API/GitHub など外部依存を彷彿させる文字列や modulepreload polyfill を成果物に残さない。
+- `github` / `api` の検出は単語境界・大小文字無視で行い、`<script>` / `<style>` 内は対象外。
 - 可読版（`dist/index.html`）は `<style>` 内の CSS も整形済みで読みやすい状態を維持する。
 - 配布前に `pnpm run verify:dist` を必ず実行。

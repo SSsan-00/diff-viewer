@@ -6,7 +6,7 @@ const distFiles = [
   resolve("dist", "index.min.html"),
 ];
 
-const patterns = [
+const strongPatterns = [
   { name: "ban-word:http://", kind: "BAN_WORD", regex: /http:\/\//g },
   { name: "ban-word:https://", kind: "BAN_WORD", regex: /https:\/\//g },
   { name: "ban-word:GITHUB_WORKSPACE", kind: "BAN_WORD", regex: /GITHUB_WORKSPACE/g },
@@ -26,8 +26,19 @@ const patterns = [
   { name: "modulepreload", kind: "MODULEPRELOAD", regex: /modulepreload/g },
 ];
 
+const weakPatterns = [
+  { name: "ban-word:github", kind: "BAN_WORD", regex: /\bgithub\b/gi },
+  { name: "ban-word:api", kind: "BAN_WORD", regex: /\bapi\b/gi },
+];
+
 const contextRadius = 40;
 const maxSamples = 3;
+
+function stripScriptAndStyle(html) {
+  return html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[\s\S]*?<\/style>/gi, "");
+}
 
 for (const distPath of distFiles) {
   if (!existsSync(distPath)) {
@@ -38,7 +49,7 @@ for (const distPath of distFiles) {
   const content = readFileSync(distPath, "utf8");
   const failures = [];
 
-  for (const { name, kind, regex } of patterns) {
+  for (const { name, kind, regex } of strongPatterns) {
     regex.lastIndex = 0;
     const matches = [];
     let match;
@@ -47,6 +58,24 @@ for (const distPath of distFiles) {
       const start = Math.max(0, index - contextRadius);
       const end = Math.min(content.length, index + match[0].length + contextRadius);
       const snippet = content.slice(start, end).replace(/\s+/g, " ");
+      matches.push({ index, snippet });
+    }
+
+    if (matches.length > 0) {
+      failures.push({ name, kind, matches });
+    }
+  }
+
+  const visibleContent = stripScriptAndStyle(content);
+  for (const { name, kind, regex } of weakPatterns) {
+    regex.lastIndex = 0;
+    const matches = [];
+    let match;
+    while ((match = regex.exec(visibleContent)) !== null) {
+      const index = match.index;
+      const start = Math.max(0, index - contextRadius);
+      const end = Math.min(visibleContent.length, index + match[0].length + contextRadius);
+      const snippet = visibleContent.slice(start, end).replace(/\s+/g, " ");
       matches.push({ index, snippet });
     }
 

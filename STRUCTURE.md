@@ -30,6 +30,9 @@
 - `docs/backlog.md` 改善案の待機所。
 - `dist/` 配布成果物の出力先（`index.html` / `index.min.html`）。
 - `scripts/` 配布物検証・成果物組み立て用の補助スクリプト。
+- `scripts/assemble-dist.mjs` 最適化版の成果物を `dist/` に配置する。
+- `scripts/format-readable.mjs` 可読版の `<style>` を整形する。
+- `scripts/verify-dist.mjs` 配布物ゲートの検査スクリプト。
 - `src/` TypeScript の実装本体。
 - `public/` 公開用の静的リソース置き場。
 - `patches/` 依存関係向けのパッチ保管。
