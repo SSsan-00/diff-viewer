@@ -1,6 +1,6 @@
 # Diff Viewer
 
-VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` のみ）で動かすための実験プロジェクトです。  
+VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` / `dist/index.min.html`）で動かすための実験プロジェクトです。  
 最重要ゴールは **スクロール連動 OFF（独立スクロール）** を実現することです。
 
 ## Features
@@ -11,6 +11,7 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` のみ）
 - アンカー行（手動）の追加・削除・ジャンプ
 - **自動アンカー（DOCTYPE）**：左右に `<!DOCTYPE`（または `<！DOCTYPE`）がある場合、その行同士を再計算時にアンカーとして扱う
 - 差分なし領域の折りたたみ（クリックで展開）
+- アンカーパネルの折りたたみ（変更ブロックの折りたたみとは別）
 - ファイル読み込み
   - ファイル選択（複数選択対応）
   - ドラッグ&ドロップ（複数ファイル対応）
@@ -18,6 +19,7 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` のみ）
 - 文字コード選択（UTF-8 / Shift_JIS / EUC-JP / 自動）
   - **混在文字コードに対応**：複数ファイル読み込み時も、ファイル単位でデコードして文字化けを防止
 - クリア（左右の内容とアンカーを全消去）
+- 状態の保存/復元（LocalStorage）
 
 > 注意: エディタでの編集はメモリ上のみで、ファイルの保存/上書きは行いません。
 
@@ -25,7 +27,7 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` のみ）
 
 ## Usage（ビルド済みHTMLの使い方）
 
-1) `dist/index.html` を開く（`file://` 直開きOK）  
+1) `dist/index.html`（可読版）または `dist/index.min.html`（最適化版）を開く（`file://` 直開きOK）  
 2) 左右それぞれにファイルを読み込み or テキストを貼り付け  
 3) `差分再計算` を押して差分表示  
 4) アンカーは左右の行番号を順にクリックして追加（同じ行をクリックすると削除）
@@ -62,7 +64,7 @@ pnpm -v
 
 ---
 
-## Single-file build（dist/index.html only）
+## Single-file build（dist/index.html / dist/index.min.html）
 
 ### 1) Install dependencies
 
@@ -78,8 +80,9 @@ pnpm install
 pnpm run build:single
 ```
 
-> 読みやすい出力を維持しつつコメントのみ削除する設定が既定です。
-> フル minify が必要な場合は `pnpm run build:single:minify` を使ってください。
+> `build:single` は可読版の `dist/index.html` を生成します。  
+> `build:single:minify` は最適化版の `dist/index.min.html` を生成します。  
+> 配布時は両方を揃えるため、両方のコマンドを実行してください。
 
 ### 3) Verify dist artifact
 
@@ -89,13 +92,19 @@ pnpm run verify:dist
 
 ### 4) Open
 
-- `dist/index.html` をブラウザで開く（`file://` 直開き）
+- `dist/index.html` / `dist/index.min.html` をブラウザで開く（`file://` 直開き）
+
+---
+
+## Project Structure
+
+- 構成の概要は `STRUCTURE.md` を参照してください。
 
 ---
 
 ## Built file verification（受け入れ条件）
 
-ビルド後の `dist/index.html` で、少なくとも次を確認してください。
+ビルド後の `dist/index.html` / `dist/index.min.html` で、少なくとも次を確認してください。
 
 ### Functional checks
 
@@ -113,16 +122,18 @@ pnpm run verify:dist
 
 ### Release gate（配布物の禁止事項）
 
-最終成果物 `dist/index.html` に、次の文字列が **含まれていないこと** を確認してください。
+最終成果物 `dist/index.html` / `dist/index.min.html` に、次の文字列が **含まれていないこと** を確認してください。
 
 - `http://`
 - `https://`
 - `GITHUB_WORKSPACE`
+- API/GitHubなど外部依存を彷彿させる文字列（例: `github.com`, `api.github.com`, `raw.githubusercontent.com`）
 
-加えて、`dist/index.html` に SourceMap 参照や inline sourcemap が含まれていないことを確認してください。  
+加えて、`dist/index.html` / `dist/index.min.html` に SourceMap 参照や inline sourcemap が含まれていないこと、  
+modulepreload の polyfill 関数が含まれていないことを確認してください。  
 これらは **置換で回避しない**（ビルド/バンドル段階で含まれない状態を保証する）。
 
-また、`dist/index.html` は **単一ファイル**で完結していること（追加の `.js` / `.css` / `.map` が不要）を条件とします。
+また、`dist/index.html` / `dist/index.min.html` は **単一ファイル**で完結していること（追加の `.js` / `.css` / `.map` が不要）を条件とします。
 
 > 目的: 外部参照を想起させる文字列や CI 環境由来のパス/メタ情報が、成果物に混入するのを防ぐため。
 

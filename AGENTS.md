@@ -3,9 +3,10 @@
 ## プロジェクト構成
 - `src/` に TypeScript の実装を配置。差分アルゴリズムは `src/diffEngine/`。
 - テストはソースと同居し `*.test.ts` 命名（例: `src/diffEngine/diffBlocks.test.ts`）。
-- `dist/index.html` は単一ファイルの成果物（追加 JS/CSS なし）。
+- `dist/index.html` / `dist/index.min.html` が単一ファイルの成果物（追加 JS/CSS なし）。
 - 仕様は `spec.md` が唯一の正。`README.md` は必ず追従更新。
 - 検証スクリプトは `scripts/`（`scripts/verify-dist.mjs`）。
+- 構成の俯瞰は `STRUCTURE.md` を参照。
 
 ## 開発・ビルド・テストコマンド
 - `pnpm install` 依存関係の導入（CI は `--frozen-lockfile` 推奨）。
@@ -33,5 +34,6 @@
 - PR では概要・テスト結果・UI変更のスクショ/GIF を添付。
 
 ## リリース上の注意
-- `dist/index.html` は単一ファイルで完結。外部 URL / sourcemap / CI パス混入は不可。
+- `dist/index.html` / `dist/index.min.html` は単一ファイルで完結。外部 URL / sourcemap / CI パス混入は不可。
+- API/GitHub など外部依存を彷彿させる文字列や modulepreload polyfill を成果物に残さない。
 - 配布前に `pnpm run verify:dist` を必ず実行。
