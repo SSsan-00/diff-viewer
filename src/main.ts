@@ -9,6 +9,7 @@ import type { PairedOp } from "./diffEngine/types";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
 import { decodeArrayBuffer, type FileEncoding } from "./file/decode";
+import { createLineNumberFormatter, type LineSegment } from "./file/lineNumbering";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
   addAnchor,
@@ -255,6 +256,7 @@ const leftEditor = monaco.editor.create(leftContainer, {
   automaticLayout: true,
   glyphMargin: true,
   minimap: { enabled: false },
+  lineNumbers: "on",
 });
 
 const rightEditor = monaco.editor.create(rightContainer, {
@@ -264,6 +266,7 @@ const rightEditor = monaco.editor.create(rightContainer, {
   automaticLayout: true,
   glyphMargin: true,
   minimap: { enabled: false },
+  lineNumbers: "on",
 });
 
 function setPaneMessage(target: HTMLDivElement, message: string, isError: boolean) {
@@ -284,11 +287,31 @@ function appendTextToEditor(
   editor.setValue(current + separator + text);
 }
 
+function getAppendStartLine(
+  currentValue: string,
+  currentLineCount: number,
+): number {
+  if (!currentValue) {
+    return 1;
+  }
+  return currentLineCount + (currentValue.endsWith("\n") ? 0 : 1);
+}
+
+function updateLineNumbers(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  segments: LineSegment[],
+) {
+  editor.updateOptions({
+    lineNumbers: segments.length === 0 ? "on" : createLineNumberFormatter(segments),
+  });
+}
+
 async function appendFilesToEditor(
   files: FileList | File[],
   encoding: FileEncoding,
   editor: monaco.editor.IStandaloneCodeEditor,
   messageTarget: HTMLDivElement,
+  segments: LineSegment[],
 ) {
   const fileList = Array.from(files);
   if (fileList.length === 0) {
@@ -298,12 +321,31 @@ async function appendFilesToEditor(
 
   let currentFileName = "";
   try {
+    const nextSegments: LineSegment[] = [...segments];
+    const parts: string[] = [];
+    let currentValue = editor.getValue();
+    let currentLineCount =
+      editor.getModel()?.getLineCount() ?? currentValue.split("\n").length;
+
     for (const file of fileList) {
       currentFileName = file.name;
       const buffer = await file.arrayBuffer();
       const text = normalizeText(decodeArrayBuffer(buffer, encoding));
-      appendTextToEditor(editor, text);
+      const startLine = getAppendStartLine(currentValue, currentLineCount);
+      const lineCount = text.split("\n").length;
+
+      parts.push(text);
+      nextSegments.push({ startLine, lineCount });
+      currentValue = currentValue
+        ? currentValue + (currentValue.endsWith("\n") ? "" : "\n") + text
+        : text;
+      currentLineCount = currentValue.split("\n").length;
     }
+
+    parts.forEach((text) => appendTextToEditor(editor, text));
+    segments.length = 0;
+    segments.push(...nextSegments);
+    updateLineNumbers(editor, segments);
     const label =
       fileList.length === 1
         ? fileList[0].name
@@ -324,6 +366,7 @@ function bindDropZone(
   editor: monaco.editor.IStandaloneCodeEditor,
   messageTarget: HTMLDivElement,
   encodingSelect: HTMLSelectElement,
+  segments: LineSegment[],
 ) {
   zone.addEventListener("dragover", (event: DragEvent) => {
     event.preventDefault();
@@ -349,12 +392,15 @@ function bindDropZone(
     }
 
     const encoding = encodingSelect.value as FileEncoding;
-    void appendFilesToEditor(files, encoding, editor, messageTarget);
+    void appendFilesToEditor(files, encoding, editor, messageTarget, segments);
   });
 }
 
-bindDropZone(leftDropZone, leftEditor, leftMessage, leftEncodingSelect);
-bindDropZone(rightDropZone, rightEditor, rightMessage, rightEncodingSelect);
+const leftSegments: LineSegment[] = [];
+const rightSegments: LineSegment[] = [];
+
+bindDropZone(leftDropZone, leftEditor, leftMessage, leftEncodingSelect, leftSegments);
+bindDropZone(rightDropZone, rightEditor, rightMessage, rightEncodingSelect, rightSegments);
 
 function bindFilePicker(
   input: HTMLInputElement,
@@ -362,6 +408,7 @@ function bindFilePicker(
   editor: monaco.editor.IStandaloneCodeEditor,
   messageTarget: HTMLDivElement,
   encodingSelect: HTMLSelectElement,
+  segments: LineSegment[],
 ) {
   button.addEventListener("click", () => {
     input.click();
@@ -373,13 +420,27 @@ function bindFilePicker(
       return;
     }
     const encoding = encodingSelect.value as FileEncoding;
-    void appendFilesToEditor(files, encoding, editor, messageTarget);
+    void appendFilesToEditor(files, encoding, editor, messageTarget, segments);
     input.value = "";
   });
 }
 
-bindFilePicker(leftFileInput, leftFileButton, leftEditor, leftMessage, leftEncodingSelect);
-bindFilePicker(rightFileInput, rightFileButton, rightEditor, rightMessage, rightEncodingSelect);
+bindFilePicker(
+  leftFileInput,
+  leftFileButton,
+  leftEditor,
+  leftMessage,
+  leftEncodingSelect,
+  leftSegments,
+);
+bindFilePicker(
+  rightFileInput,
+  rightFileButton,
+  rightEditor,
+  rightMessage,
+  rightEncodingSelect,
+  rightSegments,
+);
 
 function preventWindowDrop(event: DragEvent) {
   event.preventDefault();
@@ -1191,6 +1252,10 @@ clearButton.addEventListener("click", () => {
   selectedAnchorKey = null;
   leftEditor.setValue("");
   rightEditor.setValue("");
+  leftSegments.length = 0;
+  rightSegments.length = 0;
+  updateLineNumbers(leftEditor, leftSegments);
+  updateLineNumbers(rightEditor, rightSegments);
   recalcDiff();
   setAnchorMessage("アンカーを全てクリアしました。");
 });
