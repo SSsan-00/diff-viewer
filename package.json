@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:single:readable": "vite build",
+    "build:single:readable": "vite build && node scripts/format-readable.mjs",
     "build:single:minify:raw": "MINIFY=true OUT_DIR=dist-min vite build",
     "build:single:minify": "pnpm run build:single:minify:raw && node scripts/assemble-dist.mjs --minify-only",
     "build:single": "pnpm run build:single:readable && pnpm run build:single:minify:raw && node scripts/assemble-dist.mjs && pnpm run verify:dist",

@@ -518,7 +518,8 @@ Myers の結果は基本的に `insert`/`delete` の列として得られるた�
 ### 13.2 ビルド成果物の種類
 
 - `dist/index.html` は読みやすさ重視の可読版（改行・インデントあり）
-- `dist/index.min.html` は最適化版（フル minify）
+  - `<style>` タグ内の CSS も整形済みで読みやすいこと
+- `dist/index.min.html` は最適化版（フル minify で問題ない）
 - どちらも外部参照なしで動作する単一HTMLとする
 - modulepreload の polyfill を含めないため、ビルド設定で modulepreload を無効化する
 
