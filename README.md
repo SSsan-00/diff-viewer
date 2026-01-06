@@ -11,7 +11,6 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` / `dist/i
 - アンカー行（手動）の追加・削除・ジャンプ
 - **自動アンカー（DOCTYPE）**：左右に `<!DOCTYPE`（または `<！DOCTYPE`）がある場合、その行同士を再計算時にアンカーとして扱う
 - 差分なし領域の折りたたみ（クリックで展開）
-- アンカーパネルの折りたたみ（変更ブロックの折りたたみとは別）
 - ファイル読み込み
   - ファイル選択（複数選択対応）
   - ドラッグ&ドロップ（複数ファイル対応）
@@ -19,7 +18,6 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` / `dist/i
 - 文字コード選択（UTF-8 / Shift_JIS / EUC-JP / 自動）
   - **混在文字コードに対応**：複数ファイル読み込み時も、ファイル単位でデコードして文字化けを防止
 - クリア（左右の内容とアンカーを全消去）
-- 状態の保存/復元（LocalStorage）
 
 > 注意: エディタでの編集はメモリ上のみで、ファイルの保存/上書きは行いません。
 
@@ -80,15 +78,16 @@ pnpm install
 pnpm run build:single
 ```
 
-> `build:single` は可読版の `dist/index.html` を生成します。  
-> `build:single:minify` は最適化版の `dist/index.min.html` を生成します。  
-> 配布時は両方を揃えるため、両方のコマンドを実行してください。
+> `build:single` は可読版/最適化版の両方を生成し、`verify:dist` まで実行します。  
+> `build:single:minify` は最適化版のみを生成します（検証は別途）。
 
 ### 3) Verify dist artifact
 
 ```bash
 pnpm run verify:dist
 ```
+
+> `dist/index.html` と `dist/index.min.html` の両方を検査します。
 
 ### 4) Open
 

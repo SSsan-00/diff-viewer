@@ -12,9 +12,9 @@
 - `pnpm install` 依存関係の導入（CI は `--frozen-lockfile` 推奨）。
 - `pnpm run dev` 開発サーバーを起動。
 - `pnpm run build` 通常ビルドを生成。
-- `pnpm run build:single` 単一ファイルビルドを生成し検証も実行。
-- `pnpm run build:single:minify` 単一ファイルをフル minify。
-- `pnpm run verify:dist` 成果物の禁止文字列チェック。
+- `pnpm run build:single` 可読版/最適化版を生成し検証まで実行。
+- `pnpm run build:single:minify` 最適化版のみ生成（検証は別途）。
+- `pnpm run verify:dist` `dist/index.html` / `dist/index.min.html` を検証。
 - `pnpm run test` / `pnpm run test:run` Vitest を実行。
 
 ## コーディング規約

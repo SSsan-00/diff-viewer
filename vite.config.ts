@@ -9,6 +9,8 @@ export default defineConfig({
   publicDir: false,
   plugins: [viteSingleFile()],
   build: {
+    outDir: process.env.OUT_DIR ?? "dist",
+    modulePreload: false,
     assetsInlineLimit: 10_000_000,
     cssCodeSplit: false,
     minify: "terser",

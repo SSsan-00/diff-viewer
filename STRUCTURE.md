@@ -11,7 +11,6 @@
 ├── docs/
 │   └── backlog.md
 ├── dist/
-├── release/
 ├── scripts/
 ├── src/
 ├── public/
@@ -29,11 +28,10 @@
 - `STRUCTURE.md` 本ファイル。構成の目次。
 - `spec.md` 仕様の Single Source of Truth。
 - `docs/backlog.md` 改善案の待機所。
-- `dist/` 配布成果物の出力先（単一HTML）。
-- `release/` リリース関連の作業用ディレクトリ。
-- `scripts/` 配布物検証などの補助スクリプト。
+- `dist/` 配布成果物の出力先（`index.html` / `index.min.html`）。
+- `scripts/` 配布物検証・成果物組み立て用の補助スクリプト。
 - `src/` TypeScript の実装本体。
-- `public/` 公開用の静的リソース（現在は空想定）。
+- `public/` 公開用の静的リソース置き場。
 - `patches/` 依存関係向けのパッチ保管。
 - `index.html` 開発用のエントリHTML。
 - `package.json` スクリプトと依存関係。

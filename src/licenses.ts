@@ -24,8 +24,8 @@ SOFTWARE.
 
 marked
 License: MIT
-Copyright (c) 2018+ MarkedJS (github.com/markedjs/marked)
-Copyright (c) 2011-2018 Christopher Jeffrey (github.com/chjj)
+Copyright (c) 2018+ MarkedJS
+Copyright (c) 2011-2018 Christopher Jeffrey
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
