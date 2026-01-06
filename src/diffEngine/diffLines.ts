@@ -1,5 +1,6 @@
 import { normalizeText } from "./normalize";
 import type { LineOp } from "./types";
+import { extractLineKey } from "./lineSignature";
 
 function splitLines(text: string): string[] {
   // Keep trailing empty line if the text ends with "\n".
@@ -122,27 +123,31 @@ type UniquePair = {
   rightIndex: number;
 };
 
+type LineKey = {
+  key: string;
+  index: number;
+};
+
+function buildKeyMap(lines: string[]): Map<string, LineKey & { count: number }> {
+  const map = new Map<string, LineKey & { count: number }>();
+
+  lines.forEach((line, index) => {
+    const rawKey = extractLineKey(line);
+    const key = rawKey ?? line;
+    const entry = map.get(key);
+    if (entry) {
+      entry.count += 1;
+    } else {
+      map.set(key, { key, index, count: 1 });
+    }
+  });
+
+  return map;
+}
+
 function buildUniquePairs(left: string[], right: string[]): UniquePair[] {
-  const leftMap = new Map<string, { count: number; index: number }>();
-  const rightMap = new Map<string, { count: number; index: number }>();
-
-  left.forEach((line, index) => {
-    const entry = leftMap.get(line);
-    if (entry) {
-      entry.count += 1;
-    } else {
-      leftMap.set(line, { count: 1, index });
-    }
-  });
-
-  right.forEach((line, index) => {
-    const entry = rightMap.get(line);
-    if (entry) {
-      entry.count += 1;
-    } else {
-      rightMap.set(line, { count: 1, index });
-    }
-  });
+  const leftMap = buildKeyMap(left);
+  const rightMap = buildKeyMap(right);
 
   const pairs: UniquePair[] = [];
   leftMap.forEach((leftEntry, line) => {
@@ -276,13 +281,26 @@ function diffLinesPatience(
       ),
     );
 
-    result.push({
-      type: "equal",
-      leftLine: leftLines[anchor.leftIndex],
-      rightLine: rightLines[anchor.rightIndex],
-      leftLineNo: leftOffset + anchor.leftIndex,
-      rightLineNo: rightOffset + anchor.rightIndex,
-    });
+    const leftLine = leftLines[anchor.leftIndex] ?? "";
+    const rightLine = rightLines[anchor.rightIndex] ?? "";
+    if (leftLine === rightLine) {
+      result.push({
+        type: "equal",
+        leftLine,
+        rightLine,
+        leftLineNo: leftOffset + anchor.leftIndex,
+        rightLineNo: rightOffset + anchor.rightIndex,
+      });
+    } else {
+      result.push(
+        ...diffLinesMyers(
+          [leftLine],
+          [rightLine],
+          leftOffset + anchor.leftIndex,
+          rightOffset + anchor.rightIndex,
+        ),
+      );
+    }
 
     leftStart = anchor.leftIndex + 1;
     rightStart = anchor.rightIndex + 1;

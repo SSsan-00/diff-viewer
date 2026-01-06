@@ -40,17 +40,17 @@ describe("pairReplace", () => {
     ]);
   });
 
-  it("pairs a single delete and insert into replace", () => {
+  it("pairs a single delete and insert into replace when keys match", () => {
     const input: LineOp[] = [
-      { type: "delete", leftLine: "foo", leftLineNo: 0 },
-      { type: "insert", rightLine: "bar", rightLineNo: 0 },
+      { type: "delete", leftLine: "$foo = 1;", leftLineNo: 0 },
+      { type: "insert", rightLine: "var foo = 1;", rightLineNo: 0 },
     ];
 
     expect(compactOps(pairReplace(input))).toEqual([
       {
         type: "replace",
-        leftLine: "foo",
-        rightLine: "bar",
+        leftLine: "$foo = 1;",
+        rightLine: "var foo = 1;",
         leftLineNo: 0,
         rightLineNo: 0,
       },
@@ -105,24 +105,24 @@ describe("pairReplace", () => {
 
   it("prioritizes indent similarity when pairing", () => {
     const input: LineOp[] = [
-      { type: "delete", leftLine: "  foo", leftLineNo: 0 },
-      { type: "delete", leftLine: "bar", leftLineNo: 1 },
-      { type: "insert", rightLine: "  baz", rightLineNo: 0 },
-      { type: "insert", rightLine: "qux", rightLineNo: 1 },
+      { type: "delete", leftLine: "  $foo = 1;", leftLineNo: 0 },
+      { type: "delete", leftLine: "$bar = 2;", leftLineNo: 1 },
+      { type: "insert", rightLine: "  var foo = 1;", rightLineNo: 0 },
+      { type: "insert", rightLine: "var bar = 2;", rightLineNo: 1 },
     ];
 
     expect(compactOps(pairReplace(input))).toEqual([
       {
         type: "replace",
-        leftLine: "  foo",
-        rightLine: "  baz",
+        leftLine: "  $foo = 1;",
+        rightLine: "  var foo = 1;",
         leftLineNo: 0,
         rightLineNo: 0,
       },
       {
         type: "replace",
-        leftLine: "bar",
-        rightLine: "qux",
+        leftLine: "$bar = 2;",
+        rightLine: "var bar = 2;",
         leftLineNo: 1,
         rightLineNo: 1,
       },
@@ -131,26 +131,46 @@ describe("pairReplace", () => {
 
   it("pairs in original order when scores are tied", () => {
     const input: LineOp[] = [
-      { type: "delete", leftLine: "a1", leftLineNo: 0 },
-      { type: "delete", leftLine: "a2", leftLineNo: 1 },
-      { type: "insert", rightLine: "b1", rightLineNo: 0 },
-      { type: "insert", rightLine: "b2", rightLineNo: 1 },
+      { type: "delete", leftLine: "$foo = 1;", leftLineNo: 0 },
+      { type: "delete", leftLine: "$bar = 2;", leftLineNo: 1 },
+      { type: "insert", rightLine: "var foo = 1;", rightLineNo: 0 },
+      { type: "insert", rightLine: "var bar = 2;", rightLineNo: 1 },
     ];
 
     expect(compactOps(pairReplace(input))).toEqual([
       {
         type: "replace",
-        leftLine: "a1",
-        rightLine: "b1",
+        leftLine: "$foo = 1;",
+        rightLine: "var foo = 1;",
         leftLineNo: 0,
         rightLineNo: 0,
       },
       {
         type: "replace",
-        leftLine: "a2",
-        rightLine: "b2",
+        leftLine: "$bar = 2;",
+        rightLine: "var bar = 2;",
         leftLineNo: 1,
         rightLineNo: 1,
+      },
+    ]);
+  });
+
+  it("does not pair when keys do not match", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "var foo = 1;", leftLineNo: 0 },
+      { type: "insert", rightLine: "var food = 1;", rightLineNo: 0 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "delete",
+        leftLine: "var foo = 1;",
+        leftLineNo: 0,
+      },
+      {
+        type: "insert",
+        rightLine: "var food = 1;",
+        rightLineNo: 0,
       },
     ]);
   });

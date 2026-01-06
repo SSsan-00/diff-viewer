@@ -1,4 +1,5 @@
 import type { LineOp, PairedOp } from "./types";
+import { extractLineKey } from "./lineSignature";
 
 function countIndent(line: string): number {
   let count = 0;
@@ -54,11 +55,20 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
     const deleteOp = deletes[d];
     const leftText = deleteOp.leftLine ?? "";
     const leftIndent = countIndent(leftText);
+    const leftKey = extractLineKey(leftText);
 
     for (let i = 0; i < inserts.length; i += 1) {
       const insertOp = inserts[i];
       const rightText = insertOp.rightLine ?? "";
       const rightIndent = countIndent(rightText);
+      const rightKey = extractLineKey(rightText);
+
+      if (leftKey && rightKey && leftKey !== rightKey) {
+        continue;
+      }
+      if ((leftKey && !rightKey) || (!leftKey && rightKey)) {
+        continue;
+      }
 
       candidates.push({
         deleteIndex: d,
