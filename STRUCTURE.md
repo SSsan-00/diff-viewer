@@ -13,6 +13,7 @@
 ├── dist/
 ├── scripts/
 ├── src/
+│   ├── storage/
 │   └── ui/
 ├── public/
 ├── patches/
@@ -38,6 +39,7 @@
 - `src/main.ts` UI レイアウト/イベント結線の起点。
 - `src/file/` ファイル読み込み・文字コードデコード・行番号表示の責務。
 - `src/diffEngine/anchors.ts` アンカーの検証と適用ロジック。
+- `src/storage/` LocalStorage 永続化の読み書き。
 - `src/ui/template.ts` UI の HTML テンプレート定義。
 - `src/style.css` 画面レイアウトと見た目のスタイル定義。
 - `public/` 公開用の静的リソース置き場。

@@ -21,12 +21,13 @@
 
 | 項目 | 種別 | spec.md 反映先候補 | 受け入れ条件のヒント |
 | --- | --- | --- | --- |
-| LocalStorageで状態保存・復元 | request | UI仕様 / 非機能要件 | リロード後に前回の内容・UI状態が復元される。 |
+| 現時点では該当なし | - | - | - |
 
 ## Done
 | 項目 | 種別 | spec.md 反映先候補 | 受け入れ条件のヒント |
 | --- | --- | --- | --- |
 | 左右ペイン別クリア | request | 4.2 操作 | 左のみ/右のみのクリアができ、他方は保持される。 |
+| LocalStorageで状態保存・復元 | request | UI仕様 / 非機能要件 | リロード後に前回の内容・UI状態が復元される。 |
 | 外部依存を彷彿させる文字列をリリースに残さない（置換ではなく削除） | build | 3.2 配布物に「特定文字列」を残さない | `dist/index.html` / `dist/index.min.html` に API/GitHub 等を連想する文字列が含まれない。置換ではなくビルド段階で除去する。 |
 | polyfill関数をリリースに残さない（build.modulePreloadをオフ） | build | 実装制約（ビルド/パッケージ管理） | `dist/index.html` / `dist/index.min.html` から modulepreload polyfill が消える。 |
 | 最適化index.htmlと読みやすいindex.htmlを分けて出力 | build | 実装制約（ビルド/パッケージ管理） | `dist/` に minify版と可読版が同時に出力される。 |

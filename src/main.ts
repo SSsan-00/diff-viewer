@@ -28,6 +28,12 @@ import { THIRD_PARTY_LICENSES } from "./licenses";
 import { APP_TEMPLATE } from "./ui/template";
 import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
 import { bindPaneClearButton } from "./ui/paneClear";
+import {
+  clearPersistedState,
+  createPersistScheduler,
+  loadPersistedState,
+  type PersistedState,
+} from "./storage/persistedState";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -45,6 +51,40 @@ function attachLicenses(): void {
 
 attachLicenses();
 
+function getStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    console.warn("LocalStorage is not available:", error);
+    return null;
+  }
+}
+
+const storage = getStorage();
+const persistedState = loadPersistedState(storage);
+let persistScheduler: ReturnType<typeof createPersistScheduler> | null = null;
+let persistSuppressed = false;
+
+function schedulePersist() {
+  if (persistSuppressed) {
+    return;
+  }
+  persistScheduler?.schedule();
+}
+
+function cancelPersist() {
+  persistScheduler?.cancel();
+}
+
+function withPersistSuppressed(action: () => void) {
+  persistSuppressed = true;
+  try {
+    action();
+  } finally {
+    persistSuppressed = false;
+  }
+}
+
 const app = document.querySelector<HTMLDivElement>("#app");
 
 if (!app) {
@@ -52,7 +92,10 @@ if (!app) {
 }
 
 app.innerHTML = APP_TEMPLATE;
-setupAnchorPanelToggle(document);
+setupAnchorPanelToggle(document, {
+  initialCollapsed: persistedState?.anchorPanelCollapsed ?? false,
+  onToggle: () => schedulePersist(),
+});
 
 function getRequiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -81,7 +124,12 @@ const clearButton = getRequiredElement<HTMLButtonElement>("#clear");
 const leftClearButton = getRequiredElement<HTMLButtonElement>("#left-clear");
 const rightClearButton = getRequiredElement<HTMLButtonElement>("#right-clear");
 
-const leftInitial = `// Left sample (47 lines)
+applyEncodingSelection(leftEncodingSelect, persistedState?.leftEncoding);
+applyEncodingSelection(rightEncodingSelect, persistedState?.rightEncoding);
+
+const leftInitial =
+  persistedState?.leftText ??
+  `// Left sample (47 lines)
 const config = {
   app: "diff-viewer",
   version: "0.1.0",
@@ -130,7 +178,9 @@ flags.set("ready", true);
 export { config, greet, add, sumList };
 `;
 
-const rightInitial = `// Right sample (47 lines)
+const rightInitial =
+  persistedState?.rightText ??
+  `// Right sample (47 lines)
 const config = {
   app: "diff-viewer",
   version: "0.1.1",
@@ -199,6 +249,13 @@ const rightEditor = monaco.editor.create(rightContainer, {
   lineNumbers: "on",
 });
 
+leftEditor.onDidChangeModelContent(() => {
+  schedulePersist();
+});
+rightEditor.onDidChangeModelContent(() => {
+  schedulePersist();
+});
+
 function setPaneMessage(target: HTMLDivElement, message: string, isError: boolean) {
   target.textContent = message;
   target.classList.toggle("is-error", isError);
@@ -234,6 +291,42 @@ function updateLineNumbers(
   editor.updateOptions({
     lineNumbers: segments.length === 0 ? "on" : createLineNumberFormatter(segments),
   });
+}
+
+function isSegmentLayoutValid(segments: LineSegment[], text: string): boolean {
+  if (segments.length === 0) {
+    return true;
+  }
+  const lineCount = normalizeText(text).split("\n").length;
+  let lastEnd = 0;
+  for (const segment of segments) {
+    if (
+      segment.startLine < 1 ||
+      segment.lineCount < 1 ||
+      segment.fileIndex < 1
+    ) {
+      return false;
+    }
+    const end = segment.startLine + segment.lineCount - 1;
+    if (end < segment.startLine || end < lastEnd) {
+      return false;
+    }
+    lastEnd = Math.max(lastEnd, end);
+  }
+  return lastEnd <= lineCount;
+}
+
+function applyEncodingSelection(
+  select: HTMLSelectElement,
+  value: FileEncoding | undefined,
+) {
+  if (!value) {
+    return;
+  }
+  const option = Array.from(select.options).some((item) => item.value === value);
+  if (option) {
+    select.value = value;
+  }
 }
 
 async function appendFilesToEditor(
@@ -296,6 +389,7 @@ async function appendFilesToEditor(
         : `${fileList[0].name} (+${fileList.length - 1})`;
     setPaneMessage(messageTarget, `読み込み完了: ${label}`, false);
     recalcDiff();
+    schedulePersist();
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "読み込みに失敗しました";
@@ -347,6 +441,17 @@ function bindDropZone(
 const leftSegments: LineSegment[] = [];
 const rightSegments: LineSegment[] = [];
 
+const storedLeftSegments = persistedState?.leftSegments ?? [];
+const storedRightSegments = persistedState?.rightSegments ?? [];
+if (isSegmentLayoutValid(storedLeftSegments, leftEditor.getValue())) {
+  leftSegments.push(...storedLeftSegments);
+}
+if (isSegmentLayoutValid(storedRightSegments, rightEditor.getValue())) {
+  rightSegments.push(...storedRightSegments);
+}
+updateLineNumbers(leftEditor, leftSegments);
+updateLineNumbers(rightEditor, rightSegments);
+
 bindDropZone(leftPane, leftEditor, leftMessage, leftEncodingSelect, leftSegments);
 bindDropZone(rightPane, rightEditor, rightMessage, rightEncodingSelect, rightSegments);
 
@@ -389,6 +494,35 @@ bindFilePicker(
   rightEncodingSelect,
   rightSegments,
 );
+
+leftEncodingSelect.addEventListener("change", () => {
+  schedulePersist();
+});
+rightEncodingSelect.addEventListener("change", () => {
+  schedulePersist();
+});
+
+function getPersistedStateSnapshot(): PersistedState {
+  const anchorPanel = document.querySelector(".anchor-panel");
+  return {
+    version: 1,
+    leftText: leftEditor.getValue(),
+    rightText: rightEditor.getValue(),
+    leftEncoding: leftEncodingSelect.value as FileEncoding,
+    rightEncoding: rightEncodingSelect.value as FileEncoding,
+    scrollSync: syncToggle?.checked ?? true,
+    foldEnabled,
+    anchorPanelCollapsed: anchorPanel?.classList.contains("is-collapsed") ?? false,
+    anchors: manualAnchors.map((anchor) => ({ ...anchor })),
+    leftSegments: leftSegments.map((segment) => ({ ...segment })),
+    rightSegments: rightSegments.map((segment) => ({ ...segment })),
+  };
+}
+
+persistScheduler = createPersistScheduler({
+  storage,
+  getState: getPersistedStateSnapshot,
+});
 
 function preventWindowDrop(event: DragEvent) {
   event.preventDefault();
@@ -470,6 +604,7 @@ leftEditor.onMouseDown((event) => {
   );
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
+  schedulePersist();
 });
 
 rightEditor.onMouseDown((event) => {
@@ -516,6 +651,7 @@ rightEditor.onMouseDown((event) => {
   );
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
+  schedulePersist();
 });
 
 let leftDecorationIds: string[] = [];
@@ -527,12 +663,14 @@ let diffBlockStarts: number[] = [];
 let currentBlockIndex = 0;
 let leftFocusDecorationIds: string[] = [];
 let rightFocusDecorationIds: string[] = [];
-let foldEnabled = false;
+let foldEnabled = persistedState?.foldEnabled ?? false;
 let foldRanges: FoldRange[] = [];
 let leftFoldZoneIds: string[] = [];
 let rightFoldZoneIds: string[] = [];
 const expandedFoldStarts = new Set<number>();
-let manualAnchors: Anchor[] = [];
+let manualAnchors: Anchor[] = persistedState?.anchors
+  ? persistedState.anchors.map((anchor) => ({ ...anchor }))
+  : [];
 let autoAnchor: Anchor | null = null;
 let suppressedAutoAnchorKey: string | null = null;
 let pendingLeftLineNo: number | null = null;
@@ -809,6 +947,7 @@ function renderAnchors(
       );
       updateAnchorWarning(validation.invalid);
       renderAnchors(validation.invalid, validation.valid);
+      schedulePersist();
     });
 
     item.appendChild(label);
@@ -1284,6 +1423,7 @@ bindPaneClearButton(leftClearButton, {
     pendingLeftLineNo = null;
     updatePendingAnchorDecoration();
     recalcDiff();
+    schedulePersist();
   },
 });
 
@@ -1295,6 +1435,7 @@ bindPaneClearButton(rightClearButton, {
     pendingRightLineNo = null;
     updatePendingAnchorDecoration();
     recalcDiff();
+    schedulePersist();
   },
 });
 
@@ -1303,32 +1444,49 @@ clearButton.addEventListener("click", () => {
   if (!confirmed) {
     return;
   }
-  manualAnchors = [];
-  autoAnchor = null;
-  suppressedAutoAnchorKey = null;
-  pendingLeftLineNo = null;
-  pendingRightLineNo = null;
-  selectedAnchorKey = null;
-  leftEditor.setValue("");
-  rightEditor.setValue("");
-  leftSegments.length = 0;
-  rightSegments.length = 0;
-  updateLineNumbers(leftEditor, leftSegments);
-  updateLineNumbers(rightEditor, rightSegments);
-  recalcDiff();
-  setAnchorMessage("アンカーを全てクリアしました。");
+  cancelPersist();
+  clearPersistedState(storage);
+  withPersistSuppressed(() => {
+    manualAnchors = [];
+    autoAnchor = null;
+    suppressedAutoAnchorKey = null;
+    pendingLeftLineNo = null;
+    pendingRightLineNo = null;
+    selectedAnchorKey = null;
+    leftEditor.setValue("");
+    rightEditor.setValue("");
+    leftSegments.length = 0;
+    rightSegments.length = 0;
+    updateLineNumbers(leftEditor, leftSegments);
+    updateLineNumbers(rightEditor, rightSegments);
+    recalcDiff();
+    setAnchorMessage("アンカーを全てクリアしました。");
+  });
 });
 
 const syncToggle = document.querySelector<HTMLInputElement>("#sync-toggle");
-syncToggle?.addEventListener("change", (event: Event) => {
-  scrollSync.setEnabled((event.target as HTMLInputElement).checked);
-});
+if (syncToggle) {
+  syncToggle.checked = persistedState?.scrollSync ?? true;
+  scrollSync.setEnabled(syncToggle.checked);
+  syncToggle.addEventListener("change", (event: Event) => {
+    scrollSync.setEnabled((event.target as HTMLInputElement).checked);
+    schedulePersist();
+  });
+}
 
 const foldToggle = document.querySelector<HTMLInputElement>("#fold-toggle");
-foldToggle?.addEventListener("change", (event: Event) => {
-  foldEnabled = (event.target as HTMLInputElement).checked;
-  applyFolding();
-});
+if (foldToggle) {
+  foldToggle.checked = foldEnabled;
+  foldToggle.addEventListener("change", (event: Event) => {
+    foldEnabled = (event.target as HTMLInputElement).checked;
+    applyFolding();
+    schedulePersist();
+  });
+}
+
+if (persistedState) {
+  recalcDiff();
+}
 
 const prevButton = document.querySelector<HTMLButtonElement>("#diff-prev");
 const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
