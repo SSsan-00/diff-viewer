@@ -34,6 +34,10 @@
 - `scripts/format-readable.mjs` 可読版の `<style>` を整形する。
 - `scripts/verify-dist.mjs` 配布物ゲートの検査スクリプト。
 - `src/` TypeScript の実装本体。
+- `src/main.ts` UI レイアウト/イベント結線の起点。
+- `src/file/` ファイル読み込み・文字コードデコード・行番号表示の責務。
+- `src/diffEngine/anchors.ts` アンカーの検証と適用ロジック。
+- `src/style.css` 画面レイアウトと見た目のスタイル定義。
 - `public/` 公開用の静的リソース置き場。
 - `patches/` 依存関係向けのパッチ保管。
 - `index.html` 開発用のエントリHTML。
