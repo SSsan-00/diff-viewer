@@ -22,4 +22,16 @@ describe("dist readable style", () => {
     const hasMultiline = styles.some((styleText) => styleText.includes("\n"));
     expect(hasMultiline).toBe(true);
   });
+
+  it("keeps data URLs intact when formatting readable CSS", () => {
+    const distPath = resolve(process.cwd(), "dist", "index.html");
+    const content = readFileSync(distPath, "utf8");
+    const styles = extractStyleContents(content);
+
+    const hasBrokenDataUrl = styles.some((styleText) =>
+      /data:[^)]*;\s+base64/i.test(styleText),
+    );
+
+    expect(hasBrokenDataUrl).toBe(false);
+  });
 });

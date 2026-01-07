@@ -1,6 +1,15 @@
 export type LineSegment = {
   startLine: number;
   lineCount: number;
+  fileIndex: number;
+  fileName?: string;
+  endsWithNewline?: boolean;
+};
+
+export type LineSegmentInfo = {
+  fileIndex: number;
+  fileName?: string;
+  localLine: number;
 };
 
 function findSegment(segments: LineSegment[], lineNumber: number): LineSegment | null {
@@ -13,12 +22,27 @@ function findSegment(segments: LineSegment[], lineNumber: number): LineSegment |
   return null;
 }
 
+export function getLineSegmentInfo(
+  segments: LineSegment[],
+  lineNumber: number,
+): LineSegmentInfo | null {
+  const segment = findSegment(segments, lineNumber);
+  if (!segment) {
+    return null;
+  }
+  return {
+    fileIndex: segment.fileIndex,
+    fileName: segment.fileName,
+    localLine: lineNumber - segment.startLine + 1,
+  };
+}
+
 export function createLineNumberFormatter(segments: LineSegment[]): (line: number) => string {
   return (lineNumber: number) => {
-    const segment = findSegment(segments, lineNumber);
-    if (!segment) {
+    const info = getLineSegmentInfo(segments, lineNumber);
+    if (!info) {
       return String(lineNumber);
     }
-    return String(lineNumber - segment.startLine + 1);
+    return String(info.localLine);
   };
 }

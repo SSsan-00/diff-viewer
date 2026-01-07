@@ -16,6 +16,8 @@ function formatCss(css) {
   let inString = false;
   let stringQuote = "";
   let inComment = false;
+  let inUrl = false;
+  let urlDepth = 0;
 
   const pushIndent = () => {
     result += "  ".repeat(indent);
@@ -31,6 +33,31 @@ function formatCss(css) {
         result += next;
         i += 1;
         inComment = false;
+      }
+      continue;
+    }
+
+    if (!inString && !inUrl) {
+      const maybeUrl = css.slice(i, i + 4).toLowerCase();
+      if (maybeUrl === "url(") {
+        inUrl = true;
+        urlDepth = 1;
+        result += "url(";
+        i += 3;
+        continue;
+      }
+    }
+
+    if (inUrl) {
+      result += char;
+      if (char === "(") {
+        urlDepth += 1;
+      } else if (char === ")") {
+        urlDepth -= 1;
+        if (urlDepth <= 0) {
+          inUrl = false;
+          urlDepth = 0;
+        }
       }
       continue;
     }

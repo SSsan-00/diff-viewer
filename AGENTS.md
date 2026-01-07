@@ -2,6 +2,7 @@
 
 ## プロジェクト構成
 - `src/` に TypeScript の実装を配置。差分アルゴリズムは `src/diffEngine/`。
+- UI テンプレートは `src/ui/template.ts` に集約。
 - テストはソースと同居し `*.test.ts` 命名（例: `src/diffEngine/diffBlocks.test.ts`）。
 - `dist/index.html` / `dist/index.min.html` が単一ファイルの成果物（追加 JS/CSS なし）。
 - 仕様は `spec.md` が唯一の正。`README.md` は必ず追従更新。

@@ -9,7 +9,11 @@ import type { PairedOp } from "./diffEngine/types";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
 import { decodeArrayBuffer, type FileEncoding } from "./file/decode";
-import { createLineNumberFormatter, type LineSegment } from "./file/lineNumbering";
+import {
+  createLineNumberFormatter,
+  getLineSegmentInfo,
+  type LineSegment,
+} from "./file/lineNumbering";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
   addAnchor,
@@ -21,6 +25,7 @@ import {
 } from "./diffEngine/anchors";
 import { normalizeText } from "./diffEngine/normalize";
 import { THIRD_PARTY_LICENSES } from "./licenses";
+import { APP_TEMPLATE } from "./ui/template";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -44,87 +49,7 @@ if (!app) {
   throw new Error("App container is missing.");
 }
 
-app.innerHTML = `
-  <div class="app">
-    <header class="toolbar">
-      <div class="toolbar-left">
-        <div class="title">Diff Viewer</div>
-      </div>
-      <div class="toolbar-right">
-        <button id="recalc" class="button" type="button">差分再計算</button>
-        <button id="diff-prev" class="button" type="button">前の差分</button>
-        <button id="diff-next" class="button" type="button">次の差分</button>
-        <label class="toggle">
-          <input id="sync-toggle" type="checkbox" checked />
-          <span>スクロール連動</span>
-        </label>
-        <label class="toggle">
-          <input id="fold-toggle" type="checkbox" />
-          <span>差分なしの箇所を折りたたみ</span>
-        </label>
-        <button id="clear" class="button button-subtle" type="button">クリア</button>
-      </div>
-    </header>
-    <section class="anchor-panel">
-      <div class="anchor-header">
-        <div class="anchor-title">アンカー</div>
-        <div id="anchor-message" class="anchor-message" aria-live="polite"></div>
-      </div>
-      <div id="anchor-warning" class="anchor-warning" aria-live="polite"></div>
-      <ul id="anchor-list" class="anchor-list"></ul>
-    </section>
-    <div class="editors">
-      <section class="editor-pane">
-        <div class="pane-title">
-          <span>Left</span>
-          <label class="pane-select">
-            文字コード
-            <select id="left-encoding">
-              <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
-              <option value="utf-8">UTF-8</option>
-              <option value="shift_jis">Shift_JIS</option>
-              <option value="euc-jp">EUC-JP</option>
-            </select>
-          </label>
-        </div>
-        <div id="left-drop" class="drop-zone">ここにファイルをドロップ</div>
-        <div class="file-picker">
-          <input id="left-file" class="file-input" type="file" multiple />
-          <button id="left-file-button" class="button button-subtle" type="button">
-            ファイルを選択
-          </button>
-          <span class="file-hint">またはドラッグ&ドロップ</span>
-        </div>
-        <div id="left-message" class="pane-message" aria-live="polite"></div>
-        <div id="left-editor" class="editor"></div>
-      </section>
-      <section class="editor-pane">
-        <div class="pane-title">
-          <span>Right</span>
-          <label class="pane-select">
-            文字コード
-            <select id="right-encoding">
-              <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
-              <option value="utf-8">UTF-8</option>
-              <option value="shift_jis">Shift_JIS</option>
-              <option value="euc-jp">EUC-JP</option>
-            </select>
-          </label>
-        </div>
-        <div id="right-drop" class="drop-zone">ここにファイルをドロップ</div>
-        <div class="file-picker">
-          <input id="right-file" class="file-input" type="file" multiple />
-          <button id="right-file-button" class="button button-subtle" type="button">
-            ファイルを選択
-          </button>
-          <span class="file-hint">またはドラッグ&ドロップ</span>
-        </div>
-        <div id="right-message" class="pane-message" aria-live="polite"></div>
-        <div id="right-editor" class="editor"></div>
-      </section>
-    </div>
-  </div>
-`;
+app.innerHTML = APP_TEMPLATE;
 
 function getRequiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);
@@ -136,8 +61,8 @@ function getRequiredElement<T extends Element>(selector: string): T {
 
 const leftContainer = getRequiredElement<HTMLDivElement>("#left-editor");
 const rightContainer = getRequiredElement<HTMLDivElement>("#right-editor");
-const leftDropZone = getRequiredElement<HTMLDivElement>("#left-drop");
-const rightDropZone = getRequiredElement<HTMLDivElement>("#right-drop");
+const leftPane = getRequiredElement<HTMLElement>("#left-pane");
+const rightPane = getRequiredElement<HTMLElement>("#right-pane");
 const leftMessage = getRequiredElement<HTMLDivElement>("#left-message");
 const rightMessage = getRequiredElement<HTMLDivElement>("#right-message");
 const leftEncodingSelect = getRequiredElement<HTMLSelectElement>("#left-encoding");
@@ -327,15 +252,29 @@ async function appendFilesToEditor(
     let currentLineCount =
       editor.getModel()?.getLineCount() ?? currentValue.split("\n").length;
 
-    for (const file of fileList) {
+    const baseFileIndex = nextSegments.length;
+    for (const [index, file] of fileList.entries()) {
+      const lastSegment = nextSegments[nextSegments.length - 1];
+      if (lastSegment?.endsWithNewline) {
+        lastSegment.lineCount = Math.max(1, lastSegment.lineCount - 1);
+        lastSegment.endsWithNewline = false;
+      }
       currentFileName = file.name;
+      const fileIndex = baseFileIndex + index + 1;
       const buffer = await file.arrayBuffer();
       const text = normalizeText(decodeArrayBuffer(buffer, encoding));
+      const endsWithNewline = text.endsWith("\n");
       const startLine = getAppendStartLine(currentValue, currentLineCount);
       const lineCount = text.split("\n").length;
 
       parts.push(text);
-      nextSegments.push({ startLine, lineCount });
+      nextSegments.push({
+        startLine,
+        lineCount,
+        fileIndex,
+        fileName: file.name,
+        endsWithNewline,
+      });
       currentValue = currentValue
         ? currentValue + (currentValue.endsWith("\n") ? "" : "\n") + text
         : text;
@@ -362,7 +301,7 @@ async function appendFilesToEditor(
 }
 
 function bindDropZone(
-  zone: HTMLDivElement,
+  zone: HTMLElement,
   editor: monaco.editor.IStandaloneCodeEditor,
   messageTarget: HTMLDivElement,
   encodingSelect: HTMLSelectElement,
@@ -377,6 +316,10 @@ function bindDropZone(
   zone.addEventListener("dragleave", (event: DragEvent) => {
     event.preventDefault();
     event.stopPropagation();
+    const nextTarget = event.relatedTarget;
+    if (nextTarget instanceof Node && zone.contains(nextTarget)) {
+      return;
+    }
     zone.classList.remove("is-dragover");
   });
 
@@ -399,8 +342,8 @@ function bindDropZone(
 const leftSegments: LineSegment[] = [];
 const rightSegments: LineSegment[] = [];
 
-bindDropZone(leftDropZone, leftEditor, leftMessage, leftEncodingSelect, leftSegments);
-bindDropZone(rightDropZone, rightEditor, rightMessage, rightEncodingSelect, rightSegments);
+bindDropZone(leftPane, leftEditor, leftMessage, leftEncodingSelect, leftSegments);
+bindDropZone(rightPane, rightEditor, rightMessage, rightEncodingSelect, rightSegments);
 
 function bindFilePicker(
   input: HTMLInputElement,
@@ -601,6 +544,7 @@ type ViewZoneSpec = {
   afterLineNumber: number;
   heightInLines: number;
   className: string;
+  label?: string;
 };
 
 type FoldZoneSpec = {
@@ -621,8 +565,31 @@ function setAnchorMessage(message: string) {
   anchorMessage.textContent = message;
 }
 
+type FileLineInfo = {
+  fileIndex: number | null;
+  fileName?: string;
+  localLine: number;
+};
+
+function getFileLineInfo(segments: LineSegment[], lineNo: number): FileLineInfo {
+  const info = getLineSegmentInfo(segments, lineNo + 1);
+  if (!info) {
+    return { fileIndex: null, localLine: lineNo + 1 };
+  }
+  return { fileIndex: info.fileIndex, fileName: info.fileName, localLine: info.localLine };
+}
+
+function formatLineWithFile(side: "L" | "R", info: FileLineInfo): string {
+  if (info.fileIndex === null) {
+    return `${side}${info.localLine}`;
+  }
+  return `${side}${info.localLine}[F${info.fileIndex}]`;
+}
+
 function formatAnchor(anchor: Anchor): string {
-  return `L${anchor.leftLineNo + 1} ↔ R${anchor.rightLineNo + 1}`;
+  const leftInfo = getFileLineInfo(leftSegments, anchor.leftLineNo);
+  const rightInfo = getFileLineInfo(rightSegments, anchor.rightLineNo);
+  return `${formatLineWithFile("L", leftInfo)} ↔ ${formatLineWithFile("R", rightInfo)}`;
 }
 
 function anchorKey(anchor: Anchor): string {
@@ -680,9 +647,9 @@ function updateAnchorWarning(invalid: { anchor: Anchor; reasons: string[] }[]) {
 
   const message = invalid
     .map((item) => {
-      const left = item.anchor.leftLineNo + 1;
-      const right = item.anchor.rightLineNo + 1;
-      return `L${left} ↔ R${right}: ${item.reasons.join(" / ")}`;
+      const leftInfo = getFileLineInfo(leftSegments, item.anchor.leftLineNo);
+      const rightInfo = getFileLineInfo(rightSegments, item.anchor.rightLineNo);
+      return `${formatLineWithFile("L", leftInfo)} ↔ ${formatLineWithFile("R", rightInfo)}: ${item.reasons.join(" / ")}`;
     })
     .join(" | ");
   anchorWarning.textContent = `無効なアンカーがあります: ${message}`;
@@ -731,22 +698,58 @@ function renderAnchors(
     if (selectedAnchorKey === entryKey) {
       item.classList.add("is-selected");
     }
-    const left = anchor.leftLineNo + 1;
-    const right = anchor.rightLineNo + 1;
+    const leftInfo = getFileLineInfo(leftSegments, anchor.leftLineNo);
+    const rightInfo = getFileLineInfo(rightSegments, anchor.rightLineNo);
     const reason = entry.source === "manual" ? invalidMap.get(anchor) : undefined;
 
     const label = document.createElement("span");
-    label.textContent =
-      entry.source === "auto"
-        ? `AUTO:DOCTYPE L${left} ↔ R${right}`
-        : `L${left} ↔ R${right}`;
     label.className = "anchor-link";
     if (entry.source === "auto") {
       label.classList.add("anchor-auto");
     }
+    const createLinePart = (side: "L" | "R", info: FileLineInfo) => {
+      const wrapper = document.createElement("span");
+      wrapper.className = "anchor-side";
+
+      const lineText = document.createElement("span");
+      lineText.className = "anchor-line";
+      lineText.textContent = `${side}${info.localLine}`;
+      wrapper.appendChild(lineText);
+
+      if (info.fileIndex !== null) {
+        const badge = document.createElement("span");
+        const paletteIndex = ((info.fileIndex - 1) % 4) + 1;
+        badge.className = `anchor-file-badge file-index-${paletteIndex}`;
+        badge.textContent = `F${info.fileIndex}`;
+        if (info.fileName) {
+          badge.title = info.fileName;
+        }
+        wrapper.appendChild(badge);
+      }
+
+      return wrapper;
+    };
+
+    if (entry.source === "auto") {
+      const prefix = document.createElement("span");
+      prefix.className = "anchor-auto-prefix";
+      prefix.textContent = "AUTO:DOCTYPE";
+      label.appendChild(prefix);
+    }
+
+    label.appendChild(createLinePart("L", leftInfo));
+    const separator = document.createElement("span");
+    separator.className = "anchor-separator";
+    separator.textContent = "↔";
+    label.appendChild(separator);
+    label.appendChild(createLinePart("R", rightInfo));
+
     if (reason) {
       label.classList.add("anchor-invalid");
-      label.textContent += `（無効: ${reason}）`;
+      const reasonText = document.createElement("span");
+      reasonText.className = "anchor-reason";
+      reasonText.textContent = `（無効: ${reason}）`;
+      label.appendChild(reasonText);
     } else if (entry.source === "manual" && !validSet.has(anchor)) {
       label.classList.add("anchor-disabled");
     }
@@ -1009,6 +1012,30 @@ function buildViewZones(ops: PairedOp[]): {
   return { left, right };
 }
 
+function buildFileBoundaryZones(segments: LineSegment[]): ViewZoneSpec[] {
+  const zones: ViewZoneSpec[] = [];
+  const gapLines = 3;
+
+  for (const segment of segments) {
+    if (segment.startLine <= 1) {
+      continue;
+    }
+    const paletteIndex = ((segment.fileIndex - 1) % 4) + 1;
+    const label =
+      segment.fileName && segment.fileName.length > 0
+        ? `File ${segment.fileIndex}: ${segment.fileName}`
+        : `File ${segment.fileIndex}`;
+    zones.push({
+      afterLineNumber: segment.startLine - 1,
+      heightInLines: gapLines,
+      className: `file-boundary-zone file-index-${paletteIndex}`,
+      label,
+    });
+  }
+
+  return zones;
+}
+
 function applyViewZones(
   editor: monaco.editor.IStandaloneCodeEditor,
   currentZoneIds: string[],
@@ -1024,6 +1051,9 @@ function applyViewZones(
     for (const zone of zones) {
       const domNode = document.createElement("div");
       domNode.className = zone.className;
+      if (zone.label) {
+        domNode.textContent = zone.label;
+      }
       const zoneId = accessor.addZone({
         afterLineNumber: zone.afterLineNumber,
         heightInLines: zone.heightInLines,
@@ -1215,6 +1245,8 @@ function recalcDiff() {
   const { left, right } = buildDecorations(pairedOps);
   const anchorDecorations = buildAnchorDecorations(validation.valid, autoAnchor);
   const zones = buildViewZones(pairedOps);
+  const leftFileZones = buildFileBoundaryZones(leftSegments);
+  const rightFileZones = buildFileBoundaryZones(rightSegments);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
   rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
@@ -1227,8 +1259,8 @@ function recalcDiff() {
     anchorDecorations.right,
   );
   updatePendingAnchorDecoration();
-  leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left);
-  rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right);
+  leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left.concat(leftFileZones));
+  rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right.concat(rightFileZones));
   updateDiffJumpButtons();
   applyFolding();
   focusDiffLines(null, null);
