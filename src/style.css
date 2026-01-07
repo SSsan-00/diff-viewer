@@ -66,6 +66,12 @@ body {
   gap: 16px;
 }
 
+.anchor-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .anchor-title {
   font-size: 0.85rem;
   letter-spacing: 0.08em;
@@ -90,6 +96,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.anchor-panel.is-collapsed {
+  padding-bottom: 6px;
+}
+
+.anchor-panel-body[hidden] {
+  display: none;
 }
 
 .anchor-item {

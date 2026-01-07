@@ -26,6 +26,7 @@ import {
 import { normalizeText } from "./diffEngine/normalize";
 import { THIRD_PARTY_LICENSES } from "./licenses";
 import { APP_TEMPLATE } from "./ui/template";
+import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -50,6 +51,7 @@ if (!app) {
 }
 
 app.innerHTML = APP_TEMPLATE;
+setupAnchorPanelToggle(document);
 
 function getRequiredElement<T extends Element>(selector: string): T {
   const element = document.querySelector<T>(selector);

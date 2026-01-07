@@ -22,10 +22,23 @@ export const APP_TEMPLATE = `
     <section class="anchor-panel">
       <div class="anchor-header">
         <div class="anchor-title">アンカー</div>
-        <div id="anchor-message" class="anchor-message" aria-live="polite"></div>
+        <div class="anchor-header-right">
+          <div id="anchor-message" class="anchor-message" aria-live="polite"></div>
+          <button
+            id="anchor-toggle"
+            class="button button-subtle"
+            type="button"
+            aria-expanded="true"
+            aria-controls="anchor-panel-body"
+          >
+            折りたたみ
+          </button>
+        </div>
       </div>
-      <div id="anchor-warning" class="anchor-warning" aria-live="polite"></div>
-      <ul id="anchor-list" class="anchor-list"></ul>
+      <div id="anchor-panel-body" class="anchor-panel-body">
+        <div id="anchor-warning" class="anchor-warning" aria-live="polite"></div>
+        <ul id="anchor-list" class="anchor-list"></ul>
+      </div>
     </section>
     <div class="editors">
       <section id="left-pane" class="editor-pane">
