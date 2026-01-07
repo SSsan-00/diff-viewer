@@ -27,6 +27,7 @@ import { normalizeText } from "./diffEngine/normalize";
 import { THIRD_PARTY_LICENSES } from "./licenses";
 import { APP_TEMPLATE } from "./ui/template";
 import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
+import { bindPaneClearButton } from "./ui/paneClear";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -77,6 +78,8 @@ const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clear");
+const leftClearButton = getRequiredElement<HTMLButtonElement>("#left-clear");
+const rightClearButton = getRequiredElement<HTMLButtonElement>("#right-clear");
 
 const leftInitial = `// Left sample (47 lines)
 const config = {
@@ -1271,6 +1274,28 @@ function recalcDiff() {
 const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
 recalcButton?.addEventListener("click", () => {
   recalcDiff();
+});
+
+bindPaneClearButton(leftClearButton, {
+  editor: leftEditor,
+  segments: leftSegments,
+  updateLineNumbers,
+  onAfterClear: () => {
+    pendingLeftLineNo = null;
+    updatePendingAnchorDecoration();
+    recalcDiff();
+  },
+});
+
+bindPaneClearButton(rightClearButton, {
+  editor: rightEditor,
+  segments: rightSegments,
+  updateLineNumbers,
+  onAfterClear: () => {
+    pendingRightLineNo = null;
+    updatePendingAnchorDecoration();
+    recalcDiff();
+  },
 });
 
 clearButton.addEventListener("click", () => {

@@ -378,6 +378,16 @@ body {
   gap: 12px;
 }
 
+.pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pane-clear {
+  white-space: nowrap;
+}
+
 .pane-select {
   display: flex;
   align-items: center;

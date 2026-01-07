@@ -17,6 +17,8 @@ describe("layout template", () => {
     expect(document.querySelector(".editors")).toBeTruthy();
     expect(document.querySelector("#left-pane .pane-title-left .file-picker")).toBeTruthy();
     expect(document.querySelector("#right-pane .pane-title-left .file-picker")).toBeTruthy();
+    expect(document.querySelector("#left-pane .pane-actions #left-clear")).toBeTruthy();
+    expect(document.querySelector("#right-pane .pane-actions #right-clear")).toBeTruthy();
     expect(document.querySelector(".drop-zone")).toBeNull();
     expect(document.body.textContent ?? "").not.toContain("ここにファイルをドロップ");
   });

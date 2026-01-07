@@ -53,15 +53,26 @@ export const APP_TEMPLATE = `
               <span class="file-hint">ドラッグ&ドロップ可</span>
             </div>
           </div>
-          <label class="pane-select">
-            文字コード
-            <select id="left-encoding">
-              <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
-              <option value="utf-8">UTF-8</option>
-              <option value="shift_jis">Shift_JIS</option>
-              <option value="euc-jp">EUC-JP</option>
-            </select>
-          </label>
+          <div class="pane-actions">
+            <button
+              id="left-clear"
+              class="button button-subtle pane-clear"
+              type="button"
+              data-testid="left-clear"
+              aria-label="左をクリア"
+            >
+              クリア
+            </button>
+            <label class="pane-select">
+              文字コード
+              <select id="left-encoding">
+                <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
+                <option value="utf-8">UTF-8</option>
+                <option value="shift_jis">Shift_JIS</option>
+                <option value="euc-jp">EUC-JP</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div id="left-message" class="pane-message" aria-live="polite"></div>
         <div id="left-editor" class="editor"></div>
@@ -78,15 +89,26 @@ export const APP_TEMPLATE = `
               <span class="file-hint">ドラッグ&ドロップ可</span>
             </div>
           </div>
-          <label class="pane-select">
-            文字コード
-            <select id="right-encoding">
-              <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
-              <option value="utf-8">UTF-8</option>
-              <option value="shift_jis">Shift_JIS</option>
-              <option value="euc-jp">EUC-JP</option>
-            </select>
-          </label>
+          <div class="pane-actions">
+            <button
+              id="right-clear"
+              class="button button-subtle pane-clear"
+              type="button"
+              data-testid="right-clear"
+              aria-label="右をクリア"
+            >
+              クリア
+            </button>
+            <label class="pane-select">
+              文字コード
+              <select id="right-encoding">
+                <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
+                <option value="utf-8">UTF-8</option>
+                <option value="shift_jis">Shift_JIS</option>
+                <option value="euc-jp">EUC-JP</option>
+              </select>
+            </label>
+          </div>
         </div>
         <div id="right-message" class="pane-message" aria-live="polite"></div>
         <div id="right-editor" class="editor"></div>
