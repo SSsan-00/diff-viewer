@@ -28,6 +28,7 @@ import { THIRD_PARTY_LICENSES } from "./licenses";
 import { APP_TEMPLATE } from "./ui/template";
 import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
 import { bindPaneClearButton } from "./ui/paneClear";
+import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -1156,30 +1157,6 @@ function buildViewZones(ops: PairedOp[]): {
   return { left, right };
 }
 
-function buildFileBoundaryZones(segments: LineSegment[]): ViewZoneSpec[] {
-  const zones: ViewZoneSpec[] = [];
-  const gapLines = 3;
-
-  for (const segment of segments) {
-    if (segment.startLine <= 1) {
-      continue;
-    }
-    const paletteIndex = ((segment.fileIndex - 1) % 4) + 1;
-    const label =
-      segment.fileName && segment.fileName.length > 0
-        ? `File ${segment.fileIndex}: ${segment.fileName}`
-        : `File ${segment.fileIndex}`;
-    zones.push({
-      afterLineNumber: segment.startLine - 1,
-      heightInLines: gapLines,
-      className: `file-boundary-zone file-index-${paletteIndex}`,
-      label,
-    });
-  }
-
-  return zones;
-}
-
 function applyViewZones(
   editor: monaco.editor.IStandaloneCodeEditor,
   currentZoneIds: string[],
@@ -1389,8 +1366,7 @@ function recalcDiff() {
   const { left, right } = buildDecorations(pairedOps);
   const anchorDecorations = buildAnchorDecorations(validation.valid, autoAnchor);
   const zones = buildViewZones(pairedOps);
-  const leftFileZones = buildFileBoundaryZones(leftSegments);
-  const rightFileZones = buildFileBoundaryZones(rightSegments);
+  const fileZones = buildAlignedFileBoundaryZones(pairedOps, leftSegments, rightSegments);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
   rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
@@ -1403,8 +1379,8 @@ function recalcDiff() {
     anchorDecorations.right,
   );
   updatePendingAnchorDecoration();
-  leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left.concat(leftFileZones));
-  rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right.concat(rightFileZones));
+  leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left.concat(fileZones.left));
+  rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right.concat(fileZones.right));
   updateDiffJumpButtons();
   applyFolding();
   focusDiffLines(null, null);
