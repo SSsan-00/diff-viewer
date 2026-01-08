@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   monaco-editor:
-    hash: 34f878bad3fc7bb5b05004f82f3e7cf2f15af2d0be7f57c6b296ff3753fe57bc
+    hash: 538a05afc34d54c3f1fe9081472ada36ef6af279087b608a78df9ea7fed2213d
     path: patches/monaco-editor.patch
 
 importers:

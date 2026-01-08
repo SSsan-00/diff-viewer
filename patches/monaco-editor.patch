@@ -276,6 +276,43 @@ index 293436f9f6ad4ed77cb5d02547e8eb7fca9e2393..42d3471011eb152cfdc7c23a46f5e048
 -            serverLicenseUrl: 'https://github.com/microsoft/vscode/blob/main/LICENSE.txt'
 +            licenseUrl: '',
 +            serverLicenseUrl: ''
-         });
-     }
- }
+        });
+    }
+}
+diff --git a/esm/vs/base/common/codiconsLibrary.js b/esm/vs/base/common/codiconsLibrary.js
+index 6dc2df373f4e0a3a7a86b279fb2fce44c65b1d20..2a5d4c2fb0f12de3bd8dd34f3e0d4f1278e6da0a 100644
+--- a/esm/vs/base/common/codiconsLibrary.js
++++ b/esm/vs/base/common/codiconsLibrary.js
+@@ -97,9 +97,6 @@ export const codicons = new CodiconRegistry({
+     folder: register('folder', 0xea83),
+     fileDirectory: register('file-directory', 0xea83),
+     symbolFolder: register('symbol-folder', 0xea83),
+-    logoGithub: register('logo-github', 0xea84),
+-    markGithub: register('mark-github', 0xea84),
+-    github: register('github', 0xea84),
+     terminal: register('terminal', 0xea85),
+     console: register('console', 0xea85),
+     repl: register('repl', 0xea85),
+@@ -243,8 +240,6 @@ export const codicons = new CodiconRegistry({
+     gitCompare: register('git-compare', 0xeafd),
+     compareChanges: register('compare-changes', 0xeafd),
+     gitMerge: register('git-merge', 0xeafe),
+-    githubAction: register('github-action', 0xeaff),
+-    githubAlt: register('github-alt', 0xeb00),
+     globe: register('globe', 0xeb01),
+     grabber: register('grabber', 0xeb02),
+     graph: register('graph', 0xeb03),
+@@ -414,7 +409,6 @@ export const codicons = new CodiconRegistry({
+     runAll: register('run-all', 0xeb9e),
+     syncIgnored: register('sync-ignored', 0xeb9f),
+     pinned: register('pinned', 0xeba0),
+-    githubInverted: register('github-inverted', 0xeba1),
+     serverProcess: register('server-process', 0xeba2),
+     serverEnvironment: register('server-environment', 0xeba3),
+     pass: register('pass', 0xeba4),
+@@ -565,7 +559,6 @@ export const codicons = new CodiconRegistry({
+     runAllCoverage: register('run-all-coverage', 0xec2d),
+     coverage: register('coverage', 0xec2e),
+-    githubProject: register('github-project', 0xec2f),
+     mapVertical: register('map-vertical', 0xec30),
+     foldVertical: register('fold-vertical', 0xec30),

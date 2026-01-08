@@ -17,6 +17,7 @@ const strongPatterns = [
     kind: "BAN_WORD",
     regex: /raw\.githubusercontent\.com/g,
   },
+  { name: "ban-word:github", kind: "BAN_WORD", regex: /\bgithub\b/gi },
   { name: "sourcemap:sourceMappingURL", kind: "SOURCEMAP", regex: /sourceMappingURL=/g },
   {
     name: "sourcemap:data-application-json",
@@ -27,7 +28,6 @@ const strongPatterns = [
 ];
 
 const weakPatterns = [
-  { name: "ban-word:github", kind: "BAN_WORD", regex: /\bgithub\b/gi },
   { name: "ban-word:api", kind: "BAN_WORD", regex: /\bapi\b/gi },
 ];
 

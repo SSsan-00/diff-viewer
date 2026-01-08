@@ -21,7 +21,8 @@ const forbiddenRegexes = [
   /data:application\/json[^,]*;base64,/,
 ];
 
-const weakForbiddenRegexes = [/\bgithub\b/i, /\bapi\b/i];
+const strongForbiddenRegexes = [/\bgithub\b/i];
+const weakForbiddenRegexes = [/\bapi\b/i];
 
 function stripScriptAndStyle(html: string): string {
   return html
@@ -43,6 +44,14 @@ describe("dist gate", () => {
       const content = readFileSync(filePath, "utf8");
 
       for (const pattern of forbiddenRegexes) {
+        expect(pattern.test(content)).toBe(false);
+      }
+    });
+
+    it(`blocks strong keywords in ${filePath}`, () => {
+      const content = readFileSync(filePath, "utf8");
+
+      for (const pattern of strongForbiddenRegexes) {
         expect(pattern.test(content)).toBe(false);
       }
     });

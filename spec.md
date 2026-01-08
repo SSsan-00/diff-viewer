@@ -129,10 +129,11 @@ VS Code の差分ビューを「だいたい同じ思想」で再現しつつ、
 - 検出方式のルール:
   - `http://` / `https://` は **部分一致**で検出する（出現した時点でNG）
   - `GITHUB_WORKSPACE` / `github.com` / `api.github.com` / `raw.githubusercontent.com` は **部分一致**で検出する
-  - `github` / `api` は **単語境界**でのみ検出し、大小文字は区別しない
-  - `github` / `api` の検出対象は **HTMLの見える領域・属性**に限定する
-    - `<script>` / `<style>` の中身は検査対象外
-    - 例: `minimapIsSampling` は OK、UI文言に `API` / `GitHub` が入るのは NG
+  - `github` は **単語境界**でのみ検出し、大小文字は区別しない
+    - `<script>` / `<style>` を含む **成果物全体**を検査対象とする
+  - `api` は **単語境界**でのみ検出し、大小文字は区別しない
+    - 検出対象は **HTMLの見える領域・属性**に限定する（`<script>` / `<style>` は対象外）
+    - 例: `minimapIsSampling` は OK、UI文言に `API` が入るのは NG
 
 ### 3.3 SourceMap・ビルドメタ情報の混入禁止
 

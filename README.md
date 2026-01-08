@@ -135,7 +135,8 @@ pnpm run verify:dist
 - `https://`
 - `GITHUB_WORKSPACE`
 - API/GitHubなど外部依存を彷彿させる文字列（例: `github.com`, `api.github.com`, `raw.githubusercontent.com`）
-- `github` / `api` は **単語境界**かつ **大小文字無視**で検出（`<script>` / `<style>` 内は対象外）
+- `github` は **単語境界**かつ **大小文字無視**で検出（`<script>` / `<style>` を含む成果物全体が対象）
+- `api` は **単語境界**かつ **大小文字無視**で検出（`<script>` / `<style>` 内は対象外）
 
 加えて、`dist/index.html` / `dist/index.min.html` に SourceMap 参照や inline sourcemap が含まれていないこと、  
 modulepreload の polyfill 関数が含まれていないことを確認してください。  
