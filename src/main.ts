@@ -35,6 +35,11 @@ import {
   loadPersistedState,
   type PersistedState,
 } from "./storage/persistedState";
+import {
+  formatFileLoadError,
+  shouldLogFileLoadError,
+} from "./file/loadErrors";
+import { runPostLoadTasks } from "./file/postLoad";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -344,8 +349,10 @@ async function appendFilesToEditor(
   }
 
   let currentFileName = "";
+  let nextSegments: LineSegment[] = [];
+  let label = "";
   try {
-    const nextSegments: LineSegment[] = [...segments];
+    nextSegments = [...segments];
     const parts: string[] = [];
     let currentValue = editor.getValue();
     let currentLineCount =
@@ -384,20 +391,23 @@ async function appendFilesToEditor(
     segments.length = 0;
     segments.push(...nextSegments);
     updateLineNumbers(editor, segments);
-    const label =
+    label =
       fileList.length === 1
         ? fileList[0].name
         : `${fileList[0].name} (+${fileList.length - 1})`;
-    setPaneMessage(messageTarget, `読み込み完了: ${label}`, false);
-    recalcDiff();
-    schedulePersist();
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "読み込みに失敗しました";
-    console.error(error);
-    const detail = currentFileName ? `${message} (${currentFileName})` : message;
+    if (shouldLogFileLoadError(error)) {
+      console.error(error);
+    } else {
+      console.warn("File load failed without details.");
+    }
+    const detail = formatFileLoadError(error, currentFileName);
     setPaneMessage(messageTarget, detail, true);
+    return;
   }
+
+  setPaneMessage(messageTarget, `読み込み完了: ${label}`, false);
+  runPostLoadTasks([recalcDiff, schedulePersist]);
 }
 
 function bindDropZone(
@@ -554,6 +564,33 @@ const scrollSync = new ScrollSyncController(
   },
 );
 
+let leftDecorationIds: string[] = [];
+let rightDecorationIds: string[] = [];
+let leftZoneIds: string[] = [];
+let rightZoneIds: string[] = [];
+let pairedOps: PairedOp[] = [];
+let diffBlockStarts: number[] = [];
+let currentBlockIndex = 0;
+let leftFocusDecorationIds: string[] = [];
+let rightFocusDecorationIds: string[] = [];
+let foldEnabled = persistedState?.foldEnabled ?? false;
+let foldRanges: FoldRange[] = [];
+let leftFoldZoneIds: string[] = [];
+let rightFoldZoneIds: string[] = [];
+const expandedFoldStarts = new Set<number>();
+let manualAnchors: Anchor[] = persistedState?.anchors
+  ? persistedState.anchors.map((anchor) => ({ ...anchor }))
+  : [];
+let autoAnchor: Anchor | null = null;
+let suppressedAutoAnchorKey: string | null = null;
+let pendingLeftLineNo: number | null = null;
+let pendingRightLineNo: number | null = null;
+let leftAnchorDecorationIds: string[] = [];
+let rightAnchorDecorationIds: string[] = [];
+let selectedAnchorKey: string | null = null;
+let pendingLeftDecorationIds: string[] = [];
+let pendingRightDecorationIds: string[] = [];
+
 function isGutterClick(event: monaco.editor.IEditorMouseEvent): boolean {
   const targetType = event.target.type;
   return (
@@ -654,33 +691,6 @@ rightEditor.onMouseDown((event) => {
   renderAnchors(validation.invalid, validation.valid);
   schedulePersist();
 });
-
-let leftDecorationIds: string[] = [];
-let rightDecorationIds: string[] = [];
-let leftZoneIds: string[] = [];
-let rightZoneIds: string[] = [];
-let pairedOps: PairedOp[] = [];
-let diffBlockStarts: number[] = [];
-let currentBlockIndex = 0;
-let leftFocusDecorationIds: string[] = [];
-let rightFocusDecorationIds: string[] = [];
-let foldEnabled = persistedState?.foldEnabled ?? false;
-let foldRanges: FoldRange[] = [];
-let leftFoldZoneIds: string[] = [];
-let rightFoldZoneIds: string[] = [];
-const expandedFoldStarts = new Set<number>();
-let manualAnchors: Anchor[] = persistedState?.anchors
-  ? persistedState.anchors.map((anchor) => ({ ...anchor }))
-  : [];
-let autoAnchor: Anchor | null = null;
-let suppressedAutoAnchorKey: string | null = null;
-let pendingLeftLineNo: number | null = null;
-let pendingRightLineNo: number | null = null;
-let leftAnchorDecorationIds: string[] = [];
-let rightAnchorDecorationIds: string[] = [];
-let selectedAnchorKey: string | null = null;
-let pendingLeftDecorationIds: string[] = [];
-let pendingRightDecorationIds: string[] = [];
 
 type ZoneSide = "insert" | "delete";
 

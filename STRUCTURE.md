@@ -38,6 +38,8 @@
 - `src/` TypeScript の実装本体。
 - `src/main.ts` UI レイアウト/イベント結線の起点。
 - `src/file/` ファイル読み込み・文字コードデコード・行番号表示の責務。
+- `src/file/loadErrors.ts` ファイル読み込み時のエラー整形とログ判定。
+- `src/file/postLoad.ts` 読み込み後の処理を安全に実行する補助。
 - `src/diffEngine/anchors.ts` アンカーの検証と適用ロジック。
 - `src/storage/` LocalStorage 永続化の読み書き。
 - `src/ui/template.ts` UI の HTML テンプレート定義。
