@@ -40,10 +40,13 @@
 - `src/file/` ファイル読み込み・文字コードデコード・行番号表示の責務。
 - `src/file/loadErrors.ts` ファイル読み込み時のエラー整形とログ判定。
 - `src/file/postLoad.ts` 読み込み後の処理を安全に実行する補助。
+- `src/file/decodedFiles.ts` rawBytes からテキスト/セグメントを再構築する。
 - `src/diffEngine/anchors.ts` アンカーの検証と適用ロジック。
 - `src/storage/` LocalStorage 永続化の読み書き。
 - `src/ui/template.ts` UI の HTML テンプレート定義。
 - `src/ui/anchorClick.ts` アンカー行クリック時の状態遷移。
+- `src/ui/editorFind.ts` Ctrl/Cmd+F の検索対象切替。
+- `src/ui/diffJumpButtons.ts` 差分ジャンプボタンの有効/無効制御。
 - `src/style.css` 画面レイアウトと見た目のスタイル定義。
 - `public/` 公開用の静的リソース置き場。
 - `patches/` 依存関係向けのパッチ保管。

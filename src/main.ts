@@ -14,6 +14,7 @@ import {
   getLineSegmentInfo,
   type LineSegment,
 } from "./file/lineNumbering";
+import { buildDecodedFiles, type FileBytes } from "./file/decodedFiles";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
   addAnchor,
@@ -33,6 +34,8 @@ import {
   handleLeftAnchorClick,
   handleRightAnchorClick,
 } from "./ui/anchorClick";
+import { handleFindShortcut } from "./ui/editorFind";
+import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -133,6 +136,8 @@ const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clear");
 const leftClearButton = getRequiredElement<HTMLButtonElement>("#left-clear");
 const rightClearButton = getRequiredElement<HTMLButtonElement>("#right-clear");
+const prevButton = document.querySelector<HTMLButtonElement>("#diff-prev");
+const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
 
 applyEncodingSelection(leftEncodingSelect, persistedState?.leftEncoding);
 applyEncodingSelection(rightEncodingSelect, persistedState?.rightEncoding);
@@ -259,10 +264,51 @@ const rightEditor = monaco.editor.create(rightContainer, {
   lineNumbers: "on",
 });
 
+let lastFocusedSide: "left" | "right" = "left";
+const leftFileBytes: FileBytes[] = [];
+const rightFileBytes: FileBytes[] = [];
+let suppressLeftFileBytesClear = false;
+let suppressRightFileBytesClear = false;
+
+function withProgrammaticEdit(
+  side: "left" | "right",
+  action: () => void,
+): void {
+  if (side === "left") {
+    suppressLeftFileBytesClear = true;
+  } else {
+    suppressRightFileBytesClear = true;
+  }
+  try {
+    action();
+  } finally {
+    if (side === "left") {
+      suppressLeftFileBytesClear = false;
+    } else {
+      suppressRightFileBytesClear = false;
+    }
+  }
+}
+
+leftEditor.onDidFocusEditorText(() => {
+  lastFocusedSide = "left";
+});
+rightEditor.onDidFocusEditorText(() => {
+  lastFocusedSide = "right";
+});
+
 leftEditor.onDidChangeModelContent(() => {
+  if (suppressLeftFileBytesClear) {
+    return;
+  }
+  leftFileBytes.length = 0;
   schedulePersist();
 });
 rightEditor.onDidChangeModelContent(() => {
+  if (suppressRightFileBytesClear) {
+    return;
+  }
+  rightFileBytes.length = 0;
   schedulePersist();
 });
 
@@ -301,6 +347,28 @@ function updateLineNumbers(
   editor.updateOptions({
     lineNumbers: segments.length === 0 ? "on" : createLineNumberFormatter(segments),
   });
+}
+
+function applyDecodedFiles(
+  side: "left" | "right",
+  editor: monaco.editor.IStandaloneCodeEditor,
+  segments: LineSegment[],
+  rawFiles: FileBytes[],
+  encoding: FileEncoding,
+) {
+  if (rawFiles.length === 0) {
+    schedulePersist();
+    return;
+  }
+  const { text, segments: nextSegments } = buildDecodedFiles(rawFiles, encoding);
+  withProgrammaticEdit(side, () => {
+    editor.setValue(text);
+  });
+  segments.length = 0;
+  segments.push(...nextSegments);
+  updateLineNumbers(editor, segments);
+  recalcDiff();
+  schedulePersist();
 }
 
 function isSegmentLayoutValid(segments: LineSegment[], text: string): boolean {
@@ -345,6 +413,8 @@ async function appendFilesToEditor(
   editor: monaco.editor.IStandaloneCodeEditor,
   messageTarget: HTMLDivElement,
   segments: LineSegment[],
+  rawFiles: FileBytes[],
+  side: "left" | "right",
 ) {
   const fileList = Array.from(files);
   if (fileList.length === 0) {
@@ -353,6 +423,7 @@ async function appendFilesToEditor(
   }
 
   let currentFileName = "";
+  const shouldTrackRawBytes = rawFiles.length > 0 || editor.getValue() === "";
   let nextSegments: LineSegment[] = [];
   let label = "";
   try {
@@ -372,11 +443,15 @@ async function appendFilesToEditor(
       currentFileName = file.name;
       const fileIndex = baseFileIndex + index + 1;
       const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
       const text = normalizeText(decodeArrayBuffer(buffer, encoding));
       const endsWithNewline = text.endsWith("\n");
       const startLine = getAppendStartLine(currentValue, currentLineCount);
       const lineCount = text.split("\n").length;
 
+      if (shouldTrackRawBytes) {
+        rawFiles.push({ name: file.name, bytes });
+      }
       parts.push(text);
       nextSegments.push({
         startLine,
@@ -391,7 +466,9 @@ async function appendFilesToEditor(
       currentLineCount = currentValue.split("\n").length;
     }
 
-    parts.forEach((text) => appendTextToEditor(editor, text));
+    withProgrammaticEdit(side, () => {
+      parts.forEach((text) => appendTextToEditor(editor, text));
+    });
     segments.length = 0;
     segments.push(...nextSegments);
     updateLineNumbers(editor, segments);
@@ -420,6 +497,8 @@ function bindDropZone(
   messageTarget: HTMLDivElement,
   encodingSelect: HTMLSelectElement,
   segments: LineSegment[],
+  rawFiles: FileBytes[],
+  side: "left" | "right",
 ) {
   zone.addEventListener("dragover", (event: DragEvent) => {
     event.preventDefault();
@@ -449,7 +528,15 @@ function bindDropZone(
     }
 
     const encoding = encodingSelect.value as FileEncoding;
-    void appendFilesToEditor(files, encoding, editor, messageTarget, segments);
+    void appendFilesToEditor(
+      files,
+      encoding,
+      editor,
+      messageTarget,
+      segments,
+      rawFiles,
+      side,
+    );
   });
 }
 
@@ -467,8 +554,24 @@ if (isSegmentLayoutValid(storedRightSegments, rightEditor.getValue())) {
 updateLineNumbers(leftEditor, leftSegments);
 updateLineNumbers(rightEditor, rightSegments);
 
-bindDropZone(leftPane, leftEditor, leftMessage, leftEncodingSelect, leftSegments);
-bindDropZone(rightPane, rightEditor, rightMessage, rightEncodingSelect, rightSegments);
+bindDropZone(
+  leftPane,
+  leftEditor,
+  leftMessage,
+  leftEncodingSelect,
+  leftSegments,
+  leftFileBytes,
+  "left",
+);
+bindDropZone(
+  rightPane,
+  rightEditor,
+  rightMessage,
+  rightEncodingSelect,
+  rightSegments,
+  rightFileBytes,
+  "right",
+);
 
 function bindFilePicker(
   input: HTMLInputElement,
@@ -477,6 +580,8 @@ function bindFilePicker(
   messageTarget: HTMLDivElement,
   encodingSelect: HTMLSelectElement,
   segments: LineSegment[],
+  rawFiles: FileBytes[],
+  side: "left" | "right",
 ) {
   button.addEventListener("click", () => {
     input.click();
@@ -488,7 +593,15 @@ function bindFilePicker(
       return;
     }
     const encoding = encodingSelect.value as FileEncoding;
-    void appendFilesToEditor(files, encoding, editor, messageTarget, segments);
+    void appendFilesToEditor(
+      files,
+      encoding,
+      editor,
+      messageTarget,
+      segments,
+      rawFiles,
+      side,
+    );
     input.value = "";
   });
 }
@@ -500,6 +613,8 @@ bindFilePicker(
   leftMessage,
   leftEncodingSelect,
   leftSegments,
+  leftFileBytes,
+  "left",
 );
 bindFilePicker(
   rightFileInput,
@@ -508,13 +623,17 @@ bindFilePicker(
   rightMessage,
   rightEncodingSelect,
   rightSegments,
+  rightFileBytes,
+  "right",
 );
 
 leftEncodingSelect.addEventListener("change", () => {
-  schedulePersist();
+  const encoding = leftEncodingSelect.value as FileEncoding;
+  applyDecodedFiles("left", leftEditor, leftSegments, leftFileBytes, encoding);
 });
 rightEncodingSelect.addEventListener("change", () => {
-  schedulePersist();
+  const encoding = rightEncodingSelect.value as FileEncoding;
+  applyDecodedFiles("right", rightEditor, rightSegments, rightFileBytes, encoding);
 });
 
 function getPersistedStateSnapshot(): PersistedState {
@@ -546,6 +665,13 @@ function preventWindowDrop(event: DragEvent) {
 
 window.addEventListener("dragover", preventWindowDrop);
 window.addEventListener("drop", preventWindowDrop);
+window.addEventListener("keydown", (event) => {
+  handleFindShortcut(event, {
+    left: leftEditor,
+    right: rightEditor,
+    getLastFocused: () => lastFocusedSide,
+  });
+});
 
 const scrollSync = new ScrollSyncController(
   {
@@ -1414,7 +1540,7 @@ function recalcDiff() {
   updatePendingAnchorDecoration();
   leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left.concat(fileZones.left));
   rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right.concat(fileZones.right));
-  updateDiffJumpButtons();
+  updateDiffJumpButtons(prevButton, nextButton, diffBlockStarts.length > 0);
   applyFolding();
   focusDiffLines(null, null);
 }
@@ -1495,19 +1621,6 @@ if (foldToggle) {
 
 if (persistedState) {
   recalcDiff();
-}
-
-const prevButton = document.querySelector<HTMLButtonElement>("#diff-prev");
-const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
-
-function updateDiffJumpButtons() {
-  const hasDiffs = diffBlockStarts.length > 0;
-  if (prevButton) {
-    prevButton.disabled = !hasDiffs;
-  }
-  if (nextButton) {
-    nextButton.disabled = !hasDiffs;
-  }
 }
 
 function focusDiffLines(
