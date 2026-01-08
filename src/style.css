@@ -556,7 +556,7 @@ body {
   justify-content: center;
   font-size: 0.72rem;
   letter-spacing: 0.05em;
-  text-transform: uppercase;
+  text-transform: none;
   color: #6b5a46;
   border-top: 1px dashed rgba(120, 110, 90, 0.45);
   margin: 4px 12px;
