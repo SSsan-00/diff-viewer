@@ -370,18 +370,24 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: nowrap;
 }
 
 .pane-title-left {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
+  flex-wrap: nowrap;
 }
 
 .pane-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .pane-clear {
@@ -395,6 +401,14 @@ body {
   font-size: 0.75rem;
   letter-spacing: 0.03em;
   text-transform: none;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.pane-select-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .pane-select select {
@@ -410,7 +424,15 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.file-picker .button {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .file-input {
@@ -420,6 +442,7 @@ body {
 .file-hint {
   font-size: 0.72rem;
   color: #6b5a46;
+  white-space: nowrap;
 }
 
 .editor-pane.is-dragover {
@@ -599,6 +622,20 @@ body {
     flex-direction: column;
     gap: 12px;
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 1100px) {
+  .file-hint {
+    display: none;
+  }
+
+  .pane-actions .toggle span {
+    display: none;
+  }
+
+  .pane-select-label {
+    display: none;
   }
 }
 

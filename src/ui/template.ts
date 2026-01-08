@@ -49,10 +49,13 @@ export const APP_TEMPLATE = `
               <button id="left-file-button" class="button button-subtle" type="button">
                 ファイルを選択
               </button>
-              <span class="file-hint">ドラッグ&ドロップ可</span>
             </div>
           </div>
           <div class="pane-actions">
+            <label class="toggle">
+              <input id="left-wrap" type="checkbox" aria-label="左の折り返し" />
+              <span>折り返し</span>
+            </label>
             <button
               id="left-clear"
               class="button button-subtle pane-clear"
@@ -63,7 +66,7 @@ export const APP_TEMPLATE = `
               クリア
             </button>
             <label class="pane-select">
-              文字コード
+              <span class="pane-select-label">文字コード</span>
               <select id="left-encoding">
                 <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
                 <option value="utf-8">UTF-8</option>
@@ -85,10 +88,13 @@ export const APP_TEMPLATE = `
               <button id="right-file-button" class="button button-subtle" type="button">
                 ファイルを選択
               </button>
-              <span class="file-hint">ドラッグ&ドロップ可</span>
             </div>
           </div>
           <div class="pane-actions">
+            <label class="toggle">
+              <input id="right-wrap" type="checkbox" aria-label="右の折り返し" />
+              <span>折り返し</span>
+            </label>
             <button
               id="right-clear"
               class="button button-subtle pane-clear"
@@ -99,7 +105,7 @@ export const APP_TEMPLATE = `
               クリア
             </button>
             <label class="pane-select">
-              文字コード
+              <span class="pane-select-label">文字コード</span>
               <select id="right-encoding">
                 <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
                 <option value="utf-8">UTF-8</option>

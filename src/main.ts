@@ -30,6 +30,7 @@ import { APP_TEMPLATE } from "./ui/template";
 import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
 import { bindPaneClearButton } from "./ui/paneClear";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
+import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import {
   handleLeftAnchorClick,
   handleRightAnchorClick,
@@ -37,6 +38,7 @@ import {
 import { handleFindShortcut } from "./ui/editorFind";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
+import { bindWordWrapToggle } from "./ui/wordWrapToggle";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -133,6 +135,8 @@ const leftFileInput = getRequiredElement<HTMLInputElement>("#left-file");
 const rightFileInput = getRequiredElement<HTMLInputElement>("#right-file");
 const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button");
 const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
+const leftWrapToggle = getRequiredElement<HTMLInputElement>("#left-wrap");
+const rightWrapToggle = getRequiredElement<HTMLInputElement>("#right-wrap");
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
@@ -265,6 +269,13 @@ const rightEditor = monaco.editor.create(rightContainer, {
   glyphMargin: true,
   minimap: { enabled: false },
   lineNumbers: "on",
+});
+
+bindWordWrapToggle(leftWrapToggle, leftEditor, () => {
+  recalcDiff();
+});
+bindWordWrapToggle(rightWrapToggle, rightEditor, () => {
+  recalcDiff();
 });
 
 let lastFocusedSide: "left" | "right" = "left";
@@ -917,12 +928,18 @@ function updatePendingAnchorDecoration() {
   if (pendingLeftLineNo === null) {
     pendingLeftDecorationIds = leftEditor.deltaDecorations(pendingLeftDecorationIds, []);
   } else {
+    const line = pendingLeftLineNo + 1;
     pendingLeftDecorationIds = leftEditor.deltaDecorations(pendingLeftDecorationIds, [
       {
-        range: new monaco.Range(pendingLeftLineNo + 1, 1, pendingLeftLineNo + 1, 1),
+        range: new monaco.Range(line, 1, line, 1),
         options: {
           isWholeLine: true,
           className: "anchor-pending-line",
+        },
+      },
+      {
+        range: new monaco.Range(line, 1, line, 2),
+        options: {
           glyphMarginClassName: "anchor-pending-glyph",
         },
       },
@@ -935,12 +952,18 @@ function updatePendingAnchorDecoration() {
       [],
     );
   } else {
+    const line = pendingRightLineNo + 1;
     pendingRightDecorationIds = rightEditor.deltaDecorations(pendingRightDecorationIds, [
       {
-        range: new monaco.Range(pendingRightLineNo + 1, 1, pendingRightLineNo + 1, 1),
+        range: new monaco.Range(line, 1, line, 1),
         options: {
           isWholeLine: true,
           className: "anchor-pending-line",
+        },
+      },
+      {
+        range: new monaco.Range(line, 1, line, 2),
+        options: {
           glyphMarginClassName: "anchor-pending-glyph",
         },
       },
@@ -1204,54 +1227,6 @@ function buildDecorations(ops: PairedOp[]): {
       addInlineDecorations(left, op.leftLineNo, inline.leftRanges, "inline-delete");
       addInlineDecorations(right, op.rightLineNo, inline.rightRanges, "inline-insert");
     }
-  }
-
-  return { left, right };
-}
-
-function buildAnchorDecorations(
-  validAnchors: Anchor[],
-  autoAnchorTarget: Anchor | null,
-): {
-  left: monaco.editor.IModelDeltaDecoration[];
-  right: monaco.editor.IModelDeltaDecoration[];
-} {
-  const left: monaco.editor.IModelDeltaDecoration[] = [];
-  const right: monaco.editor.IModelDeltaDecoration[] = [];
-
-  const pushAnchor = (anchor: Anchor, lineClass: string, glyphClass: string) => {
-    const leftRange = new monaco.Range(anchor.leftLineNo + 1, 1, anchor.leftLineNo + 1, 1);
-    left.push({
-      range: leftRange,
-      options: {
-        isWholeLine: true,
-        className: lineClass,
-        glyphMarginClassName: glyphClass,
-      },
-    });
-
-    const rightRange = new monaco.Range(
-      anchor.rightLineNo + 1,
-      1,
-      anchor.rightLineNo + 1,
-      1,
-    );
-    right.push({
-      range: rightRange,
-      options: {
-        isWholeLine: true,
-        className: lineClass,
-        glyphMarginClassName: glyphClass,
-      },
-    });
-  };
-
-  validAnchors.forEach((anchor) => {
-    pushAnchor(anchor, "diff-anchor-line", "diff-anchor-glyph");
-  });
-
-  if (autoAnchorTarget) {
-    pushAnchor(autoAnchorTarget, "diff-anchor-auto-line", "diff-anchor-auto-glyph");
   }
 
   return { left, right };
@@ -1529,7 +1504,11 @@ function recalcDiff() {
   foldRanges = buildFoldRanges(pairedOps, foldOptions);
   expandedFoldStarts.clear();
   const { left, right } = buildDecorations(pairedOps);
-  const anchorDecorations = buildAnchorDecorations(validation.valid, autoAnchor);
+  const anchorDecorations = buildAnchorDecorations(
+    validation.valid,
+    autoAnchor,
+    (line, startColumn, endColumn) => new monaco.Range(line, startColumn, line, endColumn),
+  );
   const zones = buildViewZones(pairedOps);
   const fileZones = buildAlignedFileBoundaryZones(pairedOps, leftSegments, rightSegments);
 

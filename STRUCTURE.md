@@ -82,8 +82,11 @@ src/ 配下の全ファイルを網羅し、責務と依存方向（主に使わ
 ### src/ui/
 
 - `src/ui/template.ts` アプリのHTMLテンプレート定義。
+- `src/ui/template.test.ts` ペイン操作UIの配置順テスト。
 - `src/ui/anchorPanelToggle.ts` アンカーパネル折りたたみトグルの制御。
 - `src/ui/anchorPanelToggle.test.ts` 折りたたみトグルのDOMテスト。
+- `src/ui/anchorDecorations.ts` アンカーデコレーション（行/丸マーカー）の生成。
+- `src/ui/anchorDecorations.test.ts` アンカーデコレーションの範囲/設定テスト。
 - `src/ui/anchorClick.ts` アンカークリック時の状態遷移（追加/解除）。
 - `src/ui/anchorClick.test.ts` アンカー操作のユニットテスト。
 - `src/ui/fileBoundaryZones.ts` ファイル境界の表示ゾーン生成。
@@ -96,6 +99,8 @@ src/ 配下の全ファイルを網羅し、責務と依存方向（主に使わ
 - `src/ui/editorFind.test.ts` Find ショートカットのテスト。
 - `src/ui/diffJumpButtons.ts` 差分ジャンプボタンの有効/無効制御。
 - `src/ui/diffJumpButtons.test.ts` 差分ジャンプ制御のテスト。
+- `src/ui/wordWrapToggle.ts` ペイン別の折り返しトグル制御。
+- `src/ui/wordWrapToggle.test.ts` 折り返しトグルのテスト。
 - `src/ui/themeToggle.ts` テーマ切替（☀️/🌙）と保存/復元。
 - `src/ui/themeToggle.test.ts` テーマ切替のテスト。
 
