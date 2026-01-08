@@ -24,6 +24,12 @@ describe("decodeArrayBuffer", () => {
     expect(decodeArrayBuffer(shiftJisBytes, "auto")).toBe("あ");
   });
 
+  it("decodes EUC-JP when auto detects better Japanese text", () => {
+    const eucJpBytes = toBuffer([0xa4, 0xa2]);
+
+    expect(decodeArrayBuffer(eucJpBytes, "auto")).toBe("あ");
+  });
+
   it("uses UTF-8 when auto decoding succeeds", () => {
     const utf8Bytes = toBuffer([0x68, 0x69]);
 

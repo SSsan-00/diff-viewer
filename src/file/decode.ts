@@ -20,6 +20,42 @@ function countReplacementCharacters(text: string): number {
   return Array.from(text).filter((char) => char === "\uFFFD").length;
 }
 
+function countJapaneseCharacters(text: string): number {
+  let count = 0;
+  for (const char of Array.from(text)) {
+    const codePoint = char.codePointAt(0);
+    if (!codePoint) {
+      continue;
+    }
+    const isHiragana = codePoint >= 0x3040 && codePoint <= 0x309f;
+    const isKatakana = codePoint >= 0x30a0 && codePoint <= 0x30ff;
+    const isCjk = codePoint >= 0x4e00 && codePoint <= 0x9fff;
+    if (isHiragana || isKatakana || isCjk) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
+function pickBestDecodedText(options: [string, string]): string {
+  const [shiftJis, eucJp] = options;
+  const shiftJisReplacement = countReplacementCharacters(shiftJis);
+  const eucJpReplacement = countReplacementCharacters(eucJp);
+
+  if (shiftJisReplacement !== eucJpReplacement) {
+    return shiftJisReplacement <= eucJpReplacement ? shiftJis : eucJp;
+  }
+
+  const shiftJisJapanese = countJapaneseCharacters(shiftJis);
+  const eucJpJapanese = countJapaneseCharacters(eucJp);
+
+  if (shiftJisJapanese !== eucJpJapanese) {
+    return shiftJisJapanese >= eucJpJapanese ? shiftJis : eucJp;
+  }
+
+  return shiftJis;
+}
+
 function decodeAuto(bytes: Uint8Array): string {
   if (hasUtf8Bom(bytes)) {
     return decodeUtf8(bytes.slice(3), false);
@@ -30,9 +66,7 @@ function decodeAuto(bytes: Uint8Array): string {
   } catch (error) {
     const shiftJis = new TextDecoder("shift_jis").decode(bytes);
     const eucJp = new TextDecoder("euc-jp").decode(bytes);
-    const shiftJisCount = countReplacementCharacters(shiftJis);
-    const eucJpCount = countReplacementCharacters(eucJp);
-    return shiftJisCount <= eucJpCount ? shiftJis : eucJp;
+    return pickBestDecodedText([shiftJis, eucJp]);
   }
 }
 
