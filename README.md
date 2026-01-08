@@ -86,7 +86,7 @@ pnpm run build:single
 ```
 
 > `build:single` は可読版/最適化版の両方を生成し、`verify:dist` まで実行します。  
-> 可読版は HTML 全体に加えて `<style>` 内の CSS も整形済みで読みやすい状態を期待します。  
+> 可読版は HTML 全体の読みやすさを優先し、`<style>` 内 CSS は見た目の一致を優先します（整形は可能な範囲）。  
 > `build:single:minify` は最適化版のみを生成します（検証は別途）。
 
 ### 3) Verify dist artifact

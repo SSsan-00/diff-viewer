@@ -39,5 +39,5 @@
 - API/GitHub など外部依存を彷彿させる文字列や modulepreload polyfill を成果物に残さない。
 - `github` は単語境界・大小文字無視で検出し、`<script>` / `<style>` を含む成果物全体を対象とする。
 - `api` は単語境界・大小文字無視で検出し、`<script>` / `<style>` 内は対象外。
-- 可読版（`dist/index.html`）は `<style>` 内の CSS も整形済みで読みやすい状態を維持する。
+- 可読版（`dist/index.html`）は HTML の可読性を優先し、`<style>` 内 CSS は見た目の一致を優先する（整形は可能な範囲）。
 - 配布前に `pnpm run verify:dist` を必ず実行。
