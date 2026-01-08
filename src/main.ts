@@ -48,6 +48,8 @@ import {
   shouldLogFileLoadError,
 } from "./file/loadErrors";
 import { runPostLoadTasks } from "./file/postLoad";
+import { formatLoadSuccessLabel, listLoadedFileNames } from "./file/loadMessages";
+import { clearPaneMessage, setPaneMessage } from "./ui/paneMessages";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -320,11 +322,6 @@ rightEditor.onDidChangeModelContent(() => {
   schedulePersist();
 });
 
-function setPaneMessage(target: HTMLDivElement, message: string, isError: boolean) {
-  target.textContent = message;
-  target.classList.toggle("is-error", isError);
-}
-
 function appendTextToEditor(
   editor: monaco.editor.IStandaloneCodeEditor,
   text: string,
@@ -480,10 +477,11 @@ async function appendFilesToEditor(
     segments.length = 0;
     segments.push(...nextSegments);
     updateLineNumbers(editor, segments);
+    const loadedNames = listLoadedFileNames(nextSegments);
     label =
-      fileList.length === 1
-        ? fileList[0].name
-        : `${fileList[0].name} (+${fileList.length - 1})`;
+      loadedNames.length > 0
+        ? formatLoadSuccessLabel(loadedNames)
+        : formatLoadSuccessLabel(fileList.map((file) => file.name));
   } catch (error) {
     if (shouldLogFileLoadError(error)) {
       console.error(error);
@@ -1565,6 +1563,7 @@ bindPaneClearButton(leftClearButton, {
   onAfterClear: () => {
     pendingLeftLineNo = null;
     updatePendingAnchorDecoration();
+    clearPaneMessage(leftMessage);
     recalcDiff();
     schedulePersist();
   },
@@ -1577,6 +1576,7 @@ bindPaneClearButton(rightClearButton, {
   onAfterClear: () => {
     pendingRightLineNo = null;
     updatePendingAnchorDecoration();
+    clearPaneMessage(rightMessage);
     recalcDiff();
     schedulePersist();
   },
@@ -1600,6 +1600,8 @@ clearButton.addEventListener("click", () => {
     rightEditor.setValue("");
     leftSegments.length = 0;
     rightSegments.length = 0;
+    clearPaneMessage(leftMessage);
+    clearPaneMessage(rightMessage);
     updateLineNumbers(leftEditor, leftSegments);
     updateLineNumbers(rightEditor, rightSegments);
     recalcDiff();
