@@ -1,5 +1,5 @@
 import type { LineOp, PairedOp } from "./types";
-import { extractLineKey } from "./lineSignature";
+import { buildLineFeatures, extractIndexTokens, scoreLinePair } from "./lineSimilarity";
 
 function countIndent(line: string): number {
   let count = 0;
@@ -13,68 +13,85 @@ function countIndent(line: string): number {
   return count;
 }
 
-function lcsLength(a: string, b: string): number {
-  // Classic dynamic programming LCS to estimate line similarity.
-  const rows = a.length + 1;
-  const cols = b.length + 1;
-  const dp = Array.from({ length: rows }, () => new Array<number>(cols).fill(0));
-
-  for (let i = 1; i < rows; i += 1) {
-    for (let j = 1; j < cols; j += 1) {
-      if (a[i - 1] === b[j - 1]) {
-        dp[i][j] = dp[i - 1][j - 1] + 1;
-      } else {
-        dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-      }
-    }
-  }
-
-  return dp[a.length][b.length];
-}
-
-function similarityScore(a: string, b: string): number {
-  const maxLen = Math.max(a.length, b.length);
-  if (maxLen === 0) {
-    return 1;
-  }
-  return lcsLength(a, b) / maxLen;
-}
-
 type PairCandidate = {
   deleteIndex: number;
   insertIndex: number;
   indentDiff: number;
-  similarity: number;
+  score: number;
   distance: number;
 };
 
+const WINDOW_SIZE = 40;
+const SCORE_THRESHOLD = 4;
+
+function buildIndexMap(features: ReturnType<typeof buildLineFeatures>[]): Map<string, number[]> {
+  const map = new Map<string, number[]>();
+  features.forEach((feature, index) => {
+    extractIndexTokens(feature).forEach((token) => {
+      const bucket = map.get(token);
+      if (bucket) {
+        bucket.push(index);
+      } else {
+        map.set(token, [index]);
+      }
+    });
+  });
+  return map;
+}
+
+function buildCandidateIndices(
+  index: number,
+  insertCount: number,
+  tokens: string[],
+  indexMap: Map<string, number[]>,
+): number[] {
+  const indices = new Set<number>();
+  const start = Math.max(0, index - WINDOW_SIZE);
+  const end = Math.min(insertCount - 1, index + WINDOW_SIZE);
+  for (let i = start; i <= end; i += 1) {
+    indices.add(i);
+  }
+  tokens.forEach((token) => {
+    const bucket = indexMap.get(token);
+    if (!bucket) {
+      return;
+    }
+    bucket.forEach((entry) => indices.add(entry));
+  });
+  return [...indices];
+}
+
 function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] {
   const candidates: PairCandidate[] = [];
+  const deleteFeatures = deletes.map((op) => buildLineFeatures(op.leftLine ?? ""));
+  const insertFeatures = inserts.map((op) => buildLineFeatures(op.rightLine ?? ""));
+  const insertIndex = buildIndexMap(insertFeatures);
 
   for (let d = 0; d < deletes.length; d += 1) {
-    const deleteOp = deletes[d];
-    const leftText = deleteOp.leftLine ?? "";
+    const leftText = deletes[d].leftLine ?? "";
     const leftIndent = countIndent(leftText);
-    const leftKey = extractLineKey(leftText);
+    const leftFeature = deleteFeatures[d];
+    const tokens = extractIndexTokens(leftFeature);
+    const candidateIndices = buildCandidateIndices(
+      d,
+      inserts.length,
+      tokens,
+      insertIndex,
+    );
 
-    for (let i = 0; i < inserts.length; i += 1) {
-      const insertOp = inserts[i];
-      const rightText = insertOp.rightLine ?? "";
+    for (const i of candidateIndices) {
+      const rightText = inserts[i].rightLine ?? "";
       const rightIndent = countIndent(rightText);
-      const rightKey = extractLineKey(rightText);
-
-      if (leftKey && rightKey && leftKey !== rightKey) {
+      const rightFeature = insertFeatures[i];
+      const score = scoreLinePair(leftFeature, rightFeature);
+      if (score === null || score < SCORE_THRESHOLD) {
         continue;
       }
-      if ((leftKey && !rightKey) || (!leftKey && rightKey)) {
-        continue;
-      }
-
       candidates.push({
         deleteIndex: d,
         insertIndex: i,
         indentDiff: Math.abs(leftIndent - rightIndent),
-        similarity: similarityScore(leftText, rightText),
+        score,
         distance: Math.abs(d - i),
       });
     }
@@ -84,11 +101,11 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
 }
 
 function sortCandidates(a: PairCandidate, b: PairCandidate): number {
+  if (a.score !== b.score) {
+    return b.score - a.score;
+  }
   if (a.indentDiff !== b.indentDiff) {
     return a.indentDiff - b.indentDiff;
-  }
-  if (a.similarity !== b.similarity) {
-    return b.similarity - a.similarity;
   }
   if (a.distance !== b.distance) {
     return a.distance - b.distance;

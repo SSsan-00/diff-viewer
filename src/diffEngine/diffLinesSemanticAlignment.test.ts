@@ -42,6 +42,30 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "function test", "string test")).toBe(true);
   });
 
+  it("aligns constant definitions across languages", () => {
+    const left = ["define('FOO','foo');"];
+    const right = ["public readonly string FOO = 'foo';"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "define('FOO'", "FOO = 'foo'")).toBe(true);
+  });
+
+  it("aligns property references to variable declarations", () => {
+    const left = ["this.foo = 1;"];
+    const right = ["$foo = 1;"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "this.foo", "$foo")).toBe(true);
+  });
+
+  it("aligns function calls with argument notation differences", () => {
+    const left = ["test($x);"];
+    const right = ["test(x);"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "test($x)", "test(x)")).toBe(true);
+  });
+
   it("does not align close-but-different variable names", () => {
     const left = ["var foo = 1;"];
     const right = ["var food = 1;"];

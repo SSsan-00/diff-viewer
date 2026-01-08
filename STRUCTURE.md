@@ -42,6 +42,7 @@
 - `src/file/postLoad.ts` 読み込み後の処理を安全に実行する補助。
 - `src/file/decodedFiles.ts` rawBytes からテキスト/セグメントを再構築する。
 - `src/diffEngine/anchors.ts` アンカーの検証と適用ロジック。
+- `src/diffEngine/lineSimilarity.ts` 識別子/リテラルの類似スコア計算。
 - `src/storage/` LocalStorage 永続化の読み書き。
 - `src/ui/template.ts` UI の HTML テンプレート定義。
 - `src/ui/anchorClick.ts` アンカー行クリック時の状態遷移。
