@@ -16,6 +16,10 @@ export const APP_TEMPLATE = `
           <input id="fold-toggle" type="checkbox" />
           <span>差分なしの箇所を折りたたみ</span>
         </label>
+        <label class="toggle">
+          <input id="theme-toggle" type="checkbox" />
+          <span>☀️/🌙</span>
+        </label>
         <button id="clear" class="button button-subtle" type="button">クリア</button>
       </div>
     </header>
@@ -24,15 +28,10 @@ export const APP_TEMPLATE = `
         <div class="anchor-title">アンカー</div>
         <div class="anchor-header-right">
           <div id="anchor-message" class="anchor-message" aria-live="polite"></div>
-          <button
-            id="anchor-toggle"
-            class="button button-subtle"
-            type="button"
-            aria-expanded="true"
-            aria-controls="anchor-panel-body"
-          >
-            折りたたみ
-          </button>
+          <label class="toggle">
+            <input id="anchor-toggle" type="checkbox" />
+            <span>アンカーを折りたたみ</span>
+          </label>
         </div>
       </div>
       <div id="anchor-panel-body" class="anchor-panel-body">

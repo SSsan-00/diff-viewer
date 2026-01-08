@@ -15,7 +15,8 @@ describe("anchor panel toggle", () => {
     const document = setupDom();
     const panel = document.querySelector(".anchor-panel") as HTMLElement;
     const body = document.querySelector("#anchor-panel-body") as HTMLElement;
-    const toggle = document.querySelector("#anchor-toggle") as HTMLButtonElement;
+    const toggle = document.querySelector("#anchor-toggle") as HTMLInputElement;
+    const toggleLabel = toggle.closest("label");
     const list = document.querySelector("#anchor-list") as HTMLUListElement;
 
     const sample = document.createElement("li");
@@ -24,22 +25,23 @@ describe("anchor panel toggle", () => {
 
     expect(panel.classList.contains("is-collapsed")).toBe(false);
     expect(body.hidden).toBe(false);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.checked).toBe(false);
+    expect(toggleLabel?.classList.contains("toggle")).toBe(true);
 
-    toggle.click();
+    toggle.checked = true;
+    toggle.dispatchEvent(new document.defaultView!.Event("change"));
 
     expect(panel.classList.contains("is-collapsed")).toBe(true);
     expect(body.hidden).toBe(true);
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(toggle.textContent).toBe("展開");
+    expect(toggle.checked).toBe(true);
     expect(list.querySelectorAll("li").length).toBe(1);
 
-    toggle.click();
+    toggle.checked = false;
+    toggle.dispatchEvent(new document.defaultView!.Event("change"));
 
     expect(panel.classList.contains("is-collapsed")).toBe(false);
     expect(body.hidden).toBe(false);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(toggle.textContent).toBe("折りたたみ");
+    expect(toggle.checked).toBe(false);
     expect(list.querySelectorAll("li").length).toBe(1);
   });
 });

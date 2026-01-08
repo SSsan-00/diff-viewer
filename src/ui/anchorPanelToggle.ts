@@ -1,7 +1,7 @@
 type AnchorToggleElements = {
   panel: HTMLElement;
   body: HTMLElement;
-  toggle: HTMLButtonElement;
+  toggle: HTMLInputElement;
 };
 
 type AnchorPanelToggleOptions = {
@@ -12,7 +12,7 @@ type AnchorPanelToggleOptions = {
 function getAnchorToggleElements(root: ParentNode): AnchorToggleElements | null {
   const panel = root.querySelector<HTMLElement>(".anchor-panel");
   const body = root.querySelector<HTMLElement>("#anchor-panel-body");
-  const toggle = root.querySelector<HTMLButtonElement>("#anchor-toggle");
+  const toggle = root.querySelector<HTMLInputElement>("#anchor-toggle");
   if (!panel || !body || !toggle) {
     return null;
   }
@@ -26,8 +26,7 @@ function applyCollapsedState(
   const { panel, body, toggle } = elements;
   panel.classList.toggle("is-collapsed", collapsed);
   body.hidden = collapsed;
-  toggle.setAttribute("aria-expanded", String(!collapsed));
-  toggle.textContent = collapsed ? "展開" : "折りたたみ";
+  toggle.checked = collapsed;
 }
 
 export function setupAnchorPanelToggle(
@@ -39,12 +38,12 @@ export function setupAnchorPanelToggle(
     return;
   }
 
-  const { panel, toggle } = elements;
+  const { toggle } = elements;
   const initialCollapsed = options.initialCollapsed ?? false;
   applyCollapsedState(elements, initialCollapsed);
 
-  toggle.addEventListener("click", () => {
-    const collapsed = !panel.classList.contains("is-collapsed");
+  toggle.addEventListener("change", () => {
+    const collapsed = toggle.checked;
     applyCollapsedState(elements, collapsed);
     options.onToggle?.(collapsed);
   });

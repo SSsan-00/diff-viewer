@@ -36,6 +36,7 @@ import {
 } from "./ui/anchorClick";
 import { handleFindShortcut } from "./ui/editorFind";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
+import { setupThemeToggle } from "./ui/themeToggle";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -295,6 +296,13 @@ leftEditor.onDidFocusEditorText(() => {
 });
 rightEditor.onDidFocusEditorText(() => {
   lastFocusedSide = "right";
+});
+
+setupThemeToggle(document, {
+  storage,
+  onThemeChange: (mode) => {
+    monaco.editor.setTheme(mode === "dark" ? "vs-dark" : "vs");
+  },
 });
 
 leftEditor.onDidChangeModelContent(() => {

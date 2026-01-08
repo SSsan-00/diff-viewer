@@ -48,6 +48,7 @@
 - `src/ui/anchorClick.ts` アンカー行クリック時の状態遷移。
 - `src/ui/editorFind.ts` Ctrl/Cmd+F の検索対象切替。
 - `src/ui/diffJumpButtons.ts` 差分ジャンプボタンの有効/無効制御。
+- `src/ui/themeToggle.ts` テーマ切替（☀️/🌙）の状態管理。
 - `src/style.css` 画面レイアウトと見た目のスタイル定義。
 - `public/` 公開用の静的リソース置き場。
 - `patches/` 依存関係向けのパッチ保管。

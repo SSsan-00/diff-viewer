@@ -601,3 +601,127 @@ body {
     align-items: flex-start;
   }
 }
+
+/* Dark theme overrides */
+[data-theme="dark"] {
+  color: #e6e2d8;
+  background-color: #1a1815;
+}
+
+[data-theme="dark"] body {
+  background: radial-gradient(circle at top, #2a2622, #1f1b18 45%, #161412 85%);
+}
+
+[data-theme="dark"] .toolbar {
+  background: linear-gradient(120deg, #2b2621, #201c18);
+  border-bottom-color: #3b342d;
+}
+
+[data-theme="dark"] .anchor-panel {
+  background-color: rgba(30, 27, 24, 0.85);
+  border-bottom-color: #3b342d;
+}
+
+[data-theme="dark"] .editor-pane {
+  background-color: #1f1b18;
+  border-color: #3b342d;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .pane-title {
+  background-color: #231f1b;
+}
+
+[data-theme="dark"] .pane-select select {
+  background-color: #26211d;
+  color: #e6e2d8;
+  border-color: #3b342d;
+}
+
+[data-theme="dark"] .pane-message {
+  color: #c9c2b7;
+}
+
+[data-theme="dark"] .pane-message.is-error {
+  color: #e08a7a;
+}
+
+[data-theme="dark"] .button {
+  background-color: #2a241f;
+  color: #e6e2d8;
+  border-color: #3b342d;
+}
+
+[data-theme="dark"] .button:hover {
+  background-color: #342c26;
+  border-color: #5a4f45;
+}
+
+[data-theme="dark"] .button-subtle {
+  background-color: #26211d;
+}
+
+[data-theme="dark"] .toggle {
+  border-color: #3b342d;
+  background-color: #241f1b;
+}
+
+[data-theme="dark"] .toggle input {
+  border-color: #3b342d;
+  background-color: #2d2722;
+}
+
+[data-theme="dark"] .toggle input::after {
+  background-color: #f0ebe2;
+}
+
+[data-theme="dark"] .toggle input:checked {
+  background-color: rgba(115, 165, 255, 0.4);
+  border-color: rgba(115, 165, 255, 0.7);
+}
+
+[data-theme="dark"] .toggle:hover {
+  border-color: #5a4f45;
+}
+
+[data-theme="dark"] .anchor-title {
+  color: #c9c2b7;
+}
+
+[data-theme="dark"] .anchor-message {
+  color: #8ec6c1;
+}
+
+[data-theme="dark"] .anchor-warning {
+  color: #e08a7a;
+}
+
+[data-theme="dark"] .monaco-editor .line-insert {
+  background-color: rgba(80, 170, 90, 0.32);
+}
+
+[data-theme="dark"] .monaco-editor .line-delete {
+  background-color: rgba(210, 90, 70, 0.3);
+}
+
+[data-theme="dark"] .monaco-editor .line-replace {
+  background-color: rgba(200, 170, 90, 0.32);
+}
+
+[data-theme="dark"] .monaco-editor .diff-anchor-line {
+  background-color: rgba(115, 165, 255, 0.28);
+}
+
+[data-theme="dark"] .monaco-editor .diff-anchor-glyph {
+  background-color: #7aa7ff;
+}
+
+[data-theme="dark"] .monaco-editor .diff-anchor-auto-line {
+  background-color: rgba(64, 196, 181, 0.25);
+  box-shadow: inset 3px 0 0 rgba(64, 196, 181, 0.7);
+}
+
+[data-theme="dark"] .monaco-editor .diff-anchor-auto-glyph {
+  background-color: rgba(64, 196, 181, 0.9);
+  box-shadow: 0 0 0 1px rgba(24, 124, 116, 0.7);
+}
