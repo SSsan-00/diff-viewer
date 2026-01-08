@@ -43,6 +43,7 @@
 - `src/diffEngine/anchors.ts` アンカーの検証と適用ロジック。
 - `src/storage/` LocalStorage 永続化の読み書き。
 - `src/ui/template.ts` UI の HTML テンプレート定義。
+- `src/ui/anchorClick.ts` アンカー行クリック時の状態遷移。
 - `src/style.css` 画面レイアウトと見た目のスタイル定義。
 - `public/` 公開用の静的リソース置き場。
 - `patches/` 依存関係向けのパッチ保管。

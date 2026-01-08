@@ -30,6 +30,10 @@ import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
 import { bindPaneClearButton } from "./ui/paneClear";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import {
+  handleLeftAnchorClick,
+  handleRightAnchorClick,
+} from "./ui/anchorClick";
+import {
   clearPersistedState,
   createPersistScheduler,
   loadPersistedState,
@@ -608,31 +612,41 @@ leftEditor.onMouseDown((event) => {
     return;
   }
   const leftLineNo = lineNumber - 1;
-  const removal = removeAnchorByLeft(manualAnchors, leftLineNo);
-  if (removal.removed) {
-    manualAnchors = removal.next;
-    pendingLeftLineNo = null;
-    pendingRightLineNo = null;
-    setAnchorMessage(`Anchor removed: ${formatAnchor(removal.removed)}`);
-  } else if (autoAnchor && autoAnchor.leftLineNo === leftLineNo) {
-    suppressedAutoAnchorKey = autoAnchorKey(autoAnchor);
-    autoAnchor = null;
+  const result = handleLeftAnchorClick({
+    manualAnchors,
+    pendingLeftLineNo,
+    pendingRightLineNo,
+    autoAnchor,
+    suppressedAutoAnchorKey,
+    lineNo: leftLineNo,
+  });
+  manualAnchors = result.manualAnchors;
+  pendingLeftLineNo = result.pendingLeftLineNo;
+  pendingRightLineNo = result.pendingRightLineNo;
+  autoAnchor = result.autoAnchor;
+  suppressedAutoAnchorKey = result.suppressedAutoAnchorKey;
+
+  if (result.action === "removed" && result.removedAnchor) {
+    setAnchorMessage(`Anchor removed: ${formatAnchor(result.removedAnchor)}`);
+  } else if (result.action === "auto-removed") {
     if (selectedAnchorKey === suppressedAutoAnchorKey) {
       selectedAnchorKey = null;
     }
-    pendingLeftLineNo = null;
-    pendingRightLineNo = null;
     setAnchorMessage("Auto anchor removed.");
-  } else if (pendingRightLineNo !== null) {
-    const anchor = { leftLineNo, rightLineNo: pendingRightLineNo };
-    manualAnchors = addAnchor(manualAnchors, anchor);
-    pendingLeftLineNo = null;
-    pendingRightLineNo = null;
-    setAnchorMessage(`Anchor added: ${formatAnchor(anchor)}`);
-    recalcDiff();
-  } else {
-    pendingLeftLineNo = leftLineNo;
+  } else if (result.action === "added" && result.addedAnchor) {
+    setAnchorMessage(`Anchor added: ${formatAnchor(result.addedAnchor)}`);
+  } else if (result.action === "pending-cleared") {
+    setAnchorMessage("左行の選択を解除しました。");
+  } else if (result.action === "pending-set") {
     setAnchorMessage("左行を選択しました。右行を選んでください。");
+  }
+
+  if (
+    result.action === "added" ||
+    result.action === "removed" ||
+    result.action === "auto-removed"
+  ) {
+    recalcDiff();
   }
   updatePendingAnchorDecoration();
   const validation = validateAnchors(
@@ -654,31 +668,40 @@ rightEditor.onMouseDown((event) => {
     return;
   }
   const rightLineNo = lineNumber - 1;
-  const removal = removeAnchorByRight(manualAnchors, rightLineNo);
-  if (removal.removed) {
-    manualAnchors = removal.next;
-    pendingLeftLineNo = null;
-    pendingRightLineNo = null;
-    setAnchorMessage(`Anchor removed: ${formatAnchor(removal.removed)}`);
-  } else if (autoAnchor && autoAnchor.rightLineNo === rightLineNo) {
-    suppressedAutoAnchorKey = autoAnchorKey(autoAnchor);
-    autoAnchor = null;
+  const result = handleRightAnchorClick({
+    manualAnchors,
+    pendingLeftLineNo,
+    pendingRightLineNo,
+    autoAnchor,
+    suppressedAutoAnchorKey,
+    lineNo: rightLineNo,
+  });
+  manualAnchors = result.manualAnchors;
+  pendingLeftLineNo = result.pendingLeftLineNo;
+  pendingRightLineNo = result.pendingRightLineNo;
+  autoAnchor = result.autoAnchor;
+  suppressedAutoAnchorKey = result.suppressedAutoAnchorKey;
+
+  if (result.action === "removed" && result.removedAnchor) {
+    setAnchorMessage(`Anchor removed: ${formatAnchor(result.removedAnchor)}`);
+  } else if (result.action === "auto-removed") {
     if (selectedAnchorKey === suppressedAutoAnchorKey) {
       selectedAnchorKey = null;
     }
-    pendingLeftLineNo = null;
-    pendingRightLineNo = null;
     setAnchorMessage("Auto anchor removed.");
-  } else if (pendingLeftLineNo === null) {
-    pendingRightLineNo = rightLineNo;
+  } else if (result.action === "added" && result.addedAnchor) {
+    setAnchorMessage(`Anchor added: ${formatAnchor(result.addedAnchor)}`);
+  } else if (result.action === "pending-cleared") {
+    setAnchorMessage("右行の選択を解除しました。");
+  } else if (result.action === "pending-set") {
     setAnchorMessage("右行を選択しました。左行を選んでください。");
-  } else {
-    const leftLineNo = pendingLeftLineNo;
-    const anchor = { leftLineNo, rightLineNo };
-    manualAnchors = addAnchor(manualAnchors, anchor);
-    pendingLeftLineNo = null;
-    pendingRightLineNo = null;
-    setAnchorMessage(`Anchor added: ${formatAnchor(anchor)}`);
+  }
+
+  if (
+    result.action === "added" ||
+    result.action === "removed" ||
+    result.action === "auto-removed"
+  ) {
     recalcDiff();
   }
   updatePendingAnchorDecoration();
