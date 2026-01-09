@@ -56,6 +56,8 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` / `dist/i
 
 ## Development
 
+セットアップ手順の詳細は `doc/SETUP.md` を参照してください。
+
 ### Prerequisites
 
 - Node.js（推奨: LTS）
@@ -107,7 +109,7 @@ pnpm run verify:dist
 
 ## Project Structure
 
-- 構成の概要は `STRUCTURE.md` を参照してください。
+- 構成の概要は `doc/STRUCTURE.md` を参照してください。
 
 ---
 
@@ -153,12 +155,12 @@ modulepreload の polyfill 関数が含まれていないことを確認して�
 ## Notes
 
 - 本プロジェクトは「VS Code と同一アルゴリズム」を目指すのではなく、ユーザーが違和感の少ない “VS Code っぽい体験” を優先します。
-- 詳細な仕様は `spec.md` を参照してください。
+- 詳細な仕様は `doc/SPEC.md` を参照してください。
 
 ---
 
 ## Documentation policy
 
-- `spec.md` は本プロジェクトの Single Source of Truth（仕様の唯一の正）です。
-- `README.md` は **常に最新の仕様（spec.md）に追従**する方針で更新します。
+- `doc/SPEC.md` は本プロジェクトの Single Source of Truth（仕様の唯一の正）です。
+- `README.md` は **常に最新の仕様（doc/SPEC.md）に追従**する方針で更新します。
   - 機能追加・挙動変更・ビルド手順変更が入った場合は、同じPR/コミット内で README も更新します。

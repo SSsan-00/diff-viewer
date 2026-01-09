@@ -5,9 +5,10 @@
 - UI テンプレートは `src/ui/template.ts` に集約。
 - テストはソースと同居し `*.test.ts` 命名（例: `src/diffEngine/diffBlocks.test.ts`）。
 - `dist/index.html` / `dist/index.min.html` が単一ファイルの成果物（追加 JS/CSS なし）。
-- 仕様は `spec.md` が唯一の正。`README.md` は必ず追従更新。
+- 仕様は `doc/SPEC.md` が唯一の正。`README.md` は必ず追従更新。
 - 検証スクリプトは `scripts/`（`scripts/verify-dist.mjs`）。
-- 構成の俯瞰は `STRUCTURE.md` を参照。
+- 構成の俯瞰は `doc/STRUCTURE.md` を参照。
+- 初回セットアップ手順は `doc/SETUP.md` を参照。
 
 ## 開発・ビルド・テストコマンド
 - `pnpm install` 依存関係の導入（CI は `--frozen-lockfile` 推奨）。
