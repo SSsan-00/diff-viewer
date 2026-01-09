@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   monaco-editor:
-    hash: 538a05afc34d54c3f1fe9081472ada36ef6af279087b608a78df9ea7fed2213d
+    hash: 2f57cb168aa39dbf2a8a27f7797fbc5902fb8f9643c1a033f154a1ebc5274061
     path: patches/monaco-editor.patch
 
 importers:
@@ -15,7 +15,7 @@ importers:
     dependencies:
       monaco-editor:
         specifier: ^0.55.1
-        version: 0.55.1(patch_hash=34f878bad3fc7bb5b05004f82f3e7cf2f15af2d0be7f57c6b296ff3753fe57bc)
+        version: 0.55.1(patch_hash=2f57cb168aa39dbf2a8a27f7797fbc5902fb8f9643c1a033f154a1ebc5274061)
     devDependencies:
       '@testing-library/dom':
         specifier: ^10.4.1
@@ -1348,7 +1348,7 @@ snapshots:
       braces: 3.0.3
       picomatch: 2.3.1
 
-  monaco-editor@0.55.1(patch_hash=34f878bad3fc7bb5b05004f82f3e7cf2f15af2d0be7f57c6b296ff3753fe57bc):
+  monaco-editor@0.55.1(patch_hash=2f57cb168aa39dbf2a8a27f7797fbc5902fb8f9643c1a033f154a1ebc5274061):
     dependencies:
       dompurify: 3.2.7
       marked: 14.0.0
