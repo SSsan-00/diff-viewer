@@ -19,6 +19,7 @@ import {
   buildDecodedFiles,
   type FileBytes,
 } from "./file/decodedFiles";
+import { reorderRazorPairs } from "./file/fileOrder";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
   addAnchor,
@@ -413,7 +414,7 @@ async function appendFilesToEditor(
   rawFiles: FileBytes[],
   side: "left" | "right",
 ) {
-  const fileList = Array.from(files);
+  const fileList = reorderRazorPairs(Array.from(files));
   if (fileList.length === 0) {
     setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
     return;

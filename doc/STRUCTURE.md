@@ -70,6 +70,8 @@
 
 - `src/file/decode.ts` 文字コードデコード（UTF-8/SJIS/EUC-JP/auto）。exports: `FileEncoding`, `decodeArrayBuffer`。
 - `src/file/decode.test.ts` `decodeArrayBuffer` のユニットテスト。
+- `src/file/fileOrder.ts` 複数ファイル読み込み時の順序調整（cshtml.cs → cshtml）。export: `reorderRazorPairs`。
+- `src/file/fileOrder.test.ts` cshtml ペア順序のテスト。
 - `src/file/decodedFiles.ts` rawBytes から連結テキスト/セグメントを生成。exports: `FileBytes`, `DecodedFilesResult`, `buildDecodedFiles`。
 - `src/file/decodedFiles.test.ts` 再デコード/セグメント生成のテスト。
 - `src/file/lineNumbering.ts` file-local 行番号フォーマット/取得ユーティリティ。exports: `LineSegment`, `LineSegmentInfo`, `getLineSegmentInfo`, `createLineNumberFormatter`。
