@@ -565,6 +565,7 @@ Myers の結果は基本的に `insert`/`delete` の列として得られるた�
 - 成果物は **単一HTMLでスタンドアロン動作**
   - 開発中は Vite/TypeScript/テスト導入 OK
   - 最終成果物として `dist/index.html` / `dist/index.min.html` が単体で動く形に落とす（ビルドでインライン化）
+  - Monaco の worker は **inline worker** として組み込み、実行時に Blob URL を用いて起動する（単一HTML維持のため許容）
 
 ### 13.1 パッケージマネージャー（npm → pnpm）
 
