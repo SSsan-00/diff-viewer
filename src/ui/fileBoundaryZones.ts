@@ -43,7 +43,7 @@ function buildBoundaryMap(
     if (segment.startLine <= 1) {
       continue;
     }
-    const lineNo = segment.startLine - 2;
+    const lineNo = segment.startLine - 1;
     const rowIndex = findRowIndexForLine(ops, side, lineNo);
     if (rowIndex === null) {
       continue;

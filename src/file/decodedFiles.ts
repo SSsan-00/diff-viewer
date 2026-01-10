@@ -1,6 +1,7 @@
 import { decodeArrayBuffer, type FileEncoding } from "./decode";
 import { normalizeText } from "../diffEngine/normalize";
 import type { LineSegment } from "./lineNumbering";
+import { normalizeLastSegmentForAppend } from "./segmentAppend";
 
 export type FileBytes = {
   name: string;
@@ -12,50 +13,63 @@ export type DecodedFilesResult = {
   segments: LineSegment[];
 };
 
-function getAppendStartLine(currentValue: string, currentLineCount: number): number {
+function appendText(currentValue: string, nextValue: string): string {
   if (!currentValue) {
-    return 1;
+    return nextValue;
   }
-  return currentLineCount + (currentValue.endsWith("\n") ? 0 : 1);
+  const separator = currentValue.endsWith("\n") ? "" : "\n";
+  return currentValue + separator + nextValue;
 }
 
-export function buildDecodedFiles(
+function getLogicalLineCount(text: string): { lineCount: number; endsWithNewline: boolean } {
+  const endsWithNewline = text.endsWith("\n");
+  const lines = text.split("\n");
+  const lineCount = endsWithNewline
+    ? Math.max(1, lines.length - 1)
+    : Math.max(1, lines.length);
+  return { lineCount, endsWithNewline };
+}
+
+export function appendDecodedFiles(
+  currentText: string,
+  currentSegments: LineSegment[],
   files: FileBytes[],
   encoding: FileEncoding,
 ): DecodedFilesResult {
-  const segments: LineSegment[] = [];
-  let currentValue = "";
-  let currentLineCount = 0;
+  let text = currentText;
+  const segments = [...currentSegments];
 
-  files.forEach((file, index) => {
-    const lastSegment = segments[segments.length - 1];
-    if (lastSegment?.endsWithNewline) {
-      lastSegment.lineCount = Math.max(1, lastSegment.lineCount - 1);
-      lastSegment.endsWithNewline = false;
-    }
+  files.forEach((file) => {
+    normalizeLastSegmentForAppend(segments, text);
 
     const buffer = file.bytes.buffer.slice(
       file.bytes.byteOffset,
       file.bytes.byteOffset + file.bytes.byteLength,
     );
     const decoded = normalizeText(decodeArrayBuffer(buffer, encoding));
-    const endsWithNewline = decoded.endsWith("\n");
-    const startLine = getAppendStartLine(currentValue, currentLineCount);
-    const lineCount = decoded.split("\n").length;
+    const { lineCount, endsWithNewline } = getLogicalLineCount(decoded);
+    const startLine =
+      segments.length === 0
+        ? 1
+        : segments[segments.length - 1].startLine + segments[segments.length - 1].lineCount;
+    const fileIndex = segments.length + 1;
 
     segments.push({
       startLine,
       lineCount,
-      fileIndex: index + 1,
+      fileIndex,
       fileName: file.name,
       endsWithNewline,
     });
-
-    currentValue = currentValue
-      ? currentValue + (currentValue.endsWith("\n") ? "" : "\n") + decoded
-      : decoded;
-    currentLineCount = currentValue.split("\n").length;
+    text = appendText(text, decoded);
   });
 
-  return { text: currentValue, segments };
+  return { text, segments };
+}
+
+export function buildDecodedFiles(
+  files: FileBytes[],
+  encoding: FileEncoding,
+): DecodedFilesResult {
+  return appendDecodedFiles("", [], files, encoding);
 }

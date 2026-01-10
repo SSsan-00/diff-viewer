@@ -74,6 +74,8 @@
 - `src/file/decodedFiles.test.ts` 再デコード/セグメント生成のテスト。
 - `src/file/lineNumbering.ts` file-local 行番号フォーマット/取得ユーティリティ。exports: `LineSegment`, `LineSegmentInfo`, `getLineSegmentInfo`, `createLineNumberFormatter`。
 - `src/file/lineNumbering.test.ts` 行番号計算のテスト。
+- `src/file/segmentAppend.ts` 追加入力時の末尾改行の扱いを正規化。export: `normalizeLastSegmentForAppend`。
+- `src/file/segmentAppend.test.ts` 末尾改行の正規化テスト。
 - `src/file/loadMessages.ts` 読み込み完了メッセージの整形（ファイル名列挙）。exports: `formatLoadSuccessLabel`, `listLoadedFileNames`。
 - `src/file/loadMessages.test.ts` メッセージ生成のテスト。
 - `src/file/loadErrors.ts` 読み込みエラー整形とログ判定。exports: `isInitializationReferenceError`, `formatFileLoadError`, `shouldLogFileLoadError`。

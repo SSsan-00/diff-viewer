@@ -27,4 +27,20 @@ describe("file boundary zones alignment", () => {
     expect(zones.left[0].label).toContain("fileB.txt");
     expect(zones.right[0].label).toBeUndefined();
   });
+
+  it("places the boundary after the previous file's last line", () => {
+    const leftText = ["A1", "A2", "B1", "B2"].join("\n");
+    const rightText = ["A1", "A2", "B1", "B2"].join("\n");
+    const ops = pairReplace(diffLines(leftText, rightText));
+
+    const leftSegments: LineSegment[] = [
+      { startLine: 1, lineCount: 2, fileIndex: 1, fileName: "fileA.txt" },
+      { startLine: 3, lineCount: 2, fileIndex: 2, fileName: "fileB.txt" },
+    ];
+
+    const zones = buildAlignedFileBoundaryZones(ops, leftSegments, leftSegments, 3);
+
+    expect(zones.left[0].afterLineNumber).toBe(2);
+    expect(zones.right[0].afterLineNumber).toBe(2);
+  });
 });

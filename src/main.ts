@@ -8,13 +8,17 @@ import { diffInline } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
-import { decodeArrayBuffer, type FileEncoding } from "./file/decode";
+import { type FileEncoding } from "./file/decode";
 import {
   createLineNumberFormatter,
   getLineSegmentInfo,
   type LineSegment,
 } from "./file/lineNumbering";
-import { buildDecodedFiles, type FileBytes } from "./file/decodedFiles";
+import {
+  appendDecodedFiles,
+  buildDecodedFiles,
+  type FileBytes,
+} from "./file/decodedFiles";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
   addAnchor,
@@ -333,29 +337,6 @@ rightEditor.onDidChangeModelContent(() => {
   schedulePersist();
 });
 
-function appendTextToEditor(
-  editor: monaco.editor.IStandaloneCodeEditor,
-  text: string,
-) {
-  const current = editor.getValue();
-  if (!current) {
-    editor.setValue(text);
-    return;
-  }
-  const separator = current.endsWith("\n") ? "" : "\n";
-  editor.setValue(current + separator + text);
-}
-
-function getAppendStartLine(
-  currentValue: string,
-  currentLineCount: number,
-): number {
-  if (!currentValue) {
-    return 1;
-  }
-  return currentLineCount + (currentValue.endsWith("\n") ? 0 : 1);
-}
-
 function updateLineNumbers(
   editor: monaco.editor.IStandaloneCodeEditor,
   segments: LineSegment[],
@@ -443,47 +424,21 @@ async function appendFilesToEditor(
   let nextSegments: LineSegment[] = [];
   let label = "";
   try {
-    nextSegments = [...segments];
-    const parts: string[] = [];
-    let currentValue = editor.getValue();
-    let currentLineCount =
-      editor.getModel()?.getLineCount() ?? currentValue.split("\n").length;
-
-    const baseFileIndex = nextSegments.length;
-    for (const [index, file] of fileList.entries()) {
-      const lastSegment = nextSegments[nextSegments.length - 1];
-      if (lastSegment?.endsWithNewline) {
-        lastSegment.lineCount = Math.max(1, lastSegment.lineCount - 1);
-        lastSegment.endsWithNewline = false;
-      }
+    const incomingFiles: FileBytes[] = [];
+    for (const file of fileList) {
       currentFileName = file.name;
-      const fileIndex = baseFileIndex + index + 1;
       const buffer = await file.arrayBuffer();
       const bytes = new Uint8Array(buffer);
-      const text = normalizeText(decodeArrayBuffer(buffer, encoding));
-      const endsWithNewline = text.endsWith("\n");
-      const startLine = getAppendStartLine(currentValue, currentLineCount);
-      const lineCount = text.split("\n").length;
-
+      incomingFiles.push({ name: file.name, bytes });
       if (shouldTrackRawBytes) {
         rawFiles.push({ name: file.name, bytes });
       }
-      parts.push(text);
-      nextSegments.push({
-        startLine,
-        lineCount,
-        fileIndex,
-        fileName: file.name,
-        endsWithNewline,
-      });
-      currentValue = currentValue
-        ? currentValue + (currentValue.endsWith("\n") ? "" : "\n") + text
-        : text;
-      currentLineCount = currentValue.split("\n").length;
     }
 
+    const appended = appendDecodedFiles(editor.getValue(), segments, incomingFiles, encoding);
+    nextSegments = appended.segments;
     withProgrammaticEdit(side, () => {
-      parts.forEach((text) => appendTextToEditor(editor, text));
+      editor.setValue(appended.text);
     });
     segments.length = 0;
     segments.push(...nextSegments);

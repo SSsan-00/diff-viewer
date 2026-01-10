@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { buildDecodedFiles, type FileBytes } from "./decodedFiles";
+import { appendDecodedFiles, buildDecodedFiles, type FileBytes } from "./decodedFiles";
+import { getLineSegmentInfo } from "./lineNumbering";
 
 function toBytes(bytes: number[]): Uint8Array {
   return new Uint8Array(bytes);
@@ -29,5 +30,55 @@ describe("buildDecodedFiles", () => {
     expect(result.segments[1].fileIndex).toBe(2);
     expect(result.segments[0].fileName).toBe("a.txt");
     expect(result.segments[1].fileName).toBe("b.txt");
+  });
+
+  it("keeps the next file's first line at the segment start (no trailing newline)", () => {
+    const files: FileBytes[] = [
+      { name: "a.txt", bytes: toBytes([0x41, 0x31, 0x0a, 0x41, 0x32]) },
+      { name: "b.txt", bytes: toBytes([0x42, 0x31, 0x0a, 0x42, 0x32]) },
+    ];
+    const result = buildDecodedFiles(files, "utf-8");
+    const lines = result.text.split("\n");
+    const secondSegment = result.segments[1];
+
+    expect(lines[secondSegment.startLine - 1]).toBe("B1");
+    const info = getLineSegmentInfo(result.segments, secondSegment.startLine);
+    expect(info?.fileIndex).toBe(2);
+    expect(info?.localLine).toBe(1);
+  });
+
+  it("keeps the next file's first line at the segment start (trailing newline)", () => {
+    const files: FileBytes[] = [
+      { name: "a.txt", bytes: toBytes([0x41, 0x31, 0x0a, 0x41, 0x32, 0x0a]) },
+      { name: "b.txt", bytes: toBytes([0x42, 0x31, 0x0a, 0x42, 0x32]) },
+    ];
+    const result = buildDecodedFiles(files, "utf-8");
+    const lines = result.text.split("\n");
+    const secondSegment = result.segments[1];
+
+    expect(lines[secondSegment.startLine - 1]).toBe("B1");
+    const info = getLineSegmentInfo(result.segments, secondSegment.startLine);
+    expect(info?.fileIndex).toBe(2);
+    expect(info?.localLine).toBe(1);
+  });
+
+  it("keeps the next file's first line at the segment start on append", () => {
+    const first = buildDecodedFiles(
+      [{ name: "a.txt", bytes: toBytes([0x41, 0x31, 0x0a, 0x41, 0x32, 0x0a]) }],
+      "utf-8",
+    );
+    const appended = appendDecodedFiles(
+      first.text,
+      first.segments,
+      [{ name: "b.txt", bytes: toBytes([0x42, 0x31, 0x0a, 0x42, 0x32]) }],
+      "utf-8",
+    );
+    const lines = appended.text.split("\n");
+    const secondSegment = appended.segments[1];
+
+    expect(lines[secondSegment.startLine - 1]).toBe("B1");
+    const info = getLineSegmentInfo(appended.segments, secondSegment.startLine);
+    expect(info?.fileIndex).toBe(2);
+    expect(info?.localLine).toBe(1);
   });
 });
