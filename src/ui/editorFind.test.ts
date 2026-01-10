@@ -80,4 +80,29 @@ describe("handleFindShortcut", () => {
     expect(rightRun).toHaveBeenCalledTimes(1);
     expect(leftRun).not.toHaveBeenCalled();
   });
+
+  it("uses trigger when find action is unavailable", () => {
+    const trigger = vi.fn();
+    const event = {
+      ctrlKey: true,
+      metaKey: false,
+      key: "f",
+      code: "KeyF",
+      preventDefault: vi.fn(),
+    } as unknown as KeyboardEvent;
+
+    const handled = handleFindShortcut(event, {
+      left: {
+        hasTextFocus: () => true,
+        getAction: () => null,
+        trigger,
+      },
+      right: createEditor(false, vi.fn()),
+      getLastFocused: () => "left",
+    });
+
+    expect(handled).toBe(true);
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(trigger).toHaveBeenCalledWith("keyboard", "actions.find", null);
+  });
 });

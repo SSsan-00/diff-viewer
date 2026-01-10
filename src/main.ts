@@ -682,13 +682,17 @@ function preventWindowDrop(event: DragEvent) {
 
 window.addEventListener("dragover", preventWindowDrop);
 window.addEventListener("drop", preventWindowDrop);
-window.addEventListener("keydown", (event) => {
-  handleFindShortcut(event, {
-    left: leftEditor,
-    right: rightEditor,
-    getLastFocused: () => lastFocusedSide,
-  });
-});
+window.addEventListener(
+  "keydown",
+  (event) => {
+    handleFindShortcut(event, {
+      left: leftEditor,
+      right: rightEditor,
+      getLastFocused: () => lastFocusedSide,
+    });
+  },
+  { capture: true },
+);
 
 const scrollSync = new ScrollSyncController(
   {

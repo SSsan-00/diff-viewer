@@ -7,6 +7,8 @@ export type FindAction = {
 export type EditorFindLike = {
   hasTextFocus?: () => boolean;
   getAction: (id: string) => FindAction | null;
+  trigger?: (source: string, id: string, payload: unknown) => void;
+  focus?: () => void;
 };
 
 type FindContext = {
@@ -19,7 +21,7 @@ function isFindShortcut(event: KeyboardEvent): boolean {
   if (!(event.ctrlKey || event.metaKey)) {
     return false;
   }
-  return event.key.toLowerCase() === "f";
+  return event.key.toLowerCase() === "f" || event.code === "KeyF";
 }
 
 function resolveActiveSide(context: FindContext): EditorSide {
@@ -33,8 +35,13 @@ function resolveActiveSide(context: FindContext): EditorSide {
 }
 
 function runFind(editor: EditorFindLike): boolean {
+  editor.focus?.();
   const action = editor.getAction("actions.find");
   if (!action) {
+    if (editor.trigger) {
+      editor.trigger("keyboard", "actions.find", null);
+      return true;
+    }
     return false;
   }
   action.run();
