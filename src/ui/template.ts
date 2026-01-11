@@ -13,6 +13,10 @@ export const APP_TEMPLATE = `
           <span>スクロール連動</span>
         </label>
         <label class="toggle">
+          <input id="wrap-toggle" type="checkbox" />
+          <span>折り返し</span>
+        </label>
+        <label class="toggle">
           <input id="fold-toggle" type="checkbox" />
           <span>差分なしの箇所を折りたたみ</span>
         </label>
@@ -52,10 +56,6 @@ export const APP_TEMPLATE = `
             </div>
           </div>
           <div class="pane-actions">
-            <label class="toggle">
-              <input id="left-wrap" type="checkbox" aria-label="左の折り返し" />
-              <span>折り返し</span>
-            </label>
             <button
               id="left-clear"
               class="button button-subtle pane-clear"
@@ -91,10 +91,6 @@ export const APP_TEMPLATE = `
             </div>
           </div>
           <div class="pane-actions">
-            <label class="toggle">
-              <input id="right-wrap" type="checkbox" aria-label="右の折り返し" />
-              <span>折り返し</span>
-            </label>
             <button
               id="right-clear"
               class="button button-subtle pane-clear"

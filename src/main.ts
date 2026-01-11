@@ -140,8 +140,7 @@ const leftFileInput = getRequiredElement<HTMLInputElement>("#left-file");
 const rightFileInput = getRequiredElement<HTMLInputElement>("#right-file");
 const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button");
 const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
-const leftWrapToggle = getRequiredElement<HTMLInputElement>("#left-wrap");
-const rightWrapToggle = getRequiredElement<HTMLInputElement>("#right-wrap");
+const wrapToggle = getRequiredElement<HTMLInputElement>("#wrap-toggle");
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
@@ -261,6 +260,9 @@ const leftEditor = monaco.editor.create(leftContainer, {
   language: "plaintext",
   theme: "vs",
   automaticLayout: true,
+  lineHeight: 22,
+  wordWrap: "off",
+  wrappingStrategy: "advanced",
   glyphMargin: true,
   minimap: { enabled: false },
   lineNumbers: "on",
@@ -271,16 +273,19 @@ const rightEditor = monaco.editor.create(rightContainer, {
   language: "plaintext",
   theme: "vs",
   automaticLayout: true,
+  lineHeight: 22,
+  wordWrap: "off",
+  wrappingStrategy: "advanced",
   glyphMargin: true,
   minimap: { enabled: false },
   lineNumbers: "on",
 });
 
-bindWordWrapToggle(leftWrapToggle, leftEditor, () => {
-  recalcDiff();
-});
-bindWordWrapToggle(rightWrapToggle, rightEditor, () => {
-  recalcDiff();
+bindWordWrapToggle({
+  input: wrapToggle,
+  editors: [leftEditor, rightEditor],
+  onAfterToggle: () => recalcDiff(),
+  keyTarget: window,
 });
 
 let lastFocusedSide: "left" | "right" = "left";
@@ -822,7 +827,8 @@ type ZoneSide = "insert" | "delete";
 
 type ViewZoneSpec = {
   afterLineNumber: number;
-  heightInLines: number;
+  heightInLines?: number;
+  heightInPx?: number;
   className: string;
   label?: string;
 };
@@ -1278,6 +1284,7 @@ function applyViewZones(
       const zoneId = accessor.addZone({
         afterLineNumber: zone.afterLineNumber,
         heightInLines: zone.heightInLines,
+        heightInPx: zone.heightInPx,
         domNode,
       });
       nextZoneIds.push(zoneId);
@@ -1471,6 +1478,8 @@ function recalcDiff() {
   );
   const zones = buildViewZones(pairedOps);
   const fileZones = buildAlignedFileBoundaryZones(pairedOps, leftSegments, rightSegments);
+  const leftZones = zones.left.concat(fileZones.left);
+  const rightZones = zones.right.concat(fileZones.right);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
   rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
@@ -1483,8 +1492,8 @@ function recalcDiff() {
     anchorDecorations.right,
   );
   updatePendingAnchorDecoration();
-  leftZoneIds = applyViewZones(leftEditor, leftZoneIds, zones.left.concat(fileZones.left));
-  rightZoneIds = applyViewZones(rightEditor, rightZoneIds, zones.right.concat(fileZones.right));
+  leftZoneIds = applyViewZones(leftEditor, leftZoneIds, leftZones);
+  rightZoneIds = applyViewZones(rightEditor, rightZoneIds, rightZones);
   updateDiffJumpButtons(prevButton, nextButton, diffBlockStarts.length > 0);
   applyFolding();
   focusDiffLines(null, null);

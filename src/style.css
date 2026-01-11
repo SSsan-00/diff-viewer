@@ -779,6 +779,7 @@ body {
   background-color: rgba(200, 170, 90, 0.32);
 }
 
+
 [data-theme="dark"] .monaco-editor .diff-anchor-line {
   background-color: rgba(115, 165, 255, 0.28);
 }

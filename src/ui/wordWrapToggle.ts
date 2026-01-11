@@ -5,22 +5,34 @@ type WordWrapEditor = {
 
 type FrameRequest = (callback: FrameRequestCallback) => number;
 
-export function bindWordWrapToggle(
-  input: HTMLInputElement | null,
-  editor: WordWrapEditor,
-  onAfterToggle?: () => void,
-  requestFrame: FrameRequest = requestAnimationFrame,
-): void {
+type WordWrapToggleOptions = {
+  input: HTMLInputElement | null;
+  editors: WordWrapEditor[];
+  onAfterToggle?: () => void;
+  requestFrame?: FrameRequest;
+  keyTarget?: Document | Window;
+};
+
+export function bindWordWrapToggle(options: WordWrapToggleOptions): void {
+  const { input, editors, onAfterToggle } = options;
+  const requestFrame = options.requestFrame ?? requestAnimationFrame;
+  const keyTarget = options.keyTarget ?? window;
+
   if (!input) {
     return;
   }
 
   let pending = false;
 
-  input.addEventListener("change", () => {
-    const next = input.checked ? "on" : "off";
-    editor.updateOptions({ wordWrap: next });
-    editor.layout();
+  const applyWrap = (next: "on" | "off") => {
+    editors.forEach((editor) => {
+      editor.updateOptions({
+        wordWrap: next,
+        wrappingStrategy: "advanced",
+        lineHeight: 22,
+      });
+      editor.layout();
+    });
     if (pending) {
       return;
     }
@@ -31,5 +43,24 @@ export function bindWordWrapToggle(
         onAfterToggle?.();
       });
     });
+  };
+
+  const handleToggle = () => {
+    const next = input.checked ? "on" : "off";
+    applyWrap(next);
+  };
+
+  input.addEventListener("change", handleToggle);
+
+  keyTarget.addEventListener("keydown", (event) => {
+    if (!event.altKey) {
+      return;
+    }
+    if (event.key !== "z" && event.key !== "Z") {
+      return;
+    }
+    event.preventDefault();
+    input.checked = !input.checked;
+    handleToggle();
   });
 }

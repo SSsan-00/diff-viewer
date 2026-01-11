@@ -95,7 +95,7 @@
 - `src/ui/paneMessages.test.ts` メッセージ制御のテスト。
 - `src/ui/editorFind.ts` Ctrl/Cmd+F をフォーカスペインへ誘導。exports: `handleFindShortcut` と関連型。
 - `src/ui/editorFind.test.ts` Find ショートカットのテスト。
-- `src/ui/wordWrapToggle.ts` ペイン別折り返し切替（rAF 後にコールバック）。export: `bindWordWrapToggle`。
+- `src/ui/wordWrapToggle.ts` 画面ヘッダの折り返しトグルを左右同時に切替（Alt+Z 対応、rAF 後にコールバック）。export: `bindWordWrapToggle`。
 - `src/ui/wordWrapToggle.test.ts` 折り返し切替のテスト。
 - `src/ui/themeToggle.ts` ☀️/🌙 テーマ切替と保存。exports: `setupThemeToggle`, `ThemeMode`。
 - `src/ui/themeToggle.test.ts` テーマ切替のテスト。

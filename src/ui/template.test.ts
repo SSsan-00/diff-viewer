@@ -3,10 +3,13 @@ import { JSDOM } from "jsdom";
 import { APP_TEMPLATE } from "./template";
 
 describe("pane action layout", () => {
-  it("places the wrap toggle to the left of the clear button", () => {
+  it("places the wrap toggle in the toolbar and removes pane toggles", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
 
+    const toolbar = doc.querySelector(".toolbar-right");
+    const syncToggle = toolbar?.querySelector("#sync-toggle");
+    const wrapToggle = toolbar?.querySelector("#wrap-toggle");
     const leftActions = doc.querySelector("#left-pane .pane-actions");
     const rightActions = doc.querySelector("#right-pane .pane-actions");
 
@@ -15,19 +18,16 @@ describe("pane action layout", () => {
     const rightWrap = rightActions?.querySelector("#right-wrap");
     const rightClear = rightActions?.querySelector("#right-clear");
 
-    expect(leftWrap).toBeTruthy();
+    expect(syncToggle).toBeTruthy();
+    expect(wrapToggle).toBeTruthy();
+    expect(leftWrap).toBeNull();
     expect(leftClear).toBeTruthy();
-    expect(rightWrap).toBeTruthy();
+    expect(rightWrap).toBeNull();
     expect(rightClear).toBeTruthy();
 
-    const leftChildren = Array.from(leftActions?.children ?? []);
-    const rightChildren = Array.from(rightActions?.children ?? []);
-
-    expect(leftChildren.indexOf(leftWrap!.closest(".toggle")!)).toBeLessThan(
-      leftChildren.indexOf(leftClear!),
-    );
-    expect(rightChildren.indexOf(rightWrap!.closest(".toggle")!)).toBeLessThan(
-      rightChildren.indexOf(rightClear!),
+    const toolbarChildren = Array.from(toolbar?.children ?? []);
+    expect(toolbarChildren.indexOf(syncToggle!.closest(".toggle")!)).toBeLessThan(
+      toolbarChildren.indexOf(wrapToggle!.closest(".toggle")!),
     );
   });
 
@@ -44,5 +44,16 @@ describe("pane action layout", () => {
 
     expect(leftLabel?.textContent).toBe("文字コード");
     expect(rightLabel?.textContent).toBe("文字コード");
+  });
+
+  it("uses a single wrap toggle in the toolbar", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const toolbarToggle = doc.querySelector("#wrap-toggle");
+    const paneToggles = doc.querySelectorAll("#left-wrap, #right-wrap");
+
+    expect(toolbarToggle).toBeTruthy();
+    expect(paneToggles.length).toBe(0);
   });
 });
