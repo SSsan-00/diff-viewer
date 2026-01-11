@@ -53,7 +53,7 @@ function stripDollarIdentifiers(line: string): string {
 }
 
 export function extractLineKey(line: string): string | null {
-  const normalized = stripDollarIdentifiers(line);
+  const normalized = stripDollarIdentifiers(line.trimStart());
   const funcMatch = normalized.match(/([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
   if (funcMatch) {
     const candidate = funcMatch[1].toLowerCase();

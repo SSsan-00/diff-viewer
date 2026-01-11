@@ -1,5 +1,9 @@
 import type { LineOp, PairedOp } from "./types";
-import { buildLineFeatures, extractIndexTokens, scoreLinePair } from "./lineSimilarity";
+import {
+  buildLineFeatures,
+  extractIndexTokens,
+  scoreLinePair,
+} from "./lineSimilarity";
 
 function countIndent(line: string): number {
   let count = 0;
@@ -83,16 +87,20 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
       const rightText = inserts[i].rightLine ?? "";
       const rightIndent = countIndent(rightText);
       const rightFeature = insertFeatures[i];
-      const score = scoreLinePair(leftFeature, rightFeature);
-      if (score === null || score < SCORE_THRESHOLD) {
+      const distance = Math.abs(d - i);
+      const scored = scoreLinePair(leftFeature, rightFeature);
+      if (scored === null) {
+        continue;
+      }
+      if (scored < SCORE_THRESHOLD) {
         continue;
       }
       candidates.push({
         deleteIndex: d,
         insertIndex: i,
         indentDiff: Math.abs(leftIndent - rightIndent),
-        score,
-        distance: Math.abs(d - i),
+        score: scored,
+        distance,
       });
     }
   }
@@ -184,6 +192,69 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
   return result;
 }
 
+function isBraceLine(line: string | undefined): boolean {
+  if (!line) {
+    return false;
+  }
+  return /^}\s*;?\s*$/.test(line.trim());
+}
+
+function alignBracePairs(ops: PairedOp[]): PairedOp[] {
+  const result: PairedOp[] = [];
+
+  for (let i = 0; i < ops.length; i += 1) {
+    const current = ops[i];
+    const next = ops[i + 1];
+    const prev = result[result.length - 1];
+
+    const prevPaired = prev?.type === "equal" || prev?.type === "replace";
+
+    if (
+      prevPaired &&
+      current?.type === "delete" &&
+      next?.type === "insert" &&
+      isBraceLine(current.leftLine) &&
+      isBraceLine(next.rightLine) &&
+      current.leftLineNo !== undefined &&
+      next.rightLineNo !== undefined
+    ) {
+      result.push({
+        type: "replace",
+        leftLine: current.leftLine,
+        rightLine: next.rightLine,
+        leftLineNo: current.leftLineNo,
+        rightLineNo: next.rightLineNo,
+      });
+      i += 1;
+      continue;
+    }
+
+    if (
+      prevPaired &&
+      current?.type === "insert" &&
+      next?.type === "delete" &&
+      isBraceLine(next.leftLine) &&
+      isBraceLine(current.rightLine) &&
+      next.leftLineNo !== undefined &&
+      current.rightLineNo !== undefined
+    ) {
+      result.push({
+        type: "replace",
+        leftLine: next.leftLine,
+        rightLine: current.rightLine,
+        leftLineNo: next.leftLineNo,
+        rightLineNo: current.rightLineNo,
+      });
+      i += 1;
+      continue;
+    }
+
+    result.push(current);
+  }
+
+  return result;
+}
+
 export function pairReplace(ops: LineOp[]): PairedOp[] {
   const result: PairedOp[] = [];
   let i = 0;
@@ -220,5 +291,5 @@ export function pairReplace(ops: LineOp[]): PairedOp[] {
     i = j;
   }
 
-  return result;
+  return alignBracePairs(result);
 }

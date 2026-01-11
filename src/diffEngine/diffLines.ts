@@ -7,6 +7,47 @@ function splitLines(text: string): string[] {
   return text.split("\n");
 }
 
+function normalizeForMatch(line: string): string {
+  const trimmed = line.replace(/^\s+/, "");
+  const initVar = extractInitVariable(trimmed);
+  if (initVar) {
+    return `init:${initVar}`;
+  }
+  const literal = extractFirstLiteral(trimmed);
+  if (literal && isAppendLike(trimmed)) {
+    return `append:${literal}`;
+  }
+  return trimmed;
+}
+
+function buildCompareLines(lines: string[]): string[] {
+  return lines.map((line) => normalizeForMatch(line));
+}
+
+function extractFirstLiteral(line: string): string | null {
+  const match = line.match(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/);
+  if (!match) {
+    return null;
+  }
+  return match[0].slice(1, -1).toLowerCase();
+}
+
+function isAppendLike(line: string): boolean {
+  return /\.(?:append|appendline|appendformat)\s*\(/i.test(line) || /\.\=/.test(line);
+}
+
+function extractInitVariable(line: string): string | null {
+  const csharpMatch = line.match(/\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\b/i);
+  if (csharpMatch) {
+    return csharpMatch[1].toLowerCase();
+  }
+  const phpMatch = line.match(/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(['"])\s*\2/);
+  if (phpMatch) {
+    return phpMatch[1].toLowerCase();
+  }
+  return null;
+}
+
 type MyersTrace = number[][];
 
 function buildMyersTrace(left: string[], right: string[]): MyersTrace {
@@ -55,7 +96,13 @@ function buildMyersTrace(left: string[], right: string[]): MyersTrace {
   return trace;
 }
 
-function backtrackOps(left: string[], right: string[], trace: MyersTrace): LineOp[] {
+function backtrackOps(
+  left: string[],
+  right: string[],
+  leftCompare: string[],
+  rightCompare: string[],
+  trace: MyersTrace,
+): LineOp[] {
   const n = left.length;
   const m = right.length;
   const max = n + m;
@@ -80,15 +127,43 @@ function backtrackOps(left: string[], right: string[], trace: MyersTrace): LineO
     const prevX = v[prevK + offset];
     const prevY = prevX - prevK;
 
-    // Diagonal moves are equal lines.
+    // Diagonal moves are aligned lines based on compare keys.
     while (x > prevX && y > prevY) {
-      ops.push({
-        type: "equal",
-        leftLine: left[x - 1],
-        rightLine: right[y - 1],
-        leftLineNo: x - 1,
-        rightLineNo: y - 1,
-      });
+      const leftLine = left[x - 1];
+      const rightLine = right[y - 1];
+      const leftKey = leftCompare[x - 1];
+      const rightKey = rightCompare[y - 1];
+      if (leftLine === rightLine) {
+        ops.push({
+          type: "equal",
+          leftLine,
+          rightLine,
+          leftLineNo: x - 1,
+          rightLineNo: y - 1,
+        });
+      } else if (leftKey === rightKey) {
+        ops.push({
+          type: "insert",
+          rightLine,
+          rightLineNo: y - 1,
+        });
+        ops.push({
+          type: "delete",
+          leftLine,
+          leftLineNo: x - 1,
+        });
+      } else {
+        ops.push({
+          type: "insert",
+          rightLine,
+          rightLineNo: y - 1,
+        });
+        ops.push({
+          type: "delete",
+          leftLine,
+          leftLineNo: x - 1,
+        });
+      }
       x -= 1;
       y -= 1;
     }
@@ -133,7 +208,7 @@ function buildKeyMap(lines: string[]): Map<string, LineKey & { count: number }> 
 
   lines.forEach((line, index) => {
     const rawKey = extractLineKey(line);
-    const key = rawKey ?? line;
+    const key = rawKey ?? line.trimStart();
     const entry = map.get(key);
     if (entry) {
       entry.count += 1;
@@ -239,20 +314,24 @@ function offsetOps(ops: LineOp[], leftOffset: number, rightOffset: number): Line
 function diffLinesMyers(
   leftLines: string[],
   rightLines: string[],
+  leftCompare: string[],
+  rightCompare: string[],
   leftOffset: number,
   rightOffset: number,
 ): LineOp[] {
   if (leftLines.length === 0 && rightLines.length === 0) {
     return [];
   }
-  const trace = buildMyersTrace(leftLines, rightLines);
-  const ops = backtrackOps(leftLines, rightLines, trace);
+  const trace = buildMyersTrace(leftCompare, rightCompare);
+  const ops = backtrackOps(leftLines, rightLines, leftCompare, rightCompare, trace);
   return offsetOps(ops, leftOffset, rightOffset);
 }
 
 function diffLinesPatience(
   leftLines: string[],
   rightLines: string[],
+  leftCompare: string[],
+  rightCompare: string[],
   leftOffset: number,
   rightOffset: number,
 ): LineOp[] {
@@ -262,7 +341,7 @@ function diffLinesPatience(
 
   const anchors = longestIncreasingPairs(buildUniquePairs(leftLines, rightLines));
   if (anchors.length === 0) {
-    return diffLinesMyers(leftLines, rightLines, leftOffset, rightOffset);
+    return diffLinesMyers(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset);
   }
 
   const result: LineOp[] = [];
@@ -276,6 +355,8 @@ function diffLinesPatience(
       ...diffLinesPatience(
         leftSegment,
         rightSegment,
+        leftCompare.slice(leftStart, anchor.leftIndex),
+        rightCompare.slice(rightStart, anchor.rightIndex),
         leftOffset + leftStart,
         rightOffset + rightStart,
       ),
@@ -283,6 +364,8 @@ function diffLinesPatience(
 
     const leftLine = leftLines[anchor.leftIndex] ?? "";
     const rightLine = rightLines[anchor.rightIndex] ?? "";
+    const leftKey = leftCompare[anchor.leftIndex] ?? "";
+    const rightKey = rightCompare[anchor.rightIndex] ?? "";
     if (leftLine === rightLine) {
       result.push({
         type: "equal",
@@ -291,11 +374,24 @@ function diffLinesPatience(
         leftLineNo: leftOffset + anchor.leftIndex,
         rightLineNo: rightOffset + anchor.rightIndex,
       });
+    } else if (leftKey === rightKey) {
+      result.push({
+        type: "delete",
+        leftLine,
+        leftLineNo: leftOffset + anchor.leftIndex,
+      });
+      result.push({
+        type: "insert",
+        rightLine,
+        rightLineNo: rightOffset + anchor.rightIndex,
+      });
     } else {
       result.push(
         ...diffLinesMyers(
           [leftLine],
           [rightLine],
+          [leftKey],
+          [rightKey],
           leftOffset + anchor.leftIndex,
           rightOffset + anchor.rightIndex,
         ),
@@ -312,6 +408,8 @@ function diffLinesPatience(
     ...diffLinesPatience(
       tailLeft,
       tailRight,
+      leftCompare.slice(leftStart),
+      rightCompare.slice(rightStart),
       leftOffset + leftStart,
       rightOffset + rightStart,
     ),
@@ -321,7 +419,9 @@ function diffLinesPatience(
 }
 
 export function diffLinesFromLines(leftLines: string[], rightLines: string[]): LineOp[] {
-  return diffLinesPatience(leftLines, rightLines, 0, 0);
+  const leftCompare = buildCompareLines(leftLines);
+  const rightCompare = buildCompareLines(rightLines);
+  return diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, 0, 0);
 }
 
 export function diffLines(leftText: string, rightText: string): LineOp[] {

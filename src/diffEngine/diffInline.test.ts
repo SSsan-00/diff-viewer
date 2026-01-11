@@ -13,6 +13,12 @@ describe("diffInline", () => {
     expect(result.rightRanges).toEqual([{ start: 6, end: 7 }]);
   });
 
+  it("highlights leading whitespace differences", () => {
+    const result = diffInline("    var foo = 1;", "var foo = 1;");
+
+    expect(result.leftRanges.length).toBeGreaterThan(0);
+  });
+
   it("marks insertion at the start on the right only", () => {
     const result = diffInline("abc", "zabc");
 

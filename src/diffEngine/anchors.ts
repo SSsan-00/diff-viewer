@@ -155,6 +155,10 @@ function diffSegment(
   return offsetOps(paired, leftOffset, rightOffset);
 }
 
+function isSameLineForMatch(leftLine: string, rightLine: string): boolean {
+  return leftLine === rightLine;
+}
+
 export function diffWithAnchors(
   leftText: string,
   rightText: string,
@@ -174,7 +178,7 @@ export function diffWithAnchors(
     const leftLine = leftLines[anchor.leftLineNo] ?? "";
     const rightLine = rightLines[anchor.rightLineNo] ?? "";
     result.push({
-      type: leftLine === rightLine ? "equal" : "replace",
+      type: isSameLineForMatch(leftLine, rightLine) ? "equal" : "replace",
       leftLine,
       rightLine,
       leftLineNo: anchor.leftLineNo,

@@ -155,7 +155,7 @@ describe("pairReplace", () => {
     ]);
   });
 
-  it("does not pair when keys do not match", () => {
+  it("does not pair close-but-different identifiers", () => {
     const input: LineOp[] = [
       { type: "delete", leftLine: "var foo = 1;", leftLineNo: 0 },
       { type: "insert", rightLine: "var food = 1;", rightLineNo: 0 },

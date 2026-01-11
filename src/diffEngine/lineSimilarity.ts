@@ -83,8 +83,28 @@ export type LineFeatures = {
   category: LineCategory;
 };
 
+function detectAppendLike(line: string): boolean {
+  return (
+    /\.(?:append|appendline|appendformat)\s*\(/i.test(line) ||
+    /\.\=/.test(line)
+  );
+}
+
+function extractInitVariable(line: string): string | null {
+  const trimmed = line.trimStart();
+  const csharpMatch = trimmed.match(/\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\b/i);
+  if (csharpMatch) {
+    return csharpMatch[1].toLowerCase();
+  }
+  const phpMatch = trimmed.match(/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(['"])\s*\2/);
+  if (phpMatch) {
+    return phpMatch[1].toLowerCase();
+  }
+  return null;
+}
+
 function normalizeLine(line: string): string {
-  let normalized = line.replace(/\$/g, "");
+  let normalized = line.trimStart().replace(/\$/g, "");
   normalized = normalized.replace(/(?:\b[A-Za-z_][A-Za-z0-9_]*\.)+/g, "");
   return normalized;
 }
@@ -172,6 +192,14 @@ export function buildLineFeatures(line: string): LineFeatures {
   const numbers = extractNumbers(line);
   const category = detectCategory(line);
   const primaryId = pickPrimaryId(identifiers, literals, line);
+  if (detectAppendLike(line) && !identifiers.includes("append")) {
+    identifiers.push("append");
+  }
+  const initVar = extractInitVariable(line);
+  if (initVar) {
+    identifiers.push("init");
+    identifiers.push(`init:${initVar}`);
+  }
   return { identifiers, literals, numbers, primaryId, category };
 }
 
@@ -212,6 +240,9 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   const idOverlap = intersectCount(left.identifiers, right.identifiers);
   const literalOverlap = intersectCount(left.literals, right.literals);
   const numberOverlap = intersectCount(left.numbers, right.numbers);
+  const initOverlap = left.identifiers.some(
+    (token) => token.startsWith("init:") && right.identifiers.includes(token),
+  );
 
   if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
     if (idOverlap === 0 && literalOverlap === 0) {
@@ -232,6 +263,12 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   score += literalOverlap * 2;
   score += numberOverlap * 1.5;
   score += idOverlap * 1;
+  if (literalOverlap > 0 && idOverlap > 0) {
+    score += 2;
+  }
+  if (initOverlap) {
+    score += 4;
+  }
 
   if (left.category === right.category) {
     score += left.category === "decl" ? 1.5 : left.category === "call" ? 1 : 0.5;
