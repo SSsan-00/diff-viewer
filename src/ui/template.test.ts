@@ -56,4 +56,16 @@ describe("pane action layout", () => {
     expect(toolbarToggle).toBeTruthy();
     expect(paneToggles.length).toBe(0);
   });
+
+  it("adds a highlight toggle to the toolbar", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const highlightToggle = doc.querySelector("#highlight-toggle");
+
+    expect(highlightToggle).toBeTruthy();
+    expect(highlightToggle?.closest("label")?.classList.contains("toggle")).toBe(
+      true,
+    );
+  });
 });

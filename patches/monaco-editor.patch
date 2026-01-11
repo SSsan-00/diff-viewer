@@ -198,6 +198,18 @@ index f176d71..fae072b 100644
      }
      console.warn(err.message);
  }
+diff --git a/esm/vs/platform/dataChannel/browser/forwardingTelemetryService.js b/esm/vs/platform/dataChannel/browser/forwardingTelemetryService.js
+index 8e4cdd8..c70d0c5 100644
+--- a/esm/vs/platform/dataChannel/browser/forwardingTelemetryService.js
++++ b/esm/vs/platform/dataChannel/browser/forwardingTelemetryService.js
+@@ -54,5 +54,5 @@ function isCopilotLikeExtension(extensionId) {
+     if (!extensionId) {
+         return false;
+     }
+     const extIdLowerCase = extensionId.toLowerCase();
+-    return extIdLowerCase === 'github.copilot' || extIdLowerCase === 'github.copilot-chat';
++    return extIdLowerCase === 'copilot' || extIdLowerCase === 'copilot-chat';
+ }
 diff --git a/esm/vs/editor/browser/viewParts/whitespace/whitespace.js b/esm/vs/editor/browser/viewParts/whitespace/whitespace.js
 index 2c77c0c..e2f9aad 100644
 --- a/esm/vs/editor/browser/viewParts/whitespace/whitespace.js

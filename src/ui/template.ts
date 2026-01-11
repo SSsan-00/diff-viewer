@@ -17,6 +17,10 @@ export const APP_TEMPLATE = `
           <span>折り返し</span>
         </label>
         <label class="toggle">
+          <input id="highlight-toggle" type="checkbox" checked />
+          <span>ハイライト</span>
+        </label>
+        <label class="toggle">
           <input id="fold-toggle" type="checkbox" />
           <span>差分なしの箇所を折りたたみ</span>
         </label>

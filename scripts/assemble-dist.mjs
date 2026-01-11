@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync, rmSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 const args = new Set(process.argv.slice(2));
@@ -24,6 +24,14 @@ const minified = readFileSync(minifySource, "utf8");
 writeFileSync(minifyTarget, minified);
 
 rmSync(minifyDir, { recursive: true, force: true });
+
+const keep = new Set(["index.html", "index.min.html"]);
+for (const entry of readdirSync(distPath)) {
+  if (keep.has(entry)) {
+    continue;
+  }
+  rmSync(resolve(distPath, entry), { recursive: true, force: true });
+}
 
 console.log(
   `[assemble-dist] Wrote ${minifyTarget}${minifyOnly ? " (minify-only)" : ""}.`

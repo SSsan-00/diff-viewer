@@ -31,7 +31,7 @@
 └── vite.config.ts
 ```
 
-## src/ 全ファイル一覧（67件）
+## src/ 全ファイル一覧（75件）
 
 ### src/
 
@@ -84,6 +84,8 @@
 - `src/file/loadErrors.test.ts` エラー整形のテスト。
 - `src/file/postLoad.ts` 読み込み後タスクの安全実行（例外吸収）。export: `runPostLoadTasks`。
 - `src/file/postLoad.test.ts` post-load 実行のテスト。
+- `src/file/language.ts` ファイル名から Monaco の言語IDを推定し、ペイン単位の言語を決定。exports: `detectLanguageFromFileName`, `inferPaneLanguage`。
+- `src/file/language.test.ts` 拡張子→言語推定のテスト。
 
 ### src/ui/
 
@@ -97,6 +99,8 @@
 - `src/ui/editorFind.test.ts` Find ショートカットのテスト。
 - `src/ui/wordWrapToggle.ts` 画面ヘッダの折り返しトグルを左右同時に切替（Alt+Z 対応、rAF 後にコールバック）。export: `bindWordWrapToggle`。
 - `src/ui/wordWrapToggle.test.ts` 折り返し切替のテスト。
+- `src/ui/syntaxHighlightToggle.ts` シンタックスハイライトの ON/OFF を切替。export: `bindSyntaxHighlightToggle`。
+- `src/ui/syntaxHighlightToggle.test.ts` ハイライト切替のテスト。
 - `src/ui/themeToggle.ts` ☀️/🌙 テーマ切替と保存。exports: `setupThemeToggle`, `ThemeMode`。
 - `src/ui/themeToggle.test.ts` テーマ切替のテスト。
 - `src/ui/diffJumpButtons.ts` 差分ジャンプボタンの有効/無効制御。export: `updateDiffJumpButtons`。
@@ -123,6 +127,7 @@
 ### src/monaco/
 
 - `src/monaco/monacoWorkers.ts` Monaco worker の URL 設定（単体 HTML 向け）。export: `setupMonacoWorkers`。
+- `src/monaco/basicLanguages.ts` Monarch 言語定義を直接登録する薄いラッパー。export: `registerBasicLanguages`。
 
 ### src/types/
 

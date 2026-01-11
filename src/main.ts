@@ -1,7 +1,8 @@
 import "./style.css";
 import "monaco-editor/min/vs/editor/editor.main.css";
-import * as monaco from "monaco-editor/esm/vs/editor/editor.api";
+import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import { setupMonacoWorkers } from "./monaco/monacoWorkers";
+import { registerBasicLanguages } from "./monaco/basicLanguages";
 import { diffLines } from "./diffEngine/diffLines";
 import { pairReplace } from "./diffEngine/pairReplace";
 import { diffInline } from "./diffEngine/diffInline";
@@ -44,6 +45,7 @@ import { handleFindShortcut } from "./ui/editorFind";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapToggle } from "./ui/wordWrapToggle";
+import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -57,9 +59,11 @@ import {
 import { runPostLoadTasks } from "./file/postLoad";
 import { formatLoadSuccessLabel, listLoadedFileNames } from "./file/loadMessages";
 import { clearPaneMessage, setPaneMessage } from "./ui/paneMessages";
+import { inferPaneLanguage } from "./file/language";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
+registerBasicLanguages();
 
 function attachLicenses(): void {
   if (document.getElementById("third-party-licenses")) {
@@ -141,6 +145,7 @@ const rightFileInput = getRequiredElement<HTMLInputElement>("#right-file");
 const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button");
 const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
 const wrapToggle = getRequiredElement<HTMLInputElement>("#wrap-toggle");
+const highlightToggle = getRequiredElement<HTMLInputElement>("#highlight-toggle");
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
@@ -288,6 +293,23 @@ bindWordWrapToggle({
   keyTarget: window,
 });
 
+const getPaneLanguage = (segments: LineSegment[]) =>
+  inferPaneLanguage(listLoadedFileNames(segments));
+
+const syntaxHighlightController = bindSyntaxHighlightToggle({
+  input: highlightToggle,
+  editors: [leftEditor, rightEditor],
+  getLanguageForEditor: (index) =>
+    index === 0 ? getPaneLanguage(leftSegments) : getPaneLanguage(rightSegments),
+  setModelLanguage: (model, language) => {
+    monaco.editor.setModelLanguage(model as monaco.editor.ITextModel, language);
+  },
+});
+
+const refreshSyntaxHighlight = () => {
+  syntaxHighlightController?.applyHighlight(highlightToggle.checked);
+};
+
 let lastFocusedSide: "left" | "right" = "left";
 const leftFileBytes: FileBytes[] = [];
 const rightFileBytes: FileBytes[] = [];
@@ -370,6 +392,7 @@ function applyDecodedFiles(
   segments.length = 0;
   segments.push(...nextSegments);
   updateLineNumbers(editor, segments);
+  refreshSyntaxHighlight();
   recalcDiff();
   schedulePersist();
 }
@@ -449,6 +472,7 @@ async function appendFilesToEditor(
     segments.length = 0;
     segments.push(...nextSegments);
     updateLineNumbers(editor, segments);
+    refreshSyntaxHighlight();
     const loadedNames = listLoadedFileNames(nextSegments);
     label =
       loadedNames.length > 0
@@ -531,6 +555,7 @@ if (isSegmentLayoutValid(storedRightSegments, rightEditor.getValue())) {
 }
 updateLineNumbers(leftEditor, leftSegments);
 updateLineNumbers(rightEditor, rightSegments);
+refreshSyntaxHighlight();
 
 bindDropZone(
   leftPane,
@@ -1512,6 +1537,7 @@ bindPaneClearButton(leftClearButton, {
     pendingLeftLineNo = null;
     updatePendingAnchorDecoration();
     clearPaneMessage(leftMessage);
+    refreshSyntaxHighlight();
     recalcDiff();
     schedulePersist();
   },
@@ -1525,6 +1551,7 @@ bindPaneClearButton(rightClearButton, {
     pendingRightLineNo = null;
     updatePendingAnchorDecoration();
     clearPaneMessage(rightMessage);
+    refreshSyntaxHighlight();
     recalcDiff();
     schedulePersist();
   },
@@ -1552,6 +1579,7 @@ clearButton.addEventListener("click", () => {
     clearPaneMessage(rightMessage);
     updateLineNumbers(leftEditor, leftSegments);
     updateLineNumbers(rightEditor, rightSegments);
+    refreshSyntaxHighlight();
     recalcDiff();
     setAnchorMessage("アンカーを全てクリアしました。");
   });
