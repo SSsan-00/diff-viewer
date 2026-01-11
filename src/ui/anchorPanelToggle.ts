@@ -1,6 +1,7 @@
 type AnchorToggleElements = {
   panel: HTMLElement;
   body: HTMLElement;
+  list: HTMLElement;
   toggle: HTMLInputElement;
 };
 
@@ -12,20 +13,22 @@ type AnchorPanelToggleOptions = {
 function getAnchorToggleElements(root: ParentNode): AnchorToggleElements | null {
   const panel = root.querySelector<HTMLElement>(".anchor-panel");
   const body = root.querySelector<HTMLElement>("#anchor-panel-body");
+  const list = root.querySelector<HTMLElement>("#anchor-list");
   const toggle = root.querySelector<HTMLInputElement>("#anchor-toggle");
-  if (!panel || !body || !toggle) {
+  if (!panel || !body || !list || !toggle) {
     return null;
   }
-  return { panel, body, toggle };
+  return { panel, body, list, toggle };
 }
 
 function applyCollapsedState(
   elements: AnchorToggleElements,
   collapsed: boolean,
 ): void {
-  const { panel, body, toggle } = elements;
+  const { panel, body, list, toggle } = elements;
   panel.classList.toggle("is-collapsed", collapsed);
-  body.hidden = collapsed;
+  body.classList.toggle("is-collapsed", collapsed);
+  list.classList.toggle("is-collapsed", collapsed);
   toggle.checked = collapsed;
 }
 

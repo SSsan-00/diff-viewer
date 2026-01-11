@@ -24,7 +24,8 @@ describe("anchor panel toggle", () => {
     list.appendChild(sample);
 
     expect(panel.classList.contains("is-collapsed")).toBe(false);
-    expect(body.hidden).toBe(false);
+    expect(body.classList.contains("is-collapsed")).toBe(false);
+    expect(list.classList.contains("is-collapsed")).toBe(false);
     expect(toggle.checked).toBe(false);
     expect(toggleLabel?.classList.contains("toggle")).toBe(true);
 
@@ -32,7 +33,8 @@ describe("anchor panel toggle", () => {
     toggle.dispatchEvent(new document.defaultView!.Event("change"));
 
     expect(panel.classList.contains("is-collapsed")).toBe(true);
-    expect(body.hidden).toBe(true);
+    expect(body.classList.contains("is-collapsed")).toBe(true);
+    expect(list.classList.contains("is-collapsed")).toBe(true);
     expect(toggle.checked).toBe(true);
     expect(list.querySelectorAll("li").length).toBe(1);
 
@@ -40,7 +42,8 @@ describe("anchor panel toggle", () => {
     toggle.dispatchEvent(new document.defaultView!.Event("change"));
 
     expect(panel.classList.contains("is-collapsed")).toBe(false);
-    expect(body.hidden).toBe(false);
+    expect(body.classList.contains("is-collapsed")).toBe(false);
+    expect(list.classList.contains("is-collapsed")).toBe(false);
     expect(toggle.checked).toBe(false);
     expect(list.querySelectorAll("li").length).toBe(1);
   });

@@ -6,6 +6,9 @@
   --anchor-item-selected-fg: #0f0c08;
   --anchor-item-hover-bg: rgba(63, 110, 208, 0.08);
   --anchor-item-selected-bg: rgba(63, 110, 208, 0.12);
+  --anchor-item-height: 28px;
+  --anchor-list-gap: 6px;
+  --anchor-collapsed-height: calc(var(--anchor-item-height) * 2 + var(--anchor-list-gap) + 8px);
   --file-boundary-fg: #6b5a46;
   --file-boundary-border: rgba(120, 110, 90, 0.45);
   --file-boundary-2-fg: #1a5f5a;
@@ -108,15 +111,16 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--anchor-list-gap);
 }
 
 .anchor-panel.is-collapsed {
   padding-bottom: 6px;
 }
 
-.anchor-panel-body[hidden] {
-  display: none;
+.anchor-panel-body.is-collapsed .anchor-list {
+  max-height: var(--anchor-collapsed-height);
+  overflow-y: auto;
 }
 
 .anchor-item {
@@ -125,6 +129,7 @@ body {
   justify-content: space-between;
   gap: 12px;
   font-size: 0.8rem;
+  min-height: var(--anchor-item-height);
   color: var(--anchor-item-fg);
 }
 
