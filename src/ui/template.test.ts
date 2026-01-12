@@ -104,4 +104,14 @@ describe("pane action layout", () => {
     expect(sunSvg).toBeTruthy();
     expect(moonSvg).toBeTruthy();
   });
+
+  it("adds a dedicated class to the app title", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const title = doc.querySelector(".title");
+
+    expect(title?.classList.contains("app-title")).toBe(true);
+    expect(title?.textContent).toBe("Diff Viewer");
+  });
 });

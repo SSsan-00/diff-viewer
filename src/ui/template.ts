@@ -2,7 +2,7 @@ export const APP_TEMPLATE = `
   <div class="app">
     <header class="toolbar">
       <div class="toolbar-left">
-        <div class="title">Diff Viewer</div>
+        <div class="title app-title">Diff Viewer</div>
       </div>
       <div class="toolbar-right">
         <button id="recalc" class="button" type="button">差分再計算</button>
