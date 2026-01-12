@@ -13,16 +13,12 @@ export const APP_TEMPLATE = `
           <span>スクロール連動</span>
         </label>
         <label class="toggle">
-          <input id="wrap-toggle" type="checkbox" />
-          <span>折り返し</span>
-        </label>
-        <label class="toggle">
           <input id="highlight-toggle" type="checkbox" checked />
           <span>ハイライト</span>
         </label>
         <label class="toggle">
-          <input id="fold-toggle" type="checkbox" />
-          <span>差分なしの箇所を折りたたみ</span>
+          <input id="fold-toggle" type="checkbox" aria-label="差分のみ表示" />
+          <span>差分のみ表示</span>
         </label>
         <label class="toggle">
           <input id="theme-toggle" type="checkbox" />

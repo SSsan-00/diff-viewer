@@ -10,13 +10,11 @@ type WordWrapToggleOptions = {
   editors: WordWrapEditor[];
   onAfterToggle?: () => void;
   requestFrame?: FrameRequest;
-  keyTarget?: Document | Window;
 };
 
 export function bindWordWrapToggle(options: WordWrapToggleOptions): void {
   const { input, editors, onAfterToggle } = options;
   const requestFrame = options.requestFrame ?? requestAnimationFrame;
-  const keyTarget = options.keyTarget ?? window;
 
   if (!input) {
     return;
@@ -51,16 +49,4 @@ export function bindWordWrapToggle(options: WordWrapToggleOptions): void {
   };
 
   input.addEventListener("change", handleToggle);
-
-  keyTarget.addEventListener("keydown", (event) => {
-    if (!event.altKey) {
-      return;
-    }
-    if (event.key !== "z" && event.key !== "Z") {
-      return;
-    }
-    event.preventDefault();
-    input.checked = !input.checked;
-    handleToggle();
-  });
 }

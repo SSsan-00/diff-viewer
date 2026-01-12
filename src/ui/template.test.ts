@@ -3,13 +3,14 @@ import { JSDOM } from "jsdom";
 import { APP_TEMPLATE } from "./template";
 
 describe("pane action layout", () => {
-  it("places the wrap toggle in the toolbar and removes pane toggles", () => {
+  it("places the diff-only toggle in the toolbar and removes pane toggles", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
 
     const toolbar = doc.querySelector(".toolbar-right");
     const syncToggle = toolbar?.querySelector("#sync-toggle");
     const wrapToggle = toolbar?.querySelector("#wrap-toggle");
+    const foldToggle = toolbar?.querySelector("#fold-toggle");
     const leftActions = doc.querySelector("#left-pane .pane-actions");
     const rightActions = doc.querySelector("#right-pane .pane-actions");
 
@@ -19,7 +20,8 @@ describe("pane action layout", () => {
     const rightClear = rightActions?.querySelector("#right-clear");
 
     expect(syncToggle).toBeTruthy();
-    expect(wrapToggle).toBeTruthy();
+    expect(wrapToggle).toBeNull();
+    expect(foldToggle).toBeTruthy();
     expect(leftWrap).toBeNull();
     expect(leftClear).toBeTruthy();
     expect(rightWrap).toBeNull();
@@ -27,7 +29,7 @@ describe("pane action layout", () => {
 
     const toolbarChildren = Array.from(toolbar?.children ?? []);
     expect(toolbarChildren.indexOf(syncToggle!.closest(".toggle")!)).toBeLessThan(
-      toolbarChildren.indexOf(wrapToggle!.closest(".toggle")!),
+      toolbarChildren.indexOf(foldToggle!.closest(".toggle")!),
     );
   });
 
@@ -46,15 +48,25 @@ describe("pane action layout", () => {
     expect(rightLabel?.textContent).toBe("文字コード");
   });
 
-  it("uses a single wrap toggle in the toolbar", () => {
+  it("does not render a wrap toggle in the toolbar", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
 
     const toolbarToggle = doc.querySelector("#wrap-toggle");
     const paneToggles = doc.querySelectorAll("#left-wrap, #right-wrap");
 
-    expect(toolbarToggle).toBeTruthy();
+    expect(toolbarToggle).toBeNull();
     expect(paneToggles.length).toBe(0);
+  });
+
+  it("renders the diff-only toggle label in the toolbar", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    expect(doc.body.textContent).not.toContain("折り返し");
+    expect(doc.body.textContent).not.toContain("差分なしの箇所を折りたたみ");
+    expect(doc.body.textContent).toContain("差分のみ表示");
+    expect(doc.querySelector("#fold-toggle")).toBeTruthy();
   });
 
   it("adds a highlight toggle to the toolbar", () => {

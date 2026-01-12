@@ -44,7 +44,7 @@ import {
 import { handleFindShortcut } from "./ui/editorFind";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
-import { bindWordWrapToggle } from "./ui/wordWrapToggle";
+import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
 import {
   clearPersistedState,
@@ -144,7 +144,6 @@ const leftFileInput = getRequiredElement<HTMLInputElement>("#left-file");
 const rightFileInput = getRequiredElement<HTMLInputElement>("#right-file");
 const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button");
 const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
-const wrapToggle = getRequiredElement<HTMLInputElement>("#wrap-toggle");
 const highlightToggle = getRequiredElement<HTMLInputElement>("#highlight-toggle");
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
@@ -286,9 +285,13 @@ const rightEditor = monaco.editor.create(rightContainer, {
   lineNumbers: "on",
 });
 
-bindWordWrapToggle({
-  input: wrapToggle,
+let wordWrapEnabled = false;
+bindWordWrapShortcut({
   editors: [leftEditor, rightEditor],
+  getEnabled: () => wordWrapEnabled,
+  setEnabled: (next) => {
+    wordWrapEnabled = next;
+  },
   onAfterToggle: () => recalcDiff(),
   keyTarget: window,
 });
