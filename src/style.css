@@ -17,6 +17,12 @@
   --file-boundary-3-border: rgba(200, 150, 35, 0.45);
   --file-boundary-4-fg: #7b2f3d;
   --file-boundary-4-border: rgba(179, 76, 92, 0.45);
+  --inline-insert-bg: rgba(80, 170, 90, 0.38);
+  --inline-delete-bg: rgba(210, 90, 70, 0.35);
+  --anchor-auto-fg: #1a5f5a;
+  --anchor-auto-dot-bg: rgba(26, 156, 145, 0.35);
+  --anchor-auto-dot-hover-bg: rgba(26, 156, 145, 0.5);
+  --anchor-auto-dot-selected-bg: rgba(26, 156, 145, 0.7);
   font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
   line-height: 1.5;
   font-weight: 400;
@@ -179,11 +185,15 @@ body {
 }
 
 .anchor-item.is-selected .anchor-link.anchor-auto::before {
-  background-color: rgba(26, 156, 145, 0.7);
+  background-color: var(--anchor-auto-dot-selected-bg);
 }
 
 .anchor-item:hover .anchor-link::before {
   background-color: rgba(63, 110, 208, 0.25);
+}
+
+.anchor-item:hover .anchor-link.anchor-auto::before {
+  background-color: var(--anchor-auto-dot-hover-bg);
 }
 
 .anchor-item:hover .anchor-link.anchor-disabled::before {
@@ -191,7 +201,7 @@ body {
 }
 
 .anchor-link.anchor-auto {
-  color: #1a5f5a;
+  color: var(--anchor-auto-fg);
 }
 
 .anchor-side {
@@ -241,7 +251,7 @@ body {
   font-size: 0.7rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: #1a5f5a;
+  color: var(--anchor-auto-fg);
 }
 
 .anchor-reason {
@@ -250,11 +260,11 @@ body {
 }
 
 .anchor-link.anchor-auto::before {
-  background-color: rgba(26, 156, 145, 0.35);
+  background-color: var(--anchor-auto-dot-bg);
 }
 
 .anchor-item.is-auto {
-  color: #1a5f5a;
+  color: var(--anchor-auto-fg);
 }
 
 .anchor-empty {
@@ -577,12 +587,12 @@ body {
 }
 
 .monaco-editor .inline-insert {
-  background-color: rgba(80, 170, 90, 0.38);
+  background-color: var(--inline-insert-bg);
   border-radius: 3px;
 }
 
 .monaco-editor .inline-delete {
-  background-color: rgba(210, 90, 70, 0.35);
+  background-color: var(--inline-delete-bg);
   border-radius: 3px;
 }
 
@@ -677,6 +687,12 @@ body {
   --file-boundary-3-border: rgba(240, 195, 107, 0.55);
   --file-boundary-4-fg: #f0a0b0;
   --file-boundary-4-border: rgba(240, 160, 176, 0.55);
+  --inline-insert-bg: rgba(96, 200, 120, 0.45);
+  --inline-delete-bg: rgba(245, 110, 90, 0.45);
+  --anchor-auto-fg: #9fe6df;
+  --anchor-auto-dot-bg: rgba(120, 220, 210, 0.45);
+  --anchor-auto-dot-hover-bg: rgba(120, 220, 210, 0.6);
+  --anchor-auto-dot-selected-bg: rgba(120, 220, 210, 0.85);
 }
 
 [data-theme="dark"] body {
