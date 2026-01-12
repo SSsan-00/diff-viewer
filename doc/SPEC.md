@@ -219,6 +219,7 @@ Myers の結果は基本的に `insert`/`delete` の列として得られるた�
 - ただし **一致（equal）は元文字列の厳密一致のみ** とし、識別子が異なるが構造が近い行は `replace` として並べる
   - 例: `StringBuilder.AppendLine("...")` と `$sql .= "..."` は `replace` として揃える
   - 例: `StringBuilder sql = new();` と `$sql = ""` は `replace` として揃える
+  - 例: `to_char(date, 'yyyy/mm/dd')` と `FORMAT(date, 'yyyy/MM/dd')` は **文字列リテラルが近い場合** に `replace` として揃える
   - 例: `}` のようなブレース単独行は、直前の対応行が揃っている場合に `replace` として揃える
   - 例: 関数宣言や代入は **同カテゴリ・同名** の場合のみ `replace` として揃える（`test` と `test2` / `foo` と `food` は対象外）
 

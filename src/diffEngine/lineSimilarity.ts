@@ -103,6 +103,21 @@ function extractInitVariable(line: string): string | null {
   return null;
 }
 
+type DateFormatInfo = {
+  format: string;
+  arg: string;
+};
+
+function extractDateFormatInfo(line: string): DateFormatInfo | null {
+  const match = line.match(
+    /\b(?:to_char|format)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*['"]([^'"]+)['"]\s*\)/i,
+  );
+  if (!match) {
+    return null;
+  }
+  return { arg: match[1].toLowerCase(), format: match[2].toLowerCase() };
+}
+
 function normalizeLine(line: string): string {
   let normalized = line.trimStart().replace(/\$/g, "");
   normalized = normalized.replace(/(?:\b[A-Za-z_][A-Za-z0-9_]*\.)+/g, "");
@@ -200,6 +215,12 @@ export function buildLineFeatures(line: string): LineFeatures {
     identifiers.push("init");
     identifiers.push(`init:${initVar}`);
   }
+  const dateFormat = extractDateFormatInfo(line);
+  if (dateFormat) {
+    identifiers.push("dateformat");
+    identifiers.push(`dateformat:${dateFormat.format}`);
+    identifiers.push(`dateformatarg:${dateFormat.arg}`);
+  }
   return { identifiers, literals, numbers, primaryId, category };
 }
 
@@ -243,6 +264,15 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   const initOverlap = left.identifiers.some(
     (token) => token.startsWith("init:") && right.identifiers.includes(token),
   );
+  const dateFormatOverlap = left.identifiers.some(
+    (token) => token.startsWith("dateformat:") && right.identifiers.includes(token),
+  );
+  const dateFormatArgOverlap = left.identifiers.some(
+    (token) => token.startsWith("dateformatarg:") && right.identifiers.includes(token),
+  );
+  const hasDateFormat =
+    left.identifiers.includes("dateformat") ||
+    right.identifiers.includes("dateformat");
 
   if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
     if (idOverlap === 0 && literalOverlap === 0) {
@@ -254,6 +284,9 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
     if (idOverlap === 0 && literalOverlap === 0) {
       return null;
     }
+  }
+  if (hasDateFormat && !dateFormatArgOverlap && literalOverlap === 0) {
+    return null;
   }
 
   let score = 0;
@@ -268,6 +301,9 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   }
   if (initOverlap) {
     score += 4;
+  }
+  if (dateFormatOverlap) {
+    score += dateFormatArgOverlap ? 5 : 1;
   }
 
   if (left.category === right.category) {

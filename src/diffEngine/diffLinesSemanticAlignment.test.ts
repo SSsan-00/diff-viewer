@@ -129,6 +129,23 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "var sql", "$sql = \"\"")).toBe(true);
   });
 
+  it("aligns SQL date formatting across languages", () => {
+    const left = ["$sql .= \", to_char(date, 'yyyy/mm/dd')\";"];
+    const right = ["sql += \", FORMAT(date, 'yyyy/MM/dd')\";"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "to_char", "FORMAT")).toBe(true);
+    expect(findEqual(ops, "to_char", "FORMAT")).toBe(false);
+  });
+
+  it("does not align date formatting when arguments differ", () => {
+    const left = ["$sql .= \", to_char(date, 'yyyy/mm/dd')\";"];
+    const right = ["sql += \", FORMAT(other, 'yyyy/MM/dd')\";"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "to_char", "FORMAT")).toBe(false);
+  });
+
   it("aligns function declarations with modifiers when names match", () => {
     const left = ["public static string test() {", "return 1;", "}"];
     const right = ["function test() {", "return 1;", "}"];

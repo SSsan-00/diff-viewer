@@ -26,6 +26,16 @@ describe("diffInline", () => {
     expect(result.rightRanges[0].start).toBe(0);
   });
 
+  it("highlights SQL date formatting differences", () => {
+    const result = diffInline(
+      "$sql .= \", to_char(date, 'yyyy/mm/dd')\";",
+      "sql += \", FORMAT(date, 'yyyy/MM/dd')\";",
+    );
+
+    expect(result.leftRanges.length).toBeGreaterThan(0);
+    expect(result.rightRanges.length).toBeGreaterThan(0);
+  });
+
   it("marks insertion at the start on the right only", () => {
     const result = diffInline("abc", "zabc");
 
