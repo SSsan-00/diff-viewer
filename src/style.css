@@ -23,6 +23,18 @@
   --anchor-auto-dot-bg: rgba(26, 156, 145, 0.35);
   --anchor-auto-dot-hover-bg: rgba(26, 156, 145, 0.5);
   --anchor-auto-dot-selected-bg: rgba(26, 156, 145, 0.7);
+  --file-badge-1-bg: rgba(63, 110, 208, 0.12);
+  --file-badge-1-border: rgba(63, 110, 208, 0.35);
+  --file-badge-1-fg: #2f4b8f;
+  --file-badge-2-bg: rgba(26, 156, 145, 0.12);
+  --file-badge-2-border: rgba(26, 156, 145, 0.35);
+  --file-badge-2-fg: #1a5f5a;
+  --file-badge-3-bg: rgba(200, 150, 35, 0.12);
+  --file-badge-3-border: rgba(200, 150, 35, 0.35);
+  --file-badge-3-fg: #7a5310;
+  --file-badge-4-bg: rgba(179, 76, 92, 0.12);
+  --file-badge-4-border: rgba(179, 76, 92, 0.35);
+  --file-badge-4-fg: #7b2f3d;
   --theme-transition-duration: 320ms;
   --theme-transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --theme-switch-width: 92px;
@@ -313,28 +325,29 @@ body {
   font-size: 0.68rem;
   padding: 2px 6px;
   border-radius: 999px;
-  background-color: rgba(63, 110, 208, 0.12);
-  border: 1px solid rgba(63, 110, 208, 0.35);
-  color: #2f4b8f;
+  background-color: var(--file-badge-1-bg);
+  border: 1px solid var(--file-badge-1-border);
+  color: var(--file-badge-1-fg);
   letter-spacing: 0.02em;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .anchor-file-badge.file-index-2 {
-  background-color: rgba(26, 156, 145, 0.12);
-  border-color: rgba(26, 156, 145, 0.35);
-  color: #1a5f5a;
+  background-color: var(--file-badge-2-bg);
+  border-color: var(--file-badge-2-border);
+  color: var(--file-badge-2-fg);
 }
 
 .anchor-file-badge.file-index-3 {
-  background-color: rgba(200, 150, 35, 0.12);
-  border-color: rgba(200, 150, 35, 0.35);
-  color: #7a5310;
+  background-color: var(--file-badge-3-bg);
+  border-color: var(--file-badge-3-border);
+  color: var(--file-badge-3-fg);
 }
 
 .anchor-file-badge.file-index-4 {
-  background-color: rgba(179, 76, 92, 0.12);
-  border-color: rgba(179, 76, 92, 0.35);
-  color: #7b2f3d;
+  background-color: var(--file-badge-4-bg);
+  border-color: var(--file-badge-4-border);
+  color: var(--file-badge-4-fg);
 }
 
 .anchor-separator {
@@ -925,12 +938,24 @@ body {
   --file-boundary-3-border: rgba(240, 195, 107, 0.55);
   --file-boundary-4-fg: #f0a0b0;
   --file-boundary-4-border: rgba(240, 160, 176, 0.55);
-  --inline-insert-bg: rgba(96, 200, 120, 0.45);
-  --inline-delete-bg: rgba(245, 110, 90, 0.45);
+  --inline-insert-bg: rgba(120, 220, 150, 0.6);
+  --inline-delete-bg: rgba(255, 135, 115, 0.6);
   --anchor-auto-fg: #9fe6df;
   --anchor-auto-dot-bg: rgba(120, 220, 210, 0.45);
   --anchor-auto-dot-hover-bg: rgba(120, 220, 210, 0.6);
   --anchor-auto-dot-selected-bg: rgba(120, 220, 210, 0.85);
+  --file-badge-1-bg: rgba(90, 140, 235, 0.35);
+  --file-badge-1-border: rgba(120, 165, 255, 0.75);
+  --file-badge-1-fg: #f5f8ff;
+  --file-badge-2-bg: rgba(60, 190, 178, 0.35);
+  --file-badge-2-border: rgba(95, 220, 210, 0.75);
+  --file-badge-2-fg: #edfffb;
+  --file-badge-3-bg: rgba(230, 175, 70, 0.35);
+  --file-badge-3-border: rgba(250, 200, 95, 0.75);
+  --file-badge-3-fg: #fff6e5;
+  --file-badge-4-bg: rgba(220, 115, 135, 0.35);
+  --file-badge-4-border: rgba(245, 150, 170, 0.75);
+  --file-badge-4-fg: #fff0f3;
 }
 
 [data-theme="dark"] body {
