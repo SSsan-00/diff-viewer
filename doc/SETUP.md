@@ -32,3 +32,5 @@ pnpm run verify:dist
 ## よくある詰まり
 - **禁止文字列ゲート**: `dist/index.html` / `dist/index.min.html` に禁止文字列が混入すると `verify:dist` が失敗します。ビルド結果を必ず再確認してください。
 - **file:// 直開き確認**: `dist/index.html` / `dist/index.min.html` を `file://` で開き、主要UIが崩れないことを確認します。
+- **dev/preview が EPERM**: 環境によっては `pnpm dev` / `pnpm preview` が権限エラーで起動できません。その場合は `pnpm build` 後に `dist/index.html` を `file://` 直開きで確認します。
+- **DevTools の拡張エラー**: アプリ外の拡張が DevTools にエラーを出す場合があります。シークレットモードや拡張OFFで再確認してください。

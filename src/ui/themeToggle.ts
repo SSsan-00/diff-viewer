@@ -44,14 +44,29 @@ export function setupThemeToggle(
   const initial = normalizeTheme(stored);
 
   toggle.checked = initial === "dark";
+  toggle.setAttribute("aria-checked", toggle.checked ? "true" : "false");
   applyTheme(root, initial);
   options.onThemeChange?.(initial);
 
   toggle.addEventListener("change", () => {
     const mode: ThemeMode = toggle.checked ? "dark" : "light";
+    toggle.setAttribute("aria-checked", toggle.checked ? "true" : "false");
     applyTheme(root, mode);
     options.storage?.setItem(storageKey, mode);
     options.onThemeChange?.(mode);
+  });
+
+  toggle.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") {
+      return;
+    }
+    event.preventDefault();
+    toggle.checked = !toggle.checked;
+    const view = toggle.ownerDocument?.defaultView;
+    const changeEvent = view
+      ? new view.Event("change", { bubbles: true })
+      : new Event("change");
+    toggle.dispatchEvent(changeEvent);
   });
 
   return initial;

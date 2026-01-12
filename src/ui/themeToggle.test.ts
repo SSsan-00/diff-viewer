@@ -22,6 +22,7 @@ describe("theme toggle", () => {
 
     expect(initial).toBe("dark");
     expect(toggle.checked).toBe(true);
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(onThemeChange).toHaveBeenCalledWith("dark");
 
@@ -29,7 +30,24 @@ describe("theme toggle", () => {
     toggle.dispatchEvent(new document.defaultView!.Event("change"));
 
     expect(document.documentElement.dataset.theme).toBe("light");
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
     expect(storage.setItem).toHaveBeenCalledWith("diff-viewer:theme", "light");
     expect(onThemeChange).toHaveBeenCalledWith("light");
+  });
+
+  it("toggles on Enter keydown", () => {
+    const document = setupDom();
+
+    setupThemeToggle(document);
+    const toggle = document.querySelector("#theme-toggle") as HTMLInputElement;
+
+    expect(document.documentElement.dataset.theme).toBe("light");
+
+    toggle.dispatchEvent(
+      new document.defaultView!.KeyboardEvent("keydown", { key: "Enter" }),
+    );
+
+    expect(document.documentElement.dataset.theme).toBe("dark");
+    expect(toggle.getAttribute("aria-checked")).toBe("true");
   });
 });

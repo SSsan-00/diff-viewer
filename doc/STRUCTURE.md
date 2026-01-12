@@ -11,6 +11,8 @@
 │   ├── SETUP.md
 │   ├── SPEC.md
 │   └── STRUCTURE.md
+├── reference/
+│   └── test.html
 ├── dist/
 ├── public/
 ├── scripts/
@@ -30,6 +32,12 @@
 ├── tsconfig.json
 └── vite.config.ts
 ```
+
+## reference/
+
+- `reference/test.html` テーマトグルの旧参照HTML。構造/動きの参考に使う。
+- `reference/theme-toggle/day.png` テーマトグルのライト配色/配置の参照画像。
+- `reference/theme-toggle/night.png` テーマトグルのダーク配色/配置の参照画像。
 
 ## src/ 全ファイル一覧（75件）
 

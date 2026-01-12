@@ -80,4 +80,28 @@ describe("pane action layout", () => {
       true,
     );
   });
+
+  it("renders the theme toggle as a switch with sun and moon icons", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const themeToggle = doc.querySelector<HTMLInputElement>("#theme-toggle");
+    const themeLabel = themeToggle?.closest("label");
+    const sun = doc.querySelector(".theme-switch__sun");
+    const moon = doc.querySelector(".theme-switch__moon");
+    const sunSvg = doc.querySelector("#sun");
+    const moonSvg = doc.querySelector("#moon");
+    const track = doc.querySelector(".theme-switch__track");
+
+    expect(themeToggle).toBeTruthy();
+    expect(themeToggle?.getAttribute("role")).toBe("switch");
+    expect(themeToggle?.getAttribute("aria-label")).toBe("テーマ");
+    expect(themeToggle?.getAttribute("aria-checked")).toBe("false");
+    expect(themeLabel?.classList.contains("theme-switch")).toBe(true);
+    expect(track).toBeTruthy();
+    expect(sun).toBeTruthy();
+    expect(moon).toBeTruthy();
+    expect(sunSvg).toBeTruthy();
+    expect(moonSvg).toBeTruthy();
+  });
 });

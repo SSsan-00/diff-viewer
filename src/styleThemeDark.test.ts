@@ -38,4 +38,13 @@ describe("dark theme readability tokens", () => {
     expect(inlineDelete?.[0]).toContain("var(--inline-delete-bg)");
     expect(anchorAuto?.[0]).toContain("var(--anchor-auto-fg)");
   });
+
+  it("includes reduced-motion styles for the theme switch", () => {
+    const css = loadCss();
+    const reducedMotion = css.match(/prefers-reduced-motion:\s*reduce[\s\S]*?\}/s);
+
+    expect(reducedMotion).toBeTruthy();
+    expect(reducedMotion?.[0]).toContain(".theme-switch__thumb");
+    expect(reducedMotion?.[0]).toContain(".theme-switch__track");
+  });
 });
