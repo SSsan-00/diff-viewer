@@ -19,6 +19,13 @@ describe("diffInline", () => {
     expect(result.leftRanges.length).toBeGreaterThan(0);
   });
 
+  it("highlights leading whitespace differences for keywords", () => {
+    const result = diffInline("break;", "        break;");
+
+    expect(result.rightRanges.length).toBeGreaterThan(0);
+    expect(result.rightRanges[0].start).toBe(0);
+  });
+
   it("marks insertion at the start on the right only", () => {
     const result = diffInline("abc", "zabc");
 

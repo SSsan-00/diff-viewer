@@ -36,6 +36,25 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "var foo", "var foo")).toBe(true);
   });
 
+  it("aligns indent-only comment lines with multibyte text", () => {
+    const left = ["// ここはコメント行"];
+    const right = ["        // ここはコメント行"];
+
+    const ops = toPairedOps(left, right);
+    expect(findEqual(ops, "ここはコメント行", "ここはコメント行")).toBe(false);
+    expect(findReplace(ops, "ここはコメント行", "ここはコメント行")).toBe(true);
+  });
+
+  it("aligns indent-only keyword lines", () => {
+    const left = ["break;", "else", "{"];
+    const right = ["        break;", "        else", "        {"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "break", "break")).toBe(true);
+    expect(findReplace(ops, "else", "else")).toBe(true);
+    expect(findReplace(ops, "{", "{")).toBe(true);
+  });
+
   it("aligns variable lines with different syntax", () => {
     const left = ["$foo = 1;", "$bar = 2;"];
     const right = ["var foo = 1;", "var bar = 2;"];

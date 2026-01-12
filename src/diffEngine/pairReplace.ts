@@ -86,8 +86,24 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
     for (const i of candidateIndices) {
       const rightText = inserts[i].rightLine ?? "";
       const rightIndent = countIndent(rightText);
+      const leftTrimmed = leftText.trimStart();
+      const rightTrimmed = rightText.trimStart();
       const rightFeature = insertFeatures[i];
       const distance = Math.abs(d - i);
+      if (
+        leftTrimmed === rightTrimmed &&
+        leftTrimmed !== "" &&
+        leftText !== rightText
+      ) {
+        candidates.push({
+          deleteIndex: d,
+          insertIndex: i,
+          indentDiff: Math.abs(leftIndent - rightIndent),
+          score: SCORE_THRESHOLD + 5,
+          distance,
+        });
+        continue;
+      }
       const scored = scoreLinePair(leftFeature, rightFeature);
       if (scored === null) {
         continue;
