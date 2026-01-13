@@ -52,7 +52,31 @@ function stripDollarIdentifiers(line: string): string {
   return line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, "$1");
 }
 
+function extractBraceToken(line: string): "brace_open" | "brace_close" | null {
+  const trimmed = line.trim();
+  if (trimmed === "{") {
+    return "brace_open";
+  }
+  if (trimmed === "}") {
+    return "brace_close";
+  }
+  const phpMatch = trimmed.match(
+    /^<\?\s*(?:php\s*)?([{}])\s*\?\s*>?$/i,
+  );
+  if (phpMatch?.[1] === "{") {
+    return "brace_open";
+  }
+  if (phpMatch?.[1] === "}") {
+    return "brace_close";
+  }
+  return null;
+}
+
 export function extractLineKey(line: string): string | null {
+  const braceToken = extractBraceToken(line);
+  if (braceToken) {
+    return braceToken;
+  }
   const normalized = stripDollarIdentifiers(line.trimStart());
   const funcMatch = normalized.match(/([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
   if (funcMatch) {

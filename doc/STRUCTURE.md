@@ -57,6 +57,8 @@
 - `src/diffEngine/types.ts` 差分モデルの型定義。exports: `LineOp`, `PairedOp`, `Range`, `InlineDiff`。
 - `src/diffEngine/normalize.ts` 改行正規化（CRLF/CR → LF）。export: `normalizeText`。
 - `src/diffEngine/normalize.test.ts` `normalizeText` のユニットテスト。
+- `src/diffEngine/lineSignature.ts` 行の識別キー抽出（ユニーク行・対応付け補助）。export: `extractLineKey`。
+- `src/diffEngine/lineSignature.test.ts` 識別キー抽出のテスト。
 - `src/diffEngine/lineSignature.ts` 行の識別子抽出（ユニーク行アンカー用）。export: `extractLineKey`。
 - `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル等）。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`。
 - `src/diffEngine/diffLines.ts` 行レベル差分（Myers + ユニーク行優先）。exports: `diffLinesFromLines`, `diffLines`。

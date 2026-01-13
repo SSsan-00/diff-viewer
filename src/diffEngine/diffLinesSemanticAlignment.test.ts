@@ -173,6 +173,17 @@ describe("semantic alignment across languages", () => {
     expect(findEqual(ops, "}", "}")).toBe(false);
   });
 
+  it("aligns php tag wrapped braces as replace pairs", () => {
+    const left = ["{", "}"];
+    const right = ["<? { ?>", "  <? } ?>"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "{", "<? {")).toBe(true);
+    expect(findReplace(ops, "}", "<? }")).toBe(true);
+    expect(findEqual(ops, "{", "<? {")).toBe(false);
+    expect(findEqual(ops, "}", "<? }")).toBe(false);
+  });
+
   it("aligns SQL construction across languages", () => {
     const left = ["builder.AppendLine(\"select * from users\");"];
     const right = ["$sql .= \"select * from users\";"];

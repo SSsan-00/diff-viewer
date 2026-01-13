@@ -124,6 +124,26 @@ function normalizeLine(line: string): string {
   return normalized;
 }
 
+function extractBraceToken(line: string): "brace_open" | "brace_close" | null {
+  const trimmed = line.trim();
+  if (trimmed === "{") {
+    return "brace_open";
+  }
+  if (trimmed === "}") {
+    return "brace_close";
+  }
+  const phpMatch = trimmed.match(
+    /^<\?\s*(?:php\s*)?([{}])\s*\?\s*>?$/i,
+  );
+  if (phpMatch?.[1] === "{") {
+    return "brace_open";
+  }
+  if (phpMatch?.[1] === "}") {
+    return "brace_close";
+  }
+  return null;
+}
+
 function extractLiterals(line: string): string[] {
   const matches = line.match(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g) ?? [];
   return matches.map((value) => value.slice(1, -1).toLowerCase());
@@ -205,6 +225,10 @@ export function buildLineFeatures(line: string): LineFeatures {
   const identifiers = extractIdentifiers(line);
   const literals = extractLiterals(line);
   const numbers = extractNumbers(line);
+  const braceToken = extractBraceToken(line);
+  if (braceToken) {
+    identifiers.push(braceToken);
+  }
   const category = detectCategory(line);
   const primaryId = pickPrimaryId(identifiers, literals, line);
   if (detectAppendLike(line) && !identifiers.includes("append")) {
