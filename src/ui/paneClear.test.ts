@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { JSDOM } from "jsdom";
 import { APP_TEMPLATE } from "./template";
-import { bindPaneClearButton } from "./paneClear";
+import { bindPaneClearButton, clearEditorModel } from "./paneClear";
 import type { LineSegment } from "../file/lineNumbering";
 
 function setupDocument(): Document {
@@ -14,18 +14,8 @@ describe("pane clear buttons", () => {
     const leftButton = document.querySelector<HTMLButtonElement>("#left-clear");
     const rightButton = document.querySelector<HTMLButtonElement>("#right-clear");
 
-    const leftEditor = {
-      value: "left",
-      setValue(value: string) {
-        leftEditor.value = value;
-      },
-    };
-    const rightEditor = {
-      value: "right",
-      setValue(value: string) {
-        rightEditor.value = value;
-      },
-    };
+    const leftEditor = createEditor("left");
+    const rightEditor = createEditor("right");
 
     const leftSegments: LineSegment[] = [
       { startLine: 1, lineCount: 2, fileIndex: 1 },
@@ -69,18 +59,8 @@ describe("pane clear buttons", () => {
     const leftButton = document.querySelector<HTMLButtonElement>("#left-clear");
     const rightButton = document.querySelector<HTMLButtonElement>("#right-clear");
 
-    const leftEditor = {
-      value: "left",
-      setValue(value: string) {
-        leftEditor.value = value;
-      },
-    };
-    const rightEditor = {
-      value: "right",
-      setValue(value: string) {
-        rightEditor.value = value;
-      },
-    };
+    const leftEditor = createEditor("left");
+    const rightEditor = createEditor("right");
 
     const leftSegments: LineSegment[] = [
       { startLine: 1, lineCount: 2, fileIndex: 1 },
@@ -118,4 +98,45 @@ describe("pane clear buttons", () => {
     expect(afterRight).toHaveBeenCalledTimes(1);
     expect(afterLeft).not.toHaveBeenCalled();
   });
+
+  it("clears via model edits to keep undo stack", () => {
+    const editor = createEditor("filled");
+    const model = editor.getModel();
+    const applyEdits = vi.spyOn(model!, "applyEdits");
+    const pushStackElement = vi.spyOn(model!, "pushStackElement");
+    const getRange = vi.spyOn(model!, "getFullModelRange");
+
+    clearEditorModel(editor);
+
+    expect(getRange).toHaveBeenCalledTimes(1);
+    expect(pushStackElement).toHaveBeenCalled();
+    expect(applyEdits).toHaveBeenCalledWith([{ range: model!.range, text: "" }]);
+    expect(editor.value).toBe("");
+  });
 });
+
+function createEditor(initial: string) {
+  const model = {
+    range: { start: 1, end: 2 },
+    getFullModelRange() {
+      return model.range;
+    },
+    applyEdits(edits: Array<{ range: object; text: string }>) {
+      const next = edits[0]?.text ?? "";
+      editor.value = next;
+    },
+    pushStackElement() {},
+  };
+
+  const editor = {
+    value: initial,
+    setValue(value: string) {
+      editor.value = value;
+    },
+    getModel() {
+      return model;
+    },
+  };
+
+  return editor;
+}

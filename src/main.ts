@@ -34,13 +34,14 @@ import { normalizeText } from "./diffEngine/normalize";
 import { THIRD_PARTY_LICENSES } from "./licenses";
 import { APP_TEMPLATE } from "./ui/template";
 import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
-import { bindPaneClearButton } from "./ui/paneClear";
+import { bindPaneClearButton, clearEditorModel } from "./ui/paneClear";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import {
   handleLeftAnchorClick,
   handleRightAnchorClick,
 } from "./ui/anchorClick";
+import { resetAllAnchors } from "./ui/anchorReset";
 import { handleFindShortcut } from "./ui/editorFind";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
@@ -965,6 +966,39 @@ function updatePendingAnchorDecoration() {
   }
 }
 
+function resetAllAnchorsAndDecorations(): void {
+  const next = resetAllAnchors(
+    {
+      manualAnchors,
+      autoAnchor,
+      suppressedAutoAnchorKey,
+      pendingLeftLineNo,
+      pendingRightLineNo,
+      selectedAnchorKey,
+      pendingLeftDecorationIds,
+      pendingRightDecorationIds,
+      leftAnchorDecorationIds,
+      rightAnchorDecorationIds,
+      leftFocusDecorationIds,
+      rightFocusDecorationIds,
+    },
+    { leftEditor, rightEditor },
+  );
+
+  manualAnchors = next.manualAnchors;
+  autoAnchor = next.autoAnchor;
+  suppressedAutoAnchorKey = next.suppressedAutoAnchorKey;
+  pendingLeftLineNo = next.pendingLeftLineNo;
+  pendingRightLineNo = next.pendingRightLineNo;
+  selectedAnchorKey = next.selectedAnchorKey;
+  pendingLeftDecorationIds = next.pendingLeftDecorationIds;
+  pendingRightDecorationIds = next.pendingRightDecorationIds;
+  leftAnchorDecorationIds = next.leftAnchorDecorationIds;
+  rightAnchorDecorationIds = next.rightAnchorDecorationIds;
+  leftFocusDecorationIds = next.leftFocusDecorationIds;
+  rightFocusDecorationIds = next.rightFocusDecorationIds;
+}
+
 function updateAnchorWarning(invalid: { anchor: Anchor; reasons: string[] }[]) {
   if (invalid.length === 0) {
     anchorWarning.textContent = "";
@@ -1537,8 +1571,7 @@ bindPaneClearButton(leftClearButton, {
   segments: leftSegments,
   updateLineNumbers,
   onAfterClear: () => {
-    pendingLeftLineNo = null;
-    updatePendingAnchorDecoration();
+    resetAllAnchorsAndDecorations();
     clearPaneMessage(leftMessage);
     refreshSyntaxHighlight();
     recalcDiff();
@@ -1551,8 +1584,7 @@ bindPaneClearButton(rightClearButton, {
   segments: rightSegments,
   updateLineNumbers,
   onAfterClear: () => {
-    pendingRightLineNo = null;
-    updatePendingAnchorDecoration();
+    resetAllAnchorsAndDecorations();
     clearPaneMessage(rightMessage);
     refreshSyntaxHighlight();
     recalcDiff();
@@ -1568,16 +1600,11 @@ clearButton.addEventListener("click", () => {
   cancelPersist();
   clearPersistedState(storage);
   withPersistSuppressed(() => {
-    manualAnchors = [];
-    autoAnchor = null;
-    suppressedAutoAnchorKey = null;
-    pendingLeftLineNo = null;
-    pendingRightLineNo = null;
-    selectedAnchorKey = null;
-    leftEditor.setValue("");
-    rightEditor.setValue("");
+    clearEditorModel(leftEditor);
+    clearEditorModel(rightEditor);
     leftSegments.length = 0;
     rightSegments.length = 0;
+    resetAllAnchorsAndDecorations();
     clearPaneMessage(leftMessage);
     clearPaneMessage(rightMessage);
     updateLineNumbers(leftEditor, leftSegments);

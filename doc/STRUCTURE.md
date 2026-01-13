@@ -121,6 +121,8 @@
 - `src/ui/anchorClick.test.ts` アンカー操作のテスト。
 - `src/ui/anchorDecorations.ts` アンカー装飾（行ハイライト/丸マーカー）生成。export: `buildAnchorDecorations` と関連型。
 - `src/ui/anchorDecorations.test.ts` アンカー装飾のテスト。
+- `src/ui/anchorReset.ts` クリア時のアンカー状態/装飾を一括リセット。export: `resetAllAnchors` と関連型。
+- `src/ui/anchorReset.test.ts` アンカーリセットのテスト。
 - `src/ui/fileBoundaryZones.ts` ファイル境界の表示ゾーン生成（差分行と整列）。exports: `buildAlignedFileBoundaryZones` と関連型。
 - `src/ui/fileBoundaryZones.test.ts` 境界ゾーンのテスト。
 
