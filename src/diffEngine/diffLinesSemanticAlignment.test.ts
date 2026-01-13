@@ -230,6 +230,50 @@ describe("semantic alignment across languages", () => {
     expect(findEqual(ops, "function test()", "function test()")).toBe(false);
   });
 
+  it("aligns html lines built via string appends", () => {
+    const left = [
+      "<div class=\"box\">",
+      "  <span>hello</span>",
+      "</div>",
+    ];
+    const right = [
+      "html.AppendLine(\"<div class=\\\"box\\\">\");",
+      "html.AppendLine(\"  <span>hello</span>\");",
+      "html.AppendLine(\"</div>\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<div class", "<div class")).toBe(true);
+    expect(findReplace(ops, "<span>hello</span>", "<span>hello</span>")).toBe(true);
+    expect(findReplace(ops, "</div>", "</div>")).toBe(true);
+    expect(findEqual(ops, "<div class", "<div class")).toBe(false);
+  });
+
+  it("aligns embedded script lines inside html blocks", () => {
+    const left = [
+      "<div class=\"box\">",
+      "  <script>",
+      "    console.log(\"x\");",
+      "  </script>",
+      "</div>",
+    ];
+    const right = [
+      "s.AppendLine(\"<div class=\\\"box\\\">\");",
+      "s.AppendLine(\"  <script>\");",
+      "s.AppendLine(\"    console.log(\\\"x\\\");\");",
+      "s.AppendLine(\"  </script>\");",
+      "s.AppendLine(\"</div>\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<div class", "<div class")).toBe(true);
+    expect(findReplace(ops, "<script>", "<script>")).toBe(true);
+    expect(findReplace(ops, "console.log", "console.log")).toBe(true);
+    expect(findReplace(ops, "</script>", "</script>")).toBe(true);
+    expect(findReplace(ops, "</div>", "</div>")).toBe(true);
+    expect(findEqual(ops, "console.log", "console.log")).toBe(false);
+  });
+
   it("does not align close-but-different variable names", () => {
     const left = ["var foo = 1;"];
     const right = ["var food = 1;"];

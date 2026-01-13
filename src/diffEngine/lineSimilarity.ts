@@ -152,16 +152,16 @@ function extractStructuredFragment(line: string): string | null {
     return null;
   }
 
-  if (!/[{};:]/.test(trimmed)) {
-    return null;
-  }
-
   if (/^(function|console\.|return|if|for|while|switch|case)\b/i.test(trimmed)) {
     return normalizeFragment(trimmed);
   }
 
-  if (/^<[^>]+>$/i.test(trimmed)) {
+  if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
     return normalizeFragment(trimmed);
+  }
+
+  if (!/[{};:]/.test(trimmed)) {
+    return null;
   }
 
   if (/^[A-Za-z0-9_.#\s-]+{\s*$/i.test(trimmed)) {
@@ -199,9 +199,118 @@ function extractBraceToken(line: string): "brace_open" | "brace_close" | null {
   return null;
 }
 
+function unescapeLiteral(value: string): string {
+  return value
+    .replace(/\\\\/g, "\\")
+    .replace(/\\"/g, "\"")
+    .replace(/\\'/g, "'")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\r")
+    .replace(/\\t/g, "\t");
+}
+
 function extractLiterals(line: string): string[] {
   const matches = line.match(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g) ?? [];
-  return matches.map((value) => value.slice(1, -1).toLowerCase());
+  return matches.map((value) => unescapeLiteral(value.slice(1, -1)).toLowerCase());
+}
+
+function extractHtmlHintTokens(source: string): string[] {
+  const tokens: string[] = [];
+  const tagMatches = source.matchAll(/<\s*\/?\s*([a-z][a-z0-9-]*)/gi);
+  for (const match of tagMatches) {
+    tokens.push(`hint:html:tag:${match[1].toLowerCase()}`);
+  }
+  if (/\bclass\s*=/.test(source)) {
+    tokens.push("hint:html:attr:class");
+  }
+  if (/\bid\s*=/.test(source)) {
+    tokens.push("hint:html:attr:id");
+  }
+  if (/\bhref\s*=/.test(source)) {
+    tokens.push("hint:html:attr:href");
+  }
+  if (/\bsrc\s*=/.test(source)) {
+    tokens.push("hint:html:attr:src");
+  }
+  if (/\brole\s*=/.test(source)) {
+    tokens.push("hint:html:attr:role");
+  }
+  if (/\btype\s*=/.test(source)) {
+    tokens.push("hint:html:attr:type");
+  }
+  if (/\bdata-[a-z0-9_-]+\s*=/.test(source)) {
+    tokens.push("hint:html:attr:data");
+  }
+  if (/\baria-[a-z0-9_-]+\s*=/.test(source)) {
+    tokens.push("hint:html:attr:aria");
+  }
+  return tokens;
+}
+
+function extractJsHintTokens(source: string): string[] {
+  const tokens: string[] = [];
+  if (/\bconst\b/.test(source)) {
+    tokens.push("hint:js:const");
+  }
+  if (/\blet\b/.test(source)) {
+    tokens.push("hint:js:let");
+  }
+  if (/\bvar\b/.test(source)) {
+    tokens.push("hint:js:var");
+  }
+  if (/\bdocument\b/.test(source)) {
+    tokens.push("hint:js:document");
+  }
+  if (/\bwindow\b/.test(source)) {
+    tokens.push("hint:js:window");
+  }
+  if (/\bquerySelector(All)?\b/.test(source)) {
+    tokens.push("hint:js:querySelector");
+  }
+  if (/\bgetElementById\b/.test(source)) {
+    tokens.push("hint:js:getElementById");
+  }
+  if (/\bgetElementsByClassName\b/.test(source)) {
+    tokens.push("hint:js:getElementsByClassName");
+  }
+  if (/\baddEventListener\b/.test(source)) {
+    tokens.push("hint:js:addEventListener");
+  }
+  if (/\bclassList\b/.test(source)) {
+    tokens.push("hint:js:classList");
+  }
+  if (/\binnerHTML\b/.test(source)) {
+    tokens.push("hint:js:innerHTML");
+  }
+  if (/\btextContent\b/.test(source)) {
+    tokens.push("hint:js:textContent");
+  }
+  if (/\bfunction\b/.test(source)) {
+    tokens.push("hint:js:function");
+  }
+  if (/\breturn\b/.test(source)) {
+    tokens.push("hint:js:return");
+  }
+  if (/\bif\b/.test(source)) {
+    tokens.push("hint:js:if");
+  }
+  if (/\bfor\b/.test(source)) {
+    tokens.push("hint:js:for");
+  }
+  if (/\bwhile\b/.test(source)) {
+    tokens.push("hint:js:while");
+  }
+  if (/=>/.test(source)) {
+    tokens.push("hint:js:arrow");
+  }
+  return tokens;
+}
+
+function extractEmbeddedHintTokens(source: string): string[] {
+  const tokens = new Set<string>();
+  extractHtmlHintTokens(source).forEach((token) => tokens.add(token));
+  extractJsHintTokens(source).forEach((token) => tokens.add(token));
+  return [...tokens];
 }
 
 function extractNumbers(line: string): string[] {
@@ -261,8 +370,11 @@ function pickPrimaryId(
     return funcName;
   }
 
-  if (identifiers.length > 0) {
-    return identifiers.reduce((best, current) =>
+  const primaryCandidates = identifiers.filter(
+    (token) => !token.startsWith("hint:") && !token.startsWith("codefrag:"),
+  );
+  if (primaryCandidates.length > 0) {
+    return primaryCandidates.reduce((best, current) =>
       current.length > best.length ? current : best,
     );
   }
@@ -280,6 +392,7 @@ export function buildLineFeatures(line: string): LineFeatures {
   const identifiers = extractIdentifiers(line);
   const literals = extractLiterals(line);
   const numbers = extractNumbers(line);
+  const appendLike = detectAppendLike(line);
   const structuredFragment = extractStructuredFragment(line);
   if (structuredFragment) {
     identifiers.push(`codefrag:${structuredFragment}`);
@@ -295,7 +408,13 @@ export function buildLineFeatures(line: string): LineFeatures {
   }
   const category = detectCategory(line);
   const primaryId = pickPrimaryId(identifiers, literals, line);
-  if (detectAppendLike(line) && !identifiers.includes("append")) {
+  extractEmbeddedHintTokens(line).forEach((token) => identifiers.push(token));
+  if (appendLike) {
+    literals.forEach((literal) => {
+      extractEmbeddedHintTokens(literal).forEach((token) => identifiers.push(token));
+    });
+  }
+  if (appendLike && !identifiers.includes("append")) {
     identifiers.push("append");
   }
   const initVar = extractInitVariable(line);
@@ -310,6 +429,16 @@ export function buildLineFeatures(line: string): LineFeatures {
     identifiers.push(`dateformatarg:${dateFormat.arg}`);
   }
   return { identifiers, literals, numbers, primaryId, category };
+}
+
+function filterHintTokens(identifiers: string[]): string[] {
+  return identifiers.filter((token) => token.startsWith("hint:"));
+}
+
+function filterStrongIdentifiers(identifiers: string[]): string[] {
+  return identifiers.filter(
+    (token) => !token.startsWith("hint:") && !token.startsWith("codefrag:"),
+  );
 }
 
 function intersectCount(left: string[], right: string[]): number {
@@ -346,7 +475,13 @@ function jaccardSimilarity(left: string[], right: string[]): number {
 }
 
 export function scoreLinePair(left: LineFeatures, right: LineFeatures): number | null {
-  const idOverlap = intersectCount(left.identifiers, right.identifiers);
+  const strongLeftIds = filterStrongIdentifiers(left.identifiers);
+  const strongRightIds = filterStrongIdentifiers(right.identifiers);
+  const idOverlap = intersectCount(strongLeftIds, strongRightIds);
+  const hintOverlap = intersectCount(
+    filterHintTokens(left.identifiers),
+    filterHintTokens(right.identifiers),
+  );
   const literalOverlap = intersectCount(left.literals, right.literals);
   const numberOverlap = intersectCount(left.numbers, right.numbers);
   const initOverlap = left.identifiers.some(
@@ -369,15 +504,22 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   const hasDateFormat =
     left.identifiers.includes("dateformat") ||
     right.identifiers.includes("dateformat");
+  const hasBaseOverlap =
+    idOverlap > 0 ||
+    literalOverlap > 0 ||
+    codefragOverlap ||
+    braceOverlap ||
+    initOverlap ||
+    dateFormatArgOverlap;
 
   if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
-    if (idOverlap === 0 && literalOverlap === 0) {
+    if (!hasBaseOverlap) {
       return null;
     }
   }
 
   if (!left.primaryId || !right.primaryId) {
-    if (idOverlap === 0 && literalOverlap === 0) {
+    if (!hasBaseOverlap) {
       return null;
     }
   }
@@ -392,6 +534,7 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   score += literalOverlap * 2;
   score += numberOverlap * 1.5;
   score += idOverlap * 1;
+  score += hintOverlap * 0.5;
   if (literalOverlap > 0 && idOverlap > 0) {
     score += 2;
   }
@@ -417,7 +560,7 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
     score -= 1;
   }
 
-  score += jaccardSimilarity(left.identifiers, right.identifiers);
+  score += jaccardSimilarity(strongLeftIds, strongRightIds);
 
   return score;
 }
