@@ -11,8 +11,6 @@
 │   ├── SETUP.md
 │   ├── SPEC.md
 │   └── STRUCTURE.md
-├── reference/
-│   └── test.html
 ├── dist/
 ├── public/
 ├── scripts/
@@ -33,17 +31,11 @@
 └── vite.config.ts
 ```
 
-## reference/
-
-- `reference/test.html` テーマトグルの旧参照HTML。構造/動きの参考に使う。
-- `reference/theme-toggle/day.png` テーマトグルのライト配色/配置の参照画像。
-- `reference/theme-toggle/night.png` テーマトグルのダーク配色/配置の参照画像。
-
-## src/ 全ファイル一覧（75件）
+## src/ 全ファイル一覧（82件）
 
 ### src/
 
-- `src/main.ts` アプリ起点。Monaco 初期化、イベント配線、差分再計算、アンカー描画、読み込み/保存を統合。主な exports: `config`, `greet`, `add`, `sumList`（テスト用の軽量エクスポート）。主に `src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` を利用。
+- `src/main.ts` アプリ起点。Monaco 初期化、イベント配線、差分再計算、アンカー描画、読み込み/保存を統合。主に `src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` を利用。
 - `src/style.css` 画面全体のレイアウト/配色/差分ハイライト/アンカー/境界表示のスタイル。`src/main.ts` から読み込む。
 - `src/licenses.ts` 依存ライセンス本文データ。export: `THIRD_PARTY_LICENSES`（`src/main.ts` から参照）。
 - `src/smoke.test.ts` Vitest の起動確認用スモークテスト。
@@ -51,6 +43,7 @@
 - `src/distLayout.test.ts` テンプレート構造（ペイン/ツールバー/ドロップUI）の回帰テスト。
 - `src/distReadableStyle.test.ts` 可読版/最適化版の CSS 一致とデータ URL 維持のテスト。
 - `src/styleFileBoundary.test.ts` ファイル境界 CSS が大文字化しないことのテスト。
+- `src/styleThemeDark.test.ts` ダークテーマの inline diff 配色トークン検証テスト。
 
 ### src/diffEngine/
 
@@ -59,7 +52,6 @@
 - `src/diffEngine/normalize.test.ts` `normalizeText` のユニットテスト。
 - `src/diffEngine/lineSignature.ts` 行の識別キー抽出（ユニーク行・対応付け補助）。export: `extractLineKey`。
 - `src/diffEngine/lineSignature.test.ts` 識別キー抽出のテスト。
-- `src/diffEngine/lineSignature.ts` 行の識別子抽出（ユニーク行アンカー用）。export: `extractLineKey`。
 - `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル等）。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`。
 - `src/diffEngine/diffLines.ts` 行レベル差分（Myers + ユニーク行優先）。exports: `diffLinesFromLines`, `diffLines`。
 - `src/diffEngine/diffLines.test.ts` 行差分の基本ケーステスト。
@@ -107,7 +99,7 @@
 - `src/ui/paneMessages.test.ts` メッセージ制御のテスト。
 - `src/ui/editorFind.ts` Ctrl/Cmd+F をフォーカスペインへ誘導。exports: `handleFindShortcut` と関連型。
 - `src/ui/editorFind.test.ts` Find ショートカットのテスト。
-- `src/ui/wordWrapToggle.ts` 折り返しの適用処理（UIトグル用）。export: `bindWordWrapToggle`。
+- `src/ui/wordWrapToggle.ts` 折り返しの適用処理（UIトグル用、現在は未配線）。export: `bindWordWrapToggle`。
 - `src/ui/wordWrapToggle.test.ts` 折り返し切替のテスト。
 - `src/ui/wordWrapShortcut.ts` Alt+Z の折り返しショートカット（UI無しの操作経路）。export: `bindWordWrapShortcut`。
 - `src/ui/wordWrapShortcut.test.ts` Alt+Z ショートカットのテスト。

@@ -156,6 +156,10 @@ function extractStructuredFragment(line: string): string | null {
     return null;
   }
 
+  if (/^(function|console\.|return|if|for|while|switch|case)\b/i.test(trimmed)) {
+    return normalizeFragment(trimmed);
+  }
+
   if (/^<[^>]+>$/i.test(trimmed)) {
     return normalizeFragment(trimmed);
   }

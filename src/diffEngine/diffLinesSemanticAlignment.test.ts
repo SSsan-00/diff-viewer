@@ -211,6 +211,25 @@ describe("semantic alignment across languages", () => {
     expect(findEqual(ops, "body {", "body {")).toBe(false);
   });
 
+  it("aligns js blocks built via string appends", () => {
+    const left = [
+      "function test() {",
+      "  console.log('test');",
+      "}",
+    ];
+    const right = [
+      "js.AppendLine(\"function test() {\");",
+      "js.AppendLine(\"  console.log('test');\");",
+      "js.AppendLine(\"}\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "function test()", "function test()")).toBe(true);
+    expect(findReplace(ops, "console.log('test')", "console.log('test')")).toBe(true);
+    expect(findReplace(ops, "}", "}\"")).toBe(true);
+    expect(findEqual(ops, "function test()", "function test()")).toBe(false);
+  });
+
   it("does not align close-but-different variable names", () => {
     const left = ["var foo = 1;"];
     const right = ["var food = 1;"];
