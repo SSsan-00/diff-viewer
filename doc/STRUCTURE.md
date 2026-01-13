@@ -44,6 +44,7 @@
 - `src/distReadableStyle.test.ts` 可読版/最適化版の CSS 一致とデータ URL 維持のテスト。
 - `src/styleFileBoundary.test.ts` ファイル境界 CSS が大文字化しないことのテスト。
 - `src/styleThemeDark.test.ts` ダークテーマの inline diff 配色トークン検証テスト。
+- `src/indexHtml.test.ts` `index.html` の favicon 埋め込み（data URL）テスト。
 
 ### src/diffEngine/
 
@@ -52,7 +53,7 @@
 - `src/diffEngine/normalize.test.ts` `normalizeText` のユニットテスト。
 - `src/diffEngine/lineSignature.ts` 行の識別キー抽出（ユニーク行・対応付け補助）。export: `extractLineKey`。
 - `src/diffEngine/lineSignature.test.ts` 識別キー抽出のテスト。
-- `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル等）。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`。
+- `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル/埋め込みCSS/JS/HTMLの補助トークン）。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`。
 - `src/diffEngine/diffLines.ts` 行レベル差分（Myers + ユニーク行優先）。exports: `diffLinesFromLines`, `diffLines`。
 - `src/diffEngine/diffLines.test.ts` 行差分の基本ケーステスト。
 - `src/diffEngine/diffLinesAlignment.test.ts` 行対応の安定性テスト。
