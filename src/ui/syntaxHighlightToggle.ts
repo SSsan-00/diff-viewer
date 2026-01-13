@@ -11,6 +11,15 @@ export type SyntaxHighlightToggleOptions = {
   initialEnabled?: boolean;
 };
 
+function applyHighlightState(root: ParentNode, enabled: boolean): void {
+  const doc = root as Document;
+  const target = doc.documentElement ?? (root as HTMLElement);
+  if (!target) {
+    return;
+  }
+  target.dataset.highlight = enabled ? "on" : "off";
+}
+
 export function bindSyntaxHighlightToggle(
   options: SyntaxHighlightToggleOptions,
 ): { applyHighlight: (enabled: boolean) => void } | null {
@@ -26,6 +35,7 @@ export function bindSyntaxHighlightToggle(
 
   const applyHighlight = (nextEnabled: boolean) => {
     enabled = nextEnabled;
+    applyHighlightState(input.ownerDocument ?? document, enabled);
     editors.forEach((editor, index) => {
       const model = editor.getModel();
       if (!model) {

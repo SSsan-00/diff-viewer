@@ -19,6 +19,8 @@
   --file-boundary-4-border: rgba(179, 76, 92, 0.45);
   --inline-insert-bg: rgba(80, 170, 90, 0.38);
   --inline-delete-bg: rgba(210, 90, 70, 0.35);
+  --inline-insert-outline: rgba(60, 140, 90, 0.35);
+  --inline-delete-outline: rgba(175, 80, 70, 0.35);
   --anchor-auto-fg: #1a5f5a;
   --anchor-auto-dot-bg: rgba(26, 156, 145, 0.35);
   --anchor-auto-dot-hover-bg: rgba(26, 156, 145, 0.5);
@@ -847,6 +849,25 @@ body {
   border-radius: 3px;
 }
 
+[data-theme="dark"][data-highlight="on"] .monaco-editor .inline-insert,
+[data-theme="dark"][data-highlight="on"] .monaco-editor .inline-delete {
+  box-shadow: inset 0 0 0 1px var(--inline-insert-outline);
+  text-shadow: 0 1px 0 rgba(10, 12, 16, 0.5);
+}
+
+[data-theme="dark"][data-highlight="on"] .monaco-editor .inline-delete {
+  box-shadow: inset 0 0 0 1px var(--inline-delete-outline);
+}
+
+[data-theme="dark"][data-highlight="on"] .monaco-editor .line-hover .inline-insert,
+[data-theme="dark"][data-highlight="on"] .monaco-editor .line-hover .inline-delete,
+[data-theme="dark"][data-highlight="on"] .monaco-editor .current-line .inline-insert,
+[data-theme="dark"][data-highlight="on"] .monaco-editor .current-line .inline-delete,
+[data-theme="dark"][data-highlight="on"] .monaco-editor .selected-text .inline-insert,
+[data-theme="dark"][data-highlight="on"] .monaco-editor .selected-text .inline-delete {
+  background-color: rgba(255, 255, 255, 0.12);
+}
+
 .diff-zone-insert {
   background: rgba(80, 170, 90, 0.08);
 }
@@ -938,8 +959,10 @@ body {
   --file-boundary-3-border: rgba(240, 195, 107, 0.55);
   --file-boundary-4-fg: #f0a0b0;
   --file-boundary-4-border: rgba(240, 160, 176, 0.55);
-  --inline-insert-bg: rgba(120, 220, 150, 0.6);
-  --inline-delete-bg: rgba(255, 135, 115, 0.6);
+  --inline-insert-bg: rgba(120, 220, 150, 0.28);
+  --inline-delete-bg: rgba(255, 135, 115, 0.28);
+  --inline-insert-outline: rgba(110, 220, 170, 0.75);
+  --inline-delete-outline: rgba(255, 155, 135, 0.75);
   --anchor-auto-fg: #9fe6df;
   --anchor-auto-dot-bg: rgba(120, 220, 210, 0.45);
   --anchor-auto-dot-hover-bg: rgba(120, 220, 210, 0.6);

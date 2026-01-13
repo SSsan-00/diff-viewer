@@ -17,12 +17,16 @@ describe("dark theme readability tokens", () => {
 
     expect(rootMatch?.[0]).toContain("--inline-insert-bg:");
     expect(rootMatch?.[0]).toContain("--inline-delete-bg:");
+    expect(rootMatch?.[0]).toContain("--inline-insert-outline:");
+    expect(rootMatch?.[0]).toContain("--inline-delete-outline:");
     expect(rootMatch?.[0]).toContain("--anchor-auto-fg:");
     expect(rootMatch?.[0]).toContain("--file-badge-1-bg:");
     expect(rootMatch?.[0]).toContain("--file-badge-4-fg:");
 
     expect(darkMatch?.[0]).toContain("--inline-insert-bg:");
     expect(darkMatch?.[0]).toContain("--inline-delete-bg:");
+    expect(darkMatch?.[0]).toContain("--inline-insert-outline:");
+    expect(darkMatch?.[0]).toContain("--inline-delete-outline:");
     expect(darkMatch?.[0]).toContain("--anchor-auto-fg:");
     expect(darkMatch?.[0]).toContain("--file-badge-1-bg:");
     expect(darkMatch?.[0]).toContain("--file-badge-4-fg:");
@@ -34,11 +38,15 @@ describe("dark theme readability tokens", () => {
     const inlineDelete = css.match(/\.monaco-editor\s+\.inline-delete\s*\{[^}]*\}/s);
     const anchorAuto = css.match(/\.anchor-link\.anchor-auto\s*\{[^}]*\}/s);
     const fileBadge = css.match(/\.anchor-file-badge\s*\{[^}]*\}/s);
+    const inlineReadable = css.match(
+      /\[data-theme="dark"\]\[data-highlight="on"\][\s\S]*?\.inline-insert/s,
+    );
 
     expect(inlineInsert).toBeTruthy();
     expect(inlineDelete).toBeTruthy();
     expect(anchorAuto).toBeTruthy();
     expect(fileBadge).toBeTruthy();
+    expect(inlineReadable).toBeTruthy();
 
     expect(inlineInsert?.[0]).toContain("var(--inline-insert-bg)");
     expect(inlineDelete?.[0]).toContain("var(--inline-delete-bg)");
