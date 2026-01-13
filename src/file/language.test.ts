@@ -4,6 +4,7 @@ import { detectLanguageFromFileName, inferPaneLanguage } from "./language";
 describe("detectLanguageFromFileName", () => {
   it("maps known extensions to Monaco language ids", () => {
     expect(detectLanguageFromFileName("index.php")).toBe("php");
+    expect(detectLanguageFromFileName("config.inc")).toBe("php");
     expect(detectLanguageFromFileName("view.cshtml.cs")).toBe("csharp");
     expect(detectLanguageFromFileName("view.cshtml")).toBe("csharp");
     expect(detectLanguageFromFileName("file.cs")).toBe("csharp");
@@ -39,6 +40,10 @@ describe("inferPaneLanguage", () => {
 
   it("prefers php over html when mixed", () => {
     expect(inferPaneLanguage(["a.php", "b.html"])).toBe("php");
+  });
+
+  it("prefers php when .inc is present with html", () => {
+    expect(inferPaneLanguage(["a.inc", "b.html"])).toBe("php");
   });
 
   it("prefers typescript over javascript when mixed", () => {

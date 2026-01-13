@@ -15,6 +15,7 @@ const EXTENSION_LANGUAGE_MAP: Array<[string, MonacoLanguageId]> = [
   [".csx", "csharp"],
   [".cs", "csharp"],
   [".php", "php"],
+  [".inc", "php"],
   [".mjs", "javascript"],
   [".cjs", "javascript"],
   [".js", "javascript"],

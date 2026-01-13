@@ -391,6 +391,7 @@ Myers の結果は基本的に `insert`/`delete` の列として得られるた�
     - `csharp` → `php` → `html` → `typescript` → `javascript` → `css` → `json` → `markdown` → `plaintext`
   - 対応拡張子（最小セット）:
     - `.php` → `php`
+    - `.inc` → `php`
     - `.cs` / `.csx` / `.cshtml` / `.cshtml.cs` → `csharp`
     - `.js` / `.mjs` / `.cjs` → `javascript`
     - `.ts` / `.tsx` → `typescript`
