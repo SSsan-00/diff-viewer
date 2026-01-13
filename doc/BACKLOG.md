@@ -7,6 +7,12 @@
 
 | 項目 | 種別 | doc/SPEC.md 反映先候補 | 受け入れ条件のヒント | 依存関係 |
 | --- | --- | --- | --- | --- |
+| ダークテーマ時の視認性向上（ハイライト×行内差分の衝突） | bug | UI仕様 / 4.2 操作 | ダークテーマ+ハイライトONで行内差分が重なっても文字が読める（通常/hover/選択）。ライトの見え方は悪化しない。CSSトークンの切替で改善を固定。 | 対象候補: `src/style.css`（inline diff/monaco token関連）。テスト: `src/styleThemeDark.test.ts` でトークン適用/切替を固定 |
+| 拡張子 .inc を PHP として扱う | request | 10.1 UI仕様 / 10.3 複数ファイル読み込み | `*.inc` が PHP として language 推定される。混在時の優先順位でも PHP が優先される。 | 対象候補: `src/file/language.ts`。テスト: `src/file/language.test.ts` に単体/混在ケース追加 |
+| クリア時に全アンカーを消す（両ペイン） | request | 4.2 操作 / 8. アンカー行仕様 | 左/右どちらのクリアでも全アンカー（manual/auto/pending/selected/decoration）が消える。差分再計算が破綻しない。 | 対象候補: `src/main.ts`（クリア処理）、`src/anchor` 系。テスト: クリア後のアンカー状態が空であることを固定 |
+| クリア操作の Undo 対応（Ctrl/Cmd+Z） | request | 4.2 操作 | クリア直後に Undo でテキストが復元される。アンカーは消えたまま/復元の扱いを仕様で固定。 | 前提: 「クリア時に全アンカーを消す」完了。対象候補: Monaco model の `executeEdits`/`pushUndoStop`。テスト: Undo 可能なAPI呼び出しを固定 |
+| 対応行検出のブラッシュアップ（PHPタグの `{}` 対応） | request | 5.2 行レベル差分 | `{` と `<? { ?}`、`}` と `<? } ?}` が replace で揃い、インデント差は行内差分として見える。 | 対象候補: `src/diffEngine/*`。テスト: 正規化キー/replaceペアリングのユニットテスト追加 |
+| 対応行検出のブラッシュアップ（文字列内 CSS の抽出） | request | 5.2 行レベル差分 | `createCss` の例で CSS 本体が対応行として揃う（replaceでOK）。行内差分が出る。 | 前提: PHPタグの `{}` 対応。対象候補: 正規化/スコアリングに軽いヒューリスティック追加。テスト: fixtureでCSS行が揃うことを固定 |
 
 ## Should
 優先度理由: 体験改善・機能追加で有益だが、順番は柔軟。
