@@ -124,6 +124,57 @@ function normalizeLine(line: string): string {
   return normalized;
 }
 
+function normalizeFragment(fragment: string): string {
+  return fragment
+    .replace(/\s+/g, " ")
+    .replace(/\s*([{}();:,])\s*/g, "$1")
+    .trim()
+    .toLowerCase();
+}
+
+function extractStructuredFragment(line: string): string | null {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  if (
+    trimmed === "{" ||
+    trimmed === "}" ||
+    /^<\?\s*(?:php\s*)?[{}]\s*\?\s*>?$/i.test(trimmed)
+  ) {
+    return null;
+  }
+  if (detectAppendLike(line)) {
+    const literal = extractLiterals(line)[0];
+    if (literal) {
+      return normalizeFragment(literal);
+    }
+    return null;
+  }
+
+  if (!/[{};:]/.test(trimmed)) {
+    return null;
+  }
+
+  if (/^<[^>]+>$/i.test(trimmed)) {
+    return normalizeFragment(trimmed);
+  }
+
+  if (/^[A-Za-z0-9_.#\s-]+{\s*$/i.test(trimmed)) {
+    return normalizeFragment(trimmed);
+  }
+
+  if (/^}\s*;?\s*$/.test(trimmed)) {
+    return normalizeFragment(trimmed);
+  }
+
+  if (/^[A-Za-z-]+\s*:\s*[^;]+;?\s*$/.test(trimmed)) {
+    return normalizeFragment(trimmed);
+  }
+
+  return null;
+}
+
 function extractBraceToken(line: string): "brace_open" | "brace_close" | null {
   const trimmed = line.trim();
   if (trimmed === "{") {
@@ -225,6 +276,15 @@ export function buildLineFeatures(line: string): LineFeatures {
   const identifiers = extractIdentifiers(line);
   const literals = extractLiterals(line);
   const numbers = extractNumbers(line);
+  const structuredFragment = extractStructuredFragment(line);
+  if (structuredFragment) {
+    identifiers.push(`codefrag:${structuredFragment}`);
+    if (structuredFragment === "{") {
+      identifiers.push("brace_open");
+    } else if (structuredFragment === "}") {
+      identifiers.push("brace_close");
+    }
+  }
   const braceToken = extractBraceToken(line);
   if (braceToken) {
     identifiers.push(braceToken);
@@ -294,6 +354,14 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   const dateFormatArgOverlap = left.identifiers.some(
     (token) => token.startsWith("dateformatarg:") && right.identifiers.includes(token),
   );
+  const codefragOverlap = left.identifiers.some(
+    (token) => token.startsWith("codefrag:") && right.identifiers.includes(token),
+  );
+  const braceOverlap =
+    (left.identifiers.includes("brace_open") &&
+      right.identifiers.includes("brace_open")) ||
+    (left.identifiers.includes("brace_close") &&
+      right.identifiers.includes("brace_close"));
   const hasDateFormat =
     left.identifiers.includes("dateformat") ||
     right.identifiers.includes("dateformat");
@@ -322,6 +390,12 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   score += idOverlap * 1;
   if (literalOverlap > 0 && idOverlap > 0) {
     score += 2;
+  }
+  if (codefragOverlap) {
+    score += 5;
+  }
+  if (braceOverlap) {
+    score += 5;
   }
   if (initOverlap) {
     score += 4;

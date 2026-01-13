@@ -192,6 +192,25 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "AppendLine", "$sql")).toBe(true);
   });
 
+  it("aligns css lines built via string appends", () => {
+    const left = [
+      "body {",
+      "  color: red;",
+      "}",
+    ];
+    const right = [
+      "css.AppendLine(\"body {\");",
+      "css.AppendLine(\"  color: red;\");",
+      "css.AppendLine(\"}\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "body {", "body {")).toBe(true);
+    expect(findReplace(ops, "color: red", "color: red")).toBe(true);
+    expect(findReplace(ops, "}", "}\"")).toBe(true);
+    expect(findEqual(ops, "body {", "body {")).toBe(false);
+  });
+
   it("does not align close-but-different variable names", () => {
     const left = ["var foo = 1;"];
     const right = ["var food = 1;"];
