@@ -55,6 +55,11 @@ import {
   type PersistedState,
 } from "./storage/persistedState";
 import {
+  clearPaneSummary,
+  loadPaneSummary,
+  savePaneSummary,
+} from "./storage/paneSummary";
+import {
   formatFileLoadError,
   shouldLogFileLoadError,
 } from "./file/loadErrors";
@@ -158,6 +163,15 @@ const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
 
 applyEncodingSelection(leftEncodingSelect, persistedState?.leftEncoding);
 applyEncodingSelection(rightEncodingSelect, persistedState?.rightEncoding);
+
+const storedLeftSummary = loadPaneSummary(storage, "left");
+if (storedLeftSummary) {
+  setPaneMessage(leftMessage, storedLeftSummary, false);
+}
+const storedRightSummary = loadPaneSummary(storage, "right");
+if (storedRightSummary) {
+  setPaneMessage(rightMessage, storedRightSummary, false);
+}
 
 const leftInitial =
   persistedState?.leftText ??
@@ -478,7 +492,9 @@ async function appendFilesToEditor(
     return;
   }
 
-  setPaneMessage(messageTarget, `読み込み完了: ${label}`, false);
+  const summary = `読み込み完了: ${label}`;
+  setPaneMessage(messageTarget, summary, false);
+  savePaneSummary(storage, side, summary);
   runPostLoadTasks([recalcDiff, schedulePersist]);
 }
 
@@ -1558,6 +1574,7 @@ bindPaneClearButton(leftClearButton, {
   onAfterClear: () => {
     resetAllAnchorsAndDecorations();
     clearPaneMessage(leftMessage);
+    clearPaneSummary(storage, "left");
     refreshSyntaxHighlight();
     recalcDiff();
     schedulePersist();
@@ -1571,6 +1588,7 @@ bindPaneClearButton(rightClearButton, {
   onAfterClear: () => {
     resetAllAnchorsAndDecorations();
     clearPaneMessage(rightMessage);
+    clearPaneSummary(storage, "right");
     refreshSyntaxHighlight();
     recalcDiff();
     schedulePersist();
@@ -1592,6 +1610,8 @@ clearButton.addEventListener("click", () => {
     resetAllAnchorsAndDecorations();
     clearPaneMessage(leftMessage);
     clearPaneMessage(rightMessage);
+    clearPaneSummary(storage, "left");
+    clearPaneSummary(storage, "right");
     updateLineNumbers(leftEditor, leftSegments);
     updateLineNumbers(rightEditor, rightSegments);
     refreshSyntaxHighlight();

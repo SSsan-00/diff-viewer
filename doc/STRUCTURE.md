@@ -31,7 +31,7 @@
 └── vite.config.ts
 ```
 
-## src/ 全ファイル一覧（84件）
+## src/ 全ファイル一覧（86件）
 
 ### src/
 
@@ -127,6 +127,8 @@
 
 - `src/storage/persistedState.ts` LocalStorage 保存/復元とスケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。
+- `src/storage/paneSummary.ts` 読み込み完了サマリの保存/復元。exports: `loadPaneSummary`, `savePaneSummary`, `clearPaneSummary`。
+- `src/storage/paneSummary.test.ts` サマリ保存/復元のテスト。
 
 ### src/scrollSync/
 
