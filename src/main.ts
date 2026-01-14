@@ -48,23 +48,20 @@ import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
 import { createEditorOptions } from "./ui/editorOptions";
+import { renderFileCards } from "./ui/fileCards";
 import {
   clearPersistedState,
   createPersistScheduler,
   loadPersistedState,
   type PersistedState,
 } from "./storage/persistedState";
-import {
-  clearPaneSummary,
-  loadPaneSummary,
-  savePaneSummary,
-} from "./storage/paneSummary";
+import { clearPaneSummary } from "./storage/paneSummary";
 import {
   formatFileLoadError,
   shouldLogFileLoadError,
 } from "./file/loadErrors";
 import { runPostLoadTasks } from "./file/postLoad";
-import { formatLoadSuccessLabel, listLoadedFileNames } from "./file/loadMessages";
+import { listLoadedFileNames } from "./file/loadMessages";
 import { clearPaneMessage, setPaneMessage } from "./ui/paneMessages";
 import { inferPaneLanguage } from "./file/language";
 
@@ -145,6 +142,8 @@ const leftPane = getRequiredElement<HTMLElement>("#left-pane");
 const rightPane = getRequiredElement<HTMLElement>("#right-pane");
 const leftMessage = getRequiredElement<HTMLDivElement>("#left-message");
 const rightMessage = getRequiredElement<HTMLDivElement>("#right-message");
+const leftFileCards = getRequiredElement<HTMLDivElement>("#left-file-cards");
+const rightFileCards = getRequiredElement<HTMLDivElement>("#right-file-cards");
 const leftEncodingSelect = getRequiredElement<HTMLSelectElement>("#left-encoding");
 const rightEncodingSelect = getRequiredElement<HTMLSelectElement>("#right-encoding");
 const leftFileInput = getRequiredElement<HTMLInputElement>("#left-file");
@@ -163,15 +162,6 @@ const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
 
 applyEncodingSelection(leftEncodingSelect, persistedState?.leftEncoding);
 applyEncodingSelection(rightEncodingSelect, persistedState?.rightEncoding);
-
-const storedLeftSummary = loadPaneSummary(storage, "left");
-if (storedLeftSummary) {
-  setPaneMessage(leftMessage, storedLeftSummary, false);
-}
-const storedRightSummary = loadPaneSummary(storage, "right");
-if (storedRightSummary) {
-  setPaneMessage(rightMessage, storedRightSummary, false);
-}
 
 const leftInitial =
   persistedState?.leftText ??
@@ -339,6 +329,14 @@ function withProgrammaticEdit(
   }
 }
 
+function updateFileCards(
+  side: "left" | "right",
+  names: readonly string[],
+): void {
+  const target = side === "left" ? leftFileCards : rightFileCards;
+  renderFileCards(target, names);
+}
+
 leftEditor.onDidFocusEditorText(() => {
   lastFocusedSide = "left";
 });
@@ -454,7 +452,7 @@ async function appendFilesToEditor(
   let currentFileName = "";
   const shouldTrackRawBytes = rawFiles.length > 0 || editor.getValue() === "";
   let nextSegments: LineSegment[] = [];
-  let label = "";
+  let loadedNames: string[] = [];
   try {
     const incomingFiles: FileBytes[] = [];
     for (const file of fileList) {
@@ -476,11 +474,9 @@ async function appendFilesToEditor(
     segments.push(...nextSegments);
     updateLineNumbers(editor, segments);
     refreshSyntaxHighlight();
-    const loadedNames = listLoadedFileNames(nextSegments);
-    label =
-      loadedNames.length > 0
-        ? formatLoadSuccessLabel(loadedNames)
-        : formatLoadSuccessLabel(fileList.map((file) => file.name));
+    const segmentNames = listLoadedFileNames(nextSegments);
+    loadedNames =
+      segmentNames.length > 0 ? segmentNames : fileList.map((file) => file.name);
   } catch (error) {
     if (shouldLogFileLoadError(error)) {
       console.error(error);
@@ -492,9 +488,9 @@ async function appendFilesToEditor(
     return;
   }
 
-  const summary = `読み込み完了: ${label}`;
-  setPaneMessage(messageTarget, summary, false);
-  savePaneSummary(storage, side, summary);
+  clearPaneMessage(messageTarget);
+  clearPaneSummary(storage, side);
+  updateFileCards(side, loadedNames);
   runPostLoadTasks([recalcDiff, schedulePersist]);
 }
 
@@ -561,6 +557,8 @@ if (isSegmentLayoutValid(storedRightSegments, rightEditor.getValue())) {
 updateLineNumbers(leftEditor, leftSegments);
 updateLineNumbers(rightEditor, rightSegments);
 refreshSyntaxHighlight();
+updateFileCards("left", listLoadedFileNames(leftSegments));
+updateFileCards("right", listLoadedFileNames(rightSegments));
 
 bindDropZone(
   leftPane,
@@ -1573,6 +1571,7 @@ bindPaneClearButton(leftClearButton, {
   updateLineNumbers,
   onAfterClear: () => {
     resetAllAnchorsAndDecorations();
+    updateFileCards("left", []);
     clearPaneMessage(leftMessage);
     clearPaneSummary(storage, "left");
     refreshSyntaxHighlight();
@@ -1587,6 +1586,7 @@ bindPaneClearButton(rightClearButton, {
   updateLineNumbers,
   onAfterClear: () => {
     resetAllAnchorsAndDecorations();
+    updateFileCards("right", []);
     clearPaneMessage(rightMessage);
     clearPaneSummary(storage, "right");
     refreshSyntaxHighlight();
@@ -1608,6 +1608,8 @@ clearButton.addEventListener("click", () => {
     leftSegments.length = 0;
     rightSegments.length = 0;
     resetAllAnchorsAndDecorations();
+    updateFileCards("left", []);
+    updateFileCards("right", []);
     clearPaneMessage(leftMessage);
     clearPaneMessage(rightMessage);
     clearPaneSummary(storage, "left");

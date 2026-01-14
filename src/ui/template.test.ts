@@ -114,4 +114,20 @@ describe("pane action layout", () => {
     expect(title?.classList.contains("app-title")).toBe(true);
     expect(title?.textContent).toBe("Diff Viewer");
   });
+
+  it("renders file card bars for both panes", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const leftBar = doc.querySelector("#left-file-cards");
+    const rightBar = doc.querySelector("#right-file-cards");
+
+    expect(leftBar).toBeTruthy();
+    expect(rightBar).toBeTruthy();
+    expect(leftBar?.classList.contains("file-cards-bar")).toBe(true);
+    expect(rightBar?.classList.contains("file-cards-bar")).toBe(true);
+    expect(leftBar?.classList.contains("file-cards-bar--horizontal")).toBe(
+      true,
+    );
+  });
 });

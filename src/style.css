@@ -37,6 +37,11 @@
   --file-badge-4-bg: rgba(179, 76, 92, 0.12);
   --file-badge-4-border: rgba(179, 76, 92, 0.35);
   --file-badge-4-fg: #7b2f3d;
+  --file-card-bg: rgba(255, 255, 255, 0.7);
+  --file-card-border: rgba(150, 135, 110, 0.45);
+  --file-card-fg: #4b3e2f;
+  --file-card-hover-bg: rgba(255, 255, 255, 0.9);
+  --file-card-focus: rgba(63, 110, 208, 0.4);
   --theme-transition-duration: 320ms;
   --theme-transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --theme-switch-width: 92px;
@@ -741,6 +746,55 @@ body {
   color: #5b4a37;
 }
 
+.file-cards-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 16px 0;
+  padding: 2px 2px 4px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex-wrap: nowrap;
+  scrollbar-width: thin;
+}
+
+.file-cards-bar::-webkit-scrollbar {
+  height: 6px;
+}
+
+.file-cards-bar::-webkit-scrollbar-thumb {
+  background-color: rgba(80, 70, 55, 0.3);
+  border-radius: 999px;
+}
+
+.file-cards-bar--horizontal {
+  flex-wrap: nowrap;
+}
+
+.file-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--file-card-border);
+  background-color: var(--file-card-bg);
+  color: var(--file-card-fg);
+  font-size: 0.72rem;
+  white-space: nowrap;
+  text-overflow: clip;
+  cursor: default;
+}
+
+.file-card:focus-visible {
+  outline: 2px solid var(--file-card-focus);
+  outline-offset: 2px;
+}
+
+.file-card:hover {
+  background-color: var(--file-card-hover-bg);
+}
+
 .pane-message.is-error {
   color: #b24b3f;
 }
@@ -979,6 +1033,11 @@ body {
   --file-badge-4-bg: rgba(220, 115, 135, 0.35);
   --file-badge-4-border: rgba(245, 150, 170, 0.75);
   --file-badge-4-fg: #fff0f3;
+  --file-card-bg: rgba(38, 34, 30, 0.7);
+  --file-card-border: rgba(190, 175, 150, 0.35);
+  --file-card-fg: #f1ece2;
+  --file-card-hover-bg: rgba(58, 52, 46, 0.85);
+  --file-card-focus: rgba(120, 165, 255, 0.6);
 }
 
 [data-theme="dark"] body {

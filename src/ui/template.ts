@@ -134,6 +134,11 @@ export const APP_TEMPLATE = `
             </label>
           </div>
         </div>
+        <div
+          id="left-file-cards"
+          class="file-cards-bar file-cards-bar--horizontal"
+          aria-label="files"
+        ></div>
         <div id="left-message" class="pane-message" aria-live="polite"></div>
         <div id="left-editor" class="editor"></div>
       </section>
@@ -169,6 +174,11 @@ export const APP_TEMPLATE = `
             </label>
           </div>
         </div>
+        <div
+          id="right-file-cards"
+          class="file-cards-bar file-cards-bar--horizontal"
+          aria-label="files"
+        ></div>
         <div id="right-message" class="pane-message" aria-live="polite"></div>
         <div id="right-editor" class="editor"></div>
       </section>
