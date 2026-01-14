@@ -31,7 +31,7 @@
 └── vite.config.ts
 ```
 
-## src/ 全ファイル一覧（82件）
+## src/ 全ファイル一覧（84件）
 
 ### src/
 
@@ -106,6 +106,8 @@
 - `src/ui/wordWrapShortcut.test.ts` Alt+Z ショートカットのテスト。
 - `src/ui/syntaxHighlightToggle.ts` シンタックスハイライトの ON/OFF を切替。export: `bindSyntaxHighlightToggle`。
 - `src/ui/syntaxHighlightToggle.test.ts` ハイライト切替のテスト。
+- `src/ui/editorOptions.ts` Monaco エディタ生成用の共通オプション（sticky scroll 無効化含む）。export: `createEditorOptions`。
+- `src/ui/editorOptions.test.ts` エディタ生成オプションのテスト。
 - `src/ui/themeToggle.ts` ☀️/🌙 テーマ切替と保存。exports: `setupThemeToggle`, `ThemeMode`。
 - `src/ui/themeToggle.test.ts` テーマ切替のテスト。
 - `src/ui/diffJumpButtons.ts` 差分ジャンプボタンの有効/無効制御。export: `updateDiffJumpButtons`。

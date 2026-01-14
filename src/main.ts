@@ -47,6 +47,7 @@ import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
+import { createEditorOptions } from "./ui/editorOptions";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -260,31 +261,15 @@ flags.set("ready", true);
 export { config, greet, add, sumList };
 `;
 
-const leftEditor = monaco.editor.create(leftContainer, {
-  value: leftInitial,
-  language: "plaintext",
-  theme: "vs",
-  automaticLayout: true,
-  lineHeight: 22,
-  wordWrap: "off",
-  wrappingStrategy: "advanced",
-  glyphMargin: true,
-  minimap: { enabled: false },
-  lineNumbers: "on",
-});
+const leftEditor = monaco.editor.create(
+  leftContainer,
+  createEditorOptions(leftInitial),
+);
 
-const rightEditor = monaco.editor.create(rightContainer, {
-  value: rightInitial,
-  language: "plaintext",
-  theme: "vs",
-  automaticLayout: true,
-  lineHeight: 22,
-  wordWrap: "off",
-  wrappingStrategy: "advanced",
-  glyphMargin: true,
-  minimap: { enabled: false },
-  lineNumbers: "on",
-});
+const rightEditor = monaco.editor.create(
+  rightContainer,
+  createEditorOptions(rightInitial),
+);
 
 let wordWrapEnabled = false;
 bindWordWrapShortcut({
