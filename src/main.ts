@@ -49,6 +49,7 @@ import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
 import { createEditorOptions } from "./ui/editorOptions";
 import { renderFileCards } from "./ui/fileCards";
+import { bindFileCardJump } from "./ui/fileCardJump";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -62,6 +63,7 @@ import {
 } from "./file/loadErrors";
 import { runPostLoadTasks } from "./file/postLoad";
 import { listLoadedFileNames } from "./file/loadMessages";
+import { getFileStartLine } from "./file/segmentIndex";
 import { clearPaneMessage, setPaneMessage } from "./ui/paneMessages";
 import { inferPaneLanguage } from "./file/language";
 
@@ -337,6 +339,31 @@ function updateFileCards(
   renderFileCards(target, names);
 }
 
+function jumpToFileStart(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  segments: readonly LineSegment[],
+  fileName: string,
+): void {
+  const startLine = getFileStartLine(segments, fileName);
+  const model = editor.getModel();
+  if (!startLine || !model) {
+    return;
+  }
+  const line = Math.min(Math.max(startLine, 1), model.getLineCount());
+  const anchorLine = Math.max(1, line - 1);
+  editor.setPosition({ lineNumber: line, column: 1 });
+  if ("getTopForLineNumber" in editor && "setScrollTop" in editor) {
+    const top = editor.getTopForLineNumber(anchorLine);
+    editor.setScrollTop(top);
+  } else if ("revealLineAtTop" in editor) {
+    editor.revealLineAtTop(anchorLine);
+  } else {
+    editor.revealLine(anchorLine);
+  }
+  editor.focus();
+}
+
+
 leftEditor.onDidFocusEditorText(() => {
   lastFocusedSide = "left";
 });
@@ -393,6 +420,7 @@ function applyDecodedFiles(
   segments.length = 0;
   segments.push(...nextSegments);
   updateLineNumbers(editor, segments);
+  updateFileCards(side, listLoadedFileNames(segments));
   refreshSyntaxHighlight();
   recalcDiff();
   schedulePersist();
@@ -578,6 +606,12 @@ bindDropZone(
   rightFileBytes,
   "right",
 );
+bindFileCardJump(leftFileCards, (fileName) => {
+  jumpToFileStart(leftEditor, leftSegments, fileName);
+});
+bindFileCardJump(rightFileCards, (fileName) => {
+  jumpToFileStart(rightEditor, rightSegments, fileName);
+});
 
 function bindFilePicker(
   input: HTMLInputElement,

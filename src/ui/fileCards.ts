@@ -13,6 +13,7 @@ export function renderFileCards(
     button.textContent = name;
     button.title = name;
     button.setAttribute("aria-label", name);
+    button.dataset.file = name;
     fragment.appendChild(button);
   }
 

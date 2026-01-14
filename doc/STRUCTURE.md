@@ -81,6 +81,8 @@
 - `src/file/lineNumbering.test.ts` 行番号計算のテスト。
 - `src/file/segmentAppend.ts` 追加入力時の末尾改行の扱いを正規化。export: `normalizeLastSegmentForAppend`。
 - `src/file/segmentAppend.test.ts` 末尾改行の正規化テスト。
+- `src/file/segmentIndex.ts` 連結セグメントから「ファイル名 → 先頭行」を解決。exports: `buildFileStartLineIndex`, `getFileStartLine`。
+- `src/file/segmentIndex.test.ts` ファイル先頭行インデックスのテスト。
 - `src/file/loadMessages.ts` 読み込み完了メッセージの整形（ファイル名列挙）。exports: `formatLoadSuccessLabel`, `listLoadedFileNames`。
 - `src/file/loadMessages.test.ts` メッセージ生成のテスト。
 - `src/file/loadErrors.ts` 読み込みエラー整形とログ判定。exports: `isInitializationReferenceError`, `formatFileLoadError`, `shouldLogFileLoadError`。
@@ -98,6 +100,10 @@
 - `src/ui/paneClear.test.ts` クリア挙動のテスト。
 - `src/ui/paneMessages.ts` ペインの読み込み/エラーメッセージ制御。exports: `setPaneMessage`, `clearPaneMessage`。
 - `src/ui/paneMessages.test.ts` メッセージ制御のテスト。
+- `src/ui/fileCards.ts` ファイル一覧カードの描画。export: `renderFileCards`。
+- `src/ui/fileCards.test.ts` カード描画のテスト。
+- `src/ui/fileCardJump.ts` ファイルカードクリックのハンドラ接続。export: `bindFileCardJump`。
+- `src/ui/fileCardJump.test.ts` カードクリックハンドラのテスト。
 - `src/ui/editorFind.ts` Ctrl/Cmd+F をフォーカスペインへ誘導。exports: `handleFindShortcut` と関連型。
 - `src/ui/editorFind.test.ts` Find ショートカットのテスト。
 - `src/ui/wordWrapToggle.ts` 折り返しの適用処理（UIトグル用、現在は未配線）。export: `bindWordWrapToggle`。

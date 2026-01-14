@@ -18,7 +18,9 @@ describe("renderFileCards", () => {
     expect(cards).toHaveLength(2);
     expect(cards[0]?.textContent).toBe("alpha.txt");
     expect(cards[0]?.getAttribute("title")).toBe("alpha.txt");
+    expect(cards[0]?.getAttribute("data-file")).toBe("alpha.txt");
     expect(cards[1]?.textContent).toBe("beta.txt");
     expect(cards[1]?.getAttribute("aria-label")).toBe("beta.txt");
+    expect(cards[1]?.getAttribute("data-file")).toBe("beta.txt");
   });
 });
