@@ -43,6 +43,7 @@ import {
 } from "./ui/anchorClick";
 import { resetAllAnchors } from "./ui/anchorReset";
 import { handleFindShortcut } from "./ui/editorFind";
+import { handleGoToLineShortcut } from "./ui/goToLine";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
@@ -63,7 +64,11 @@ import {
 } from "./file/loadErrors";
 import { runPostLoadTasks } from "./file/postLoad";
 import { listLoadedFileNames } from "./file/loadMessages";
-import { getFileStartLine } from "./file/segmentIndex";
+import {
+  getFileSegment,
+  getFileStartLine,
+  getGlobalLineFromLocal,
+} from "./file/segmentIndex";
 import { clearPaneMessage, setPaneMessage } from "./ui/paneMessages";
 import { inferPaneLanguage } from "./file/language";
 
@@ -146,6 +151,14 @@ const leftMessage = getRequiredElement<HTMLDivElement>("#left-message");
 const rightMessage = getRequiredElement<HTMLDivElement>("#right-message");
 const leftFileCards = getRequiredElement<HTMLDivElement>("#left-file-cards");
 const rightFileCards = getRequiredElement<HTMLDivElement>("#right-file-cards");
+const leftGotoPanel = getRequiredElement<HTMLDivElement>("#left-goto-line");
+const rightGotoPanel = getRequiredElement<HTMLDivElement>("#right-goto-line");
+const leftGotoFiles = getRequiredElement<HTMLDivElement>("#left-goto-line .goto-line-files");
+const rightGotoFiles = getRequiredElement<HTMLDivElement>("#right-goto-line .goto-line-files");
+const leftGotoInput = getRequiredElement<HTMLInputElement>("#left-goto-line-input");
+const rightGotoInput = getRequiredElement<HTMLInputElement>("#right-goto-line-input");
+const leftGotoHint = getRequiredElement<HTMLSpanElement>("#left-goto-line-hint");
+const rightGotoHint = getRequiredElement<HTMLSpanElement>("#right-goto-line-hint");
 const leftEncodingSelect = getRequiredElement<HTMLSelectElement>("#left-encoding");
 const rightEncodingSelect = getRequiredElement<HTMLSelectElement>("#right-encoding");
 const leftFileInput = getRequiredElement<HTMLInputElement>("#left-file");
@@ -337,6 +350,202 @@ function updateFileCards(
 ): void {
   const target = side === "left" ? leftFileCards : rightFileCards;
   renderFileCards(target, names);
+}
+
+type GoToLinePane = {
+  root: HTMLDivElement;
+  files: HTMLDivElement;
+  input: HTMLInputElement;
+  hint: HTMLSpanElement;
+};
+
+const goToLinePanes: Record<"left" | "right", GoToLinePane> = {
+  left: {
+    root: leftGotoPanel,
+    files: leftGotoFiles,
+    input: leftGotoInput,
+    hint: leftGotoHint,
+  },
+  right: {
+    root: rightGotoPanel,
+    files: rightGotoFiles,
+    input: rightGotoInput,
+    hint: rightGotoHint,
+  },
+};
+
+const goToLineSelection: Record<"left" | "right", string | null> = {
+  left: null,
+  right: null,
+};
+
+function getPaneSegments(side: "left" | "right"): LineSegment[] {
+  return side === "left" ? leftSegments : rightSegments;
+}
+
+function getPaneEditor(side: "left" | "right"): monaco.editor.IStandaloneCodeEditor {
+  return side === "left" ? leftEditor : rightEditor;
+}
+
+function setGoToLineOpen(side: "left" | "right", open: boolean): void {
+  const pane = goToLinePanes[side];
+  if (open) {
+    pane.root.classList.add("is-open");
+    pane.root.setAttribute("aria-hidden", "false");
+  } else {
+    pane.root.classList.remove("is-open");
+    pane.root.setAttribute("aria-hidden", "true");
+  }
+}
+
+function isGoToLineOpen(side: "left" | "right"): boolean {
+  return goToLinePanes[side].root.classList.contains("is-open");
+}
+
+function updateGoToLineHint(side: "left" | "right", fileName: string | null): void {
+  const pane = goToLinePanes[side];
+  const segment = fileName ? getFileSegment(getPaneSegments(side), fileName) : null;
+  if (!segment) {
+    pane.hint.textContent = "ファイルなし";
+    pane.input.removeAttribute("max");
+    return;
+  }
+  pane.hint.textContent = `Type a line number to go to (from 1 to ${segment.lineCount}).`;
+  pane.input.setAttribute("min", "1");
+  pane.input.setAttribute("max", String(segment.lineCount));
+  const current = Number.parseInt(pane.input.value.trim(), 10);
+  if (Number.isFinite(current) && current > segment.lineCount) {
+    pane.input.value = String(segment.lineCount);
+  } else if (!pane.input.value.trim()) {
+    pane.input.value = "1";
+  }
+}
+
+function setGoToLineSelection(side: "left" | "right", fileName: string | null): void {
+  goToLineSelection[side] = fileName;
+  const pane = goToLinePanes[side];
+  const buttons = Array.from(
+    pane.files.querySelectorAll<HTMLButtonElement>("button.goto-line-file"),
+  );
+  for (const button of buttons) {
+    const isSelected = button.dataset.file === fileName;
+    button.classList.toggle("is-selected", isSelected);
+    button.setAttribute("aria-pressed", String(isSelected));
+  }
+  updateGoToLineHint(side, fileName);
+}
+
+function renderGoToLineFiles(
+  side: "left" | "right",
+  files: readonly string[],
+  selected: string | null,
+): void {
+  const pane = goToLinePanes[side];
+  pane.files.innerHTML = "";
+  for (const fileName of files) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "goto-line-file";
+    button.dataset.file = fileName;
+    button.textContent = fileName;
+    button.title = fileName;
+    button.setAttribute("aria-pressed", String(fileName === selected));
+    if (fileName === selected) {
+      button.classList.add("is-selected");
+    }
+    pane.files.appendChild(button);
+  }
+}
+
+function resolveDefaultGoToLine(
+  side: "left" | "right",
+  files: readonly string[],
+): { fileName: string | null; localLine: number } {
+  const editor = getPaneEditor(side);
+  const segments = getPaneSegments(side);
+  const position = editor.getPosition();
+  const lineNumber = position?.lineNumber ?? 1;
+  const info = getLineSegmentInfo(segments, lineNumber);
+  const fileName = info?.fileName ?? files[0] ?? null;
+  const localLine = info?.localLine ?? 1;
+  return { fileName, localLine };
+}
+
+function positionGoToLinePanel(side: "left" | "right"): void {
+  const pane = goToLinePanes[side];
+  const editorHost = side === "left" ? leftContainer : rightContainer;
+  const paneHost = side === "left" ? leftPane : rightPane;
+  const editorRect = editorHost.getBoundingClientRect();
+  const paneRect = paneHost.getBoundingClientRect();
+  const top = Math.max(8, editorRect.top - paneRect.top + 6);
+  const left = Math.max(8, editorRect.left - paneRect.left + 10);
+  pane.root.style.top = `${top}px`;
+  pane.root.style.left = `${left}px`;
+}
+
+function openGoToLinePanel(side: "left" | "right"): void {
+  const otherSide = side === "left" ? "right" : "left";
+  setGoToLineOpen(otherSide, false);
+  const pane = goToLinePanes[side];
+  const segments = getPaneSegments(side);
+  const files = listLoadedFileNames(segments);
+  const { fileName, localLine } = resolveDefaultGoToLine(side, files);
+  renderGoToLineFiles(side, files, fileName);
+  setGoToLineSelection(side, fileName);
+  pane.input.value = String(localLine);
+  pane.input.disabled = fileName === null;
+  positionGoToLinePanel(side);
+  setGoToLineOpen(side, true);
+  pane.input.focus();
+  pane.input.select();
+}
+
+function closeGoToLinePanel(side: "left" | "right"): void {
+  setGoToLineOpen(side, false);
+}
+
+function jumpToGlobalLine(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  lineNumber: number,
+): void {
+  editor.setPosition({ lineNumber, column: 1 });
+  if ("revealLineInCenter" in editor) {
+    editor.revealLineInCenter(lineNumber);
+  } else {
+    editor.revealLine(lineNumber);
+  }
+  editor.focus();
+}
+
+function submitGoToLine(side: "left" | "right"): void {
+  const pane = goToLinePanes[side];
+  const fileName = goToLineSelection[side];
+  if (!fileName) {
+    return;
+  }
+  const segments = getPaneSegments(side);
+  const segment = getFileSegment(segments, fileName);
+  if (!segment) {
+    return;
+  }
+  const rawValue = pane.input.value.trim();
+  const parsed = Number.parseInt(rawValue, 10);
+  if (!Number.isFinite(parsed)) {
+    return;
+  }
+  const localLine = Math.min(Math.max(parsed, 1), segment.lineCount);
+  const targetLine = getGlobalLineFromLocal(segments, fileName, localLine);
+  if (!targetLine) {
+    return;
+  }
+  const editor = getPaneEditor(side);
+  const model = editor.getModel();
+  if (!model) {
+    return;
+  }
+  const clamped = Math.min(Math.max(targetLine, 1), model.getLineCount());
+  jumpToGlobalLine(editor, clamped);
+  closeGoToLinePanel(side);
 }
 
 function jumpToFileStart(
@@ -613,6 +822,49 @@ bindFileCardJump(rightFileCards, (fileName) => {
   jumpToFileStart(rightEditor, rightSegments, fileName);
 });
 
+function bindGoToLinePanel(side: "left" | "right") {
+  const pane = goToLinePanes[side];
+  const closeButton = pane.root.querySelector<HTMLButtonElement>(".goto-line-close");
+  if (closeButton) {
+    closeButton.addEventListener("click", () => closeGoToLinePanel(side));
+  }
+
+  const stopPanelKey = (event: KeyboardEvent) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeGoToLinePanel(side);
+    }
+  };
+  pane.root.addEventListener("keydown", stopPanelKey);
+  pane.root.addEventListener("keypress", stopPanelKey);
+  pane.root.addEventListener("keyup", stopPanelKey);
+
+  pane.files.addEventListener("click", (event) => {
+    const target = (event.target as HTMLElement).closest<HTMLButtonElement>(
+      "button.goto-line-file",
+    );
+    if (!target) {
+      return;
+    }
+    setGoToLineSelection(side, target.dataset.file ?? null);
+  });
+
+  pane.input.addEventListener("keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitGoToLine(side);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeGoToLinePanel(side);
+    }
+  });
+}
+
+bindGoToLinePanel("left");
+bindGoToLinePanel("right");
+
 function bindFilePicker(
   input: HTMLInputElement,
   button: HTMLButtonElement,
@@ -708,11 +960,22 @@ window.addEventListener("drop", preventWindowDrop);
 window.addEventListener(
   "keydown",
   (event) => {
-    handleFindShortcut(event, {
+    const findHandled = handleFindShortcut(event, {
       left: leftEditor,
       right: rightEditor,
       getLastFocused: () => lastFocusedSide,
     });
+    const goToHandled = handleGoToLineShortcut(event, {
+      left: leftEditor,
+      right: rightEditor,
+      getLastFocused: () => lastFocusedSide,
+      open: openGoToLinePanel,
+      close: closeGoToLinePanel,
+      isOpen: isGoToLineOpen,
+    });
+    if (findHandled || goToHandled) {
+      event.stopPropagation();
+    }
   },
   { capture: true },
 );

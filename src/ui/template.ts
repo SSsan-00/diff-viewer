@@ -139,6 +139,28 @@ export const APP_TEMPLATE = `
           class="file-cards-bar file-cards-bar--horizontal"
           aria-label="files"
         ></div>
+        <div
+          id="left-goto-line"
+          class="goto-line-panel"
+          data-pane="left"
+          aria-hidden="true"
+        >
+          <button class="goto-line-close" type="button" aria-label="閉じる">
+            ×
+          </button>
+          <div class="goto-line-files" aria-label="files"></div>
+          <div class="goto-line-input-row">
+            <label class="goto-line-label" for="left-goto-line-input">行</label>
+            <input
+              id="left-goto-line-input"
+              class="goto-line-input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+            />
+            <span id="left-goto-line-hint" class="goto-line-hint"></span>
+          </div>
+        </div>
         <div id="left-message" class="pane-message" aria-live="polite"></div>
         <div id="left-editor" class="editor"></div>
       </section>
@@ -179,6 +201,28 @@ export const APP_TEMPLATE = `
           class="file-cards-bar file-cards-bar--horizontal"
           aria-label="files"
         ></div>
+        <div
+          id="right-goto-line"
+          class="goto-line-panel"
+          data-pane="right"
+          aria-hidden="true"
+        >
+          <button class="goto-line-close" type="button" aria-label="閉じる">
+            ×
+          </button>
+          <div class="goto-line-files" aria-label="files"></div>
+          <div class="goto-line-input-row">
+            <label class="goto-line-label" for="right-goto-line-input">行</label>
+            <input
+              id="right-goto-line-input"
+              class="goto-line-input"
+              type="text"
+              inputmode="numeric"
+              autocomplete="off"
+            />
+            <span id="right-goto-line-hint" class="goto-line-hint"></span>
+          </div>
+        </div>
         <div id="right-message" class="pane-message" aria-live="polite"></div>
         <div id="right-editor" class="editor"></div>
       </section>

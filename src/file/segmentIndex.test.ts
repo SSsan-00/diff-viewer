@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildFileStartLineIndex, getFileStartLine } from "./segmentIndex";
+import {
+  buildFileStartLineIndex,
+  getFileSegment,
+  getGlobalLineFromLocal,
+  getFileStartLine,
+} from "./segmentIndex";
 
 describe("segment index", () => {
   it("builds a file start line index", () => {
@@ -28,5 +33,25 @@ describe("segment index", () => {
     ];
 
     expect(getFileStartLine(segments, "a.txt")).toBe(1);
+  });
+
+  it("returns a segment when the file name exists", () => {
+    const segments = [
+      { startLine: 1, lineCount: 2, fileIndex: 1, fileName: "a.txt" },
+      { startLine: 3, lineCount: 2, fileIndex: 2, fileName: "b.txt" },
+    ];
+
+    expect(getFileSegment(segments, "b.txt")?.startLine).toBe(3);
+    expect(getFileSegment(segments, "missing.txt")).toBeNull();
+  });
+
+  it("converts local lines into global lines", () => {
+    const segments = [
+      { startLine: 1, lineCount: 4, fileIndex: 1, fileName: "a.txt" },
+      { startLine: 5, lineCount: 3, fileIndex: 2, fileName: "b.txt" },
+    ];
+
+    expect(getGlobalLineFromLocal(segments, "b.txt", 2)).toBe(6);
+    expect(getGlobalLineFromLocal(segments, "missing.txt", 1)).toBeNull();
   });
 });

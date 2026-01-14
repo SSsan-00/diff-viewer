@@ -21,3 +21,27 @@ export function getFileStartLine(
 ): number | null {
   return buildFileStartLineIndex(segments).get(fileName) ?? null;
 }
+
+export function getFileSegment(
+  segments: readonly LineSegment[],
+  fileName: string,
+): LineSegment | null {
+  for (const segment of segments) {
+    if (segment.fileName === fileName) {
+      return segment;
+    }
+  }
+  return null;
+}
+
+export function getGlobalLineFromLocal(
+  segments: readonly LineSegment[],
+  fileName: string,
+  localLine: number,
+): number | null {
+  const segment = getFileSegment(segments, fileName);
+  if (!segment) {
+    return null;
+  }
+  return segment.startLine + localLine - 1;
+}

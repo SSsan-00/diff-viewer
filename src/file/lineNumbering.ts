@@ -22,6 +22,13 @@ function findSegment(segments: LineSegment[], lineNumber: number): LineSegment |
   return null;
 }
 
+export function getLineSegment(
+  segments: LineSegment[],
+  lineNumber: number,
+): LineSegment | null {
+  return findSegment(segments, lineNumber);
+}
+
 export function getLineSegmentInfo(
   segments: LineSegment[],
   lineNumber: number,

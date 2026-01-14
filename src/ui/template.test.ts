@@ -130,4 +130,21 @@ describe("pane action layout", () => {
       true,
     );
   });
+
+  it("renders goto line panels for both panes", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const leftPanel = doc.querySelector("#left-goto-line");
+    const rightPanel = doc.querySelector("#right-goto-line");
+    const leftInput = doc.querySelector("#left-goto-line-input");
+    const rightInput = doc.querySelector("#right-goto-line-input");
+
+    expect(leftPanel).toBeTruthy();
+    expect(rightPanel).toBeTruthy();
+    expect(leftPanel?.classList.contains("goto-line-panel")).toBe(true);
+    expect(rightPanel?.classList.contains("goto-line-panel")).toBe(true);
+    expect(leftInput).toBeTruthy();
+    expect(rightInput).toBeTruthy();
+  });
 });

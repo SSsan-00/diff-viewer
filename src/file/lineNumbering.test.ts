@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   createLineNumberFormatter,
+  getLineSegment,
   getLineSegmentInfo,
   type LineSegment,
 } from "./lineNumbering";
@@ -42,5 +43,16 @@ describe("line number formatter", () => {
     const segments: LineSegment[] = [{ startLine: 3, lineCount: 2, fileIndex: 1 }];
 
     expect(getLineSegmentInfo(segments, 1)).toBeNull();
+  });
+
+  it("finds the segment that owns a line number", () => {
+    const segments: LineSegment[] = [
+      { startLine: 1, lineCount: 2, fileIndex: 1, fileName: "alpha.txt" },
+      { startLine: 3, lineCount: 4, fileIndex: 2, fileName: "beta.txt" },
+    ];
+
+    const segment = getLineSegment(segments, 5);
+    expect(segment?.fileName).toBe("beta.txt");
+    expect(getLineSegment(segments, 10)).toBeNull();
   });
 });
