@@ -128,6 +128,7 @@ function normalizeFragment(fragment: string): string {
   return fragment
     .replace(/\s+/g, " ")
     .replace(/\s*([{}();:,])\s*/g, "$1")
+    .replace(/['"]/g, "\"")
     .trim()
     .toLowerCase();
 }
@@ -203,15 +204,24 @@ function unescapeLiteral(value: string): string {
   return value
     .replace(/\\\\/g, "\\")
     .replace(/\\"/g, "\"")
-    .replace(/\\'/g, "'")
-    .replace(/\\n/g, "\n")
-    .replace(/\\r/g, "\r")
-    .replace(/\\t/g, "\t");
+    .replace(/\\'/g, "'");
 }
 
 function extractLiterals(line: string): string[] {
   const matches = line.match(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g) ?? [];
-  return matches.map((value) => unescapeLiteral(value.slice(1, -1)).toLowerCase());
+  const literals: string[] = [];
+  matches.forEach((value) => {
+    const unescaped = unescapeLiteral(value.slice(1, -1)).replace(/[¥￥]/g, "\\");
+    const normalized = unescaped.toLowerCase();
+    literals.push(normalized);
+    if (normalized.endsWith(".php")) {
+      const base = normalized.slice(0, -4);
+      if (base.length > 0) {
+        literals.push(base);
+      }
+    }
+  });
+  return literals;
 }
 
 function extractHtmlHintTokens(source: string): string[] {

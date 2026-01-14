@@ -230,6 +230,49 @@ describe("semantic alignment across languages", () => {
     expect(findEqual(ops, "function test()", "function test()")).toBe(false);
   });
 
+  it("aligns js lines even with escaped quotes in string builders", () => {
+    const left = [
+      "function test() {",
+      "  console.log('test');",
+      "}",
+    ];
+    const right = [
+      "js.AppendLine(\"function test() {\");",
+      "js.AppendLine(\"  console.log(\\\"test\\\");\");",
+      "js.AppendLine(\"}\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "function test()", "function test()")).toBe(true);
+    expect(findReplace(ops, "console.log", "console.log")).toBe(true);
+    expect(findReplace(ops, "}", "}\"")).toBe(true);
+  });
+
+  it("aligns js lines with backslash and yen variants", () => {
+    const left = [
+      "console.log(\"C:\\\\temp\\\\a.txt\");",
+    ];
+    const right = [
+      "js.AppendLine(\"console.log(\\\"C:¥temp¥a.txt\\\");\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "C:\\\\temp\\\\a.txt", "C:¥temp¥a.txt")).toBe(true);
+  });
+
+  it("treats .php suffix differences as replace pairs", () => {
+    const left = [
+      "document.excel.action = \"foo_bar.php\";",
+    ];
+    const right = [
+      "document.excel.action = \"foo_bar\";",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "foo_bar.php", "foo_bar")).toBe(true);
+    expect(findEqual(ops, "foo_bar.php", "foo_bar")).toBe(false);
+  });
+
   it("aligns html lines built via string appends", () => {
     const left = [
       "<div class=\"box\">",
