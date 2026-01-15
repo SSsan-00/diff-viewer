@@ -75,6 +75,15 @@ const DECLARATION_MODIFIERS = new Set([
   "virtual",
 ]);
 
+function stripStringLiterals(source: string): string {
+  return source.replace(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g, "");
+}
+
+function isElseLine(line: string): boolean {
+  const stripped = stripStringLiterals(line);
+  return /\belse\b/i.test(stripped);
+}
+
 export type LineFeatures = {
   identifiers: string[];
   literals: string[];
@@ -412,6 +421,9 @@ export function buildLineFeatures(line: string): LineFeatures {
       identifiers.push("brace_close");
     }
   }
+  if (isElseLine(line)) {
+    identifiers.push("else_line");
+  }
   const braceToken = extractBraceToken(line);
   if (braceToken) {
     identifiers.push(braceToken);
@@ -511,6 +523,9 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
       right.identifiers.includes("brace_open")) ||
     (left.identifiers.includes("brace_close") &&
       right.identifiers.includes("brace_close"));
+  const elseOverlap =
+    left.identifiers.includes("else_line") &&
+    right.identifiers.includes("else_line");
   const hasDateFormat =
     left.identifiers.includes("dateformat") ||
     right.identifiers.includes("dateformat");
@@ -519,6 +534,7 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
     literalOverlap > 0 ||
     codefragOverlap ||
     braceOverlap ||
+    elseOverlap ||
     initOverlap ||
     dateFormatArgOverlap;
 
@@ -553,6 +569,9 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   }
   if (braceOverlap) {
     score += 5;
+  }
+  if (elseOverlap) {
+    score += 4;
   }
   if (initOverlap) {
     score += 4;

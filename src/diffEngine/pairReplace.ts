@@ -182,11 +182,25 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
   }
 
   const result: PairedOp[] = [];
+  const insertMatches = new Array<number | undefined>(inserts.length).fill(undefined);
+  for (let i = 0; i < matches.length; i += 1) {
+    const insertIndex = matches[i];
+    if (insertIndex !== undefined) {
+      insertMatches[insertIndex] = i;
+    }
+  }
+
   for (let i = 0; i < deletes.length; i += 1) {
-    const matchIndex = matches[i];
-    if (matchIndex !== undefined) {
-      const leftOp = deletes[i];
-      const rightOp = inserts[matchIndex];
+    if (!usedDeletes.has(i)) {
+      result.push(toPairedOp(deletes[i]));
+    }
+  }
+
+  for (let i = 0; i < inserts.length; i += 1) {
+    const matchedDelete = insertMatches[i];
+    if (matchedDelete !== undefined) {
+      const leftOp = deletes[matchedDelete];
+      const rightOp = inserts[i];
       result.push({
         type: "replace",
         leftLine: leftOp.leftLine,
@@ -194,12 +208,8 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
         leftLineNo: leftOp.leftLineNo,
         rightLineNo: rightOp.rightLineNo,
       });
-    } else {
-      result.push(toPairedOp(deletes[i]));
+      continue;
     }
-  }
-
-  for (let i = 0; i < inserts.length; i += 1) {
     if (!usedInserts.has(i)) {
       result.push(toPairedOp(inserts[i]));
     }

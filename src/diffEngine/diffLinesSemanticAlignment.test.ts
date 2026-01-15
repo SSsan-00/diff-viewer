@@ -26,6 +26,18 @@ function findEqual(ops: PairedOp[], left: string, right: string): boolean {
   );
 }
 
+function findInsert(ops: PairedOp[], right: string): boolean {
+  return ops.some(
+    (op) => op.type === "insert" && (op.rightLine ?? "").includes(right),
+  );
+}
+
+function findDelete(ops: PairedOp[], left: string): boolean {
+  return ops.some(
+    (op) => op.type === "delete" && (op.leftLine ?? "").includes(left),
+  );
+}
+
 describe("semantic alignment across languages", () => {
   it("aligns indent-only changes without breaking alignment", () => {
     const left = ["    var foo = 1;"];
@@ -53,6 +65,25 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "break", "break")).toBe(true);
     expect(findReplace(ops, "else", "else")).toBe(true);
     expect(findReplace(ops, "{", "{")).toBe(true);
+  });
+
+  it("aligns else-only line against } else {", () => {
+    const left = ["} else {"];
+    const right = ["}", "else", "{"]; 
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "} else {", "else")).toBe(true);
+    expect(findInsert(ops, "}")).toBe(true);
+    expect(findInsert(ops, "{")).toBe(true);
+    expect(findEqual(ops, "} else {", "else")).toBe(false);
+  });
+
+  it("does not treat elsewhere identifiers as else lines", () => {
+    const left = ["elsewhere = 1;"];
+    const right = ["else = 1;"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "elsewhere", "else")).toBe(false);
   });
 
   it("aligns variable lines with different syntax", () => {
