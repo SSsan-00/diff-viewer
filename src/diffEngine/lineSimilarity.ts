@@ -142,10 +142,67 @@ function normalizeFragment(fragment: string): string {
     .toLowerCase();
 }
 
+function normalizeTemplateExpression(expression: string): string {
+  return expression
+    .replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeTemplateLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+  let base: string | null = null;
+  if (detectAppendLike(line)) {
+    const literal = extractAppendLiteral(line) ?? extractLiterals(line)[0];
+    if (!literal) {
+      return null;
+    }
+    base = literal;
+  } else if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+    base = trimmed;
+  }
+
+  if (!base) {
+    return null;
+  }
+
+  let normalized = base.replace(/[¥￥]/g, "\\");
+  normalized = normalized.replace(
+    /<\?\s*=?\s*([^?]*?)\s*\?>/gi,
+    (_, expr: string) => `{${normalizeTemplateExpression(expr) || "expr"}}`,
+  );
+  normalized = normalized.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, name: string) =>
+    `{${name.toLowerCase()}}`,
+  );
+  normalized = normalized.replace(/\{[^}]*\}/g, "{expr}");
+
+  return normalizeFragment(normalized);
+}
+
+function extractHtmlSignature(line: string): { tag: string | null; attrs: string[] } {
+  const attrs: string[] = [];
+  const normalized = line.replace(/<\?\s*=?\s*[^?]*?\s*\?>/gi, " ");
+  const tagMatch = normalized.match(/<\s*\/?\s*([a-z][a-z0-9-]*)/i);
+  const tag = tagMatch ? tagMatch[1].toLowerCase() : null;
+  const attrRegex = /([a-zA-Z_:][a-zA-Z0-9_:-]*)\s*=/g;
+  let match: RegExpExecArray | null;
+  while ((match = attrRegex.exec(normalized)) !== null) {
+    attrs.push(match[1].toLowerCase());
+  }
+  return { tag, attrs };
+}
+
 function extractStructuredFragment(line: string): string | null {
   const trimmed = line.trim();
   if (trimmed.length === 0) {
     return null;
+  }
+  if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
+    return normalizeFragment(trimmed);
   }
   if (
     trimmed === "{" ||
@@ -155,7 +212,7 @@ function extractStructuredFragment(line: string): string | null {
     return null;
   }
   if (detectAppendLike(line)) {
-    const literal = extractLiterals(line)[0];
+    const literal = extractAppendLiteral(line) ?? extractLiterals(line)[0];
     if (literal) {
       return normalizeFragment(literal);
     }
@@ -207,6 +264,82 @@ function extractBraceToken(line: string): "brace_open" | "brace_close" | null {
     return "brace_close";
   }
   return null;
+}
+
+function extractAppendLiteral(line: string): string | null {
+  const callMatch = line.match(/\.(?:append|appendline|appendformat)\s*\(/i);
+  if (!callMatch || callMatch.index === undefined) {
+    return null;
+  }
+  const startFrom = callMatch.index + callMatch[0].length;
+  const quoteIndex = line.indexOf("\"", startFrom);
+  if (quoteIndex === -1) {
+    return null;
+  }
+  const prefix = line.slice(startFrom, quoteIndex);
+  const isInterpolated = prefix.includes("$");
+  const isVerbatim = prefix.includes("@");
+  let result = "";
+  let i = quoteIndex + 1;
+  while (i < line.length) {
+    const ch = line[i];
+    if (!isVerbatim && ch === "\\" && i + 1 < line.length) {
+      result += line[i + 1];
+      i += 2;
+      continue;
+    }
+    if (isVerbatim && ch === "\"" && line[i + 1] === "\"") {
+      result += "\"";
+      i += 2;
+      continue;
+    }
+    if (ch === "\"") {
+      break;
+    }
+    if (isInterpolated && ch === "{") {
+      if (line[i + 1] === "{") {
+        result += "{";
+        i += 2;
+        continue;
+      }
+      result += "{expr}";
+      i += 1;
+      let depth = 1;
+      while (i < line.length && depth > 0) {
+        const c = line[i];
+        if (c === "{" && line[i + 1] !== "{") {
+          depth += 1;
+        } else if (c === "}" && line[i + 1] !== "}") {
+          depth -= 1;
+        }
+        if (c === "\"" && !isVerbatim) {
+          i += 1;
+          while (i < line.length) {
+            if (line[i] === "\\" && i + 1 < line.length) {
+              i += 2;
+              continue;
+            }
+            if (line[i] === "\"") {
+              i += 1;
+              break;
+            }
+            i += 1;
+          }
+          continue;
+        }
+        i += 1;
+      }
+      continue;
+    }
+    if (isInterpolated && ch === "}" && line[i + 1] === "}") {
+      result += "}";
+      i += 2;
+      continue;
+    }
+    result += ch;
+    i += 1;
+  }
+  return result.trim().length > 0 ? result : null;
 }
 
 function unescapeLiteral(value: string): string {
@@ -412,6 +545,18 @@ export function buildLineFeatures(line: string): LineFeatures {
   const literals = extractLiterals(line);
   const numbers = extractNumbers(line);
   const appendLike = detectAppendLike(line);
+  const templateSignature = normalizeTemplateLine(line);
+  if (templateSignature) {
+    identifiers.push(`template:${templateSignature}`);
+    const signature = detectAppendLike(line)
+      ? extractAppendLiteral(line) ?? extractLiterals(line)[0] ?? ""
+      : line;
+    const htmlSignature = extractHtmlSignature(signature);
+    if (htmlSignature.tag) {
+      identifiers.push(`htmltag:${htmlSignature.tag}`);
+    }
+    htmlSignature.attrs.forEach((attr) => identifiers.push(`htmlattr:${attr}`));
+  }
   const structuredFragment = extractStructuredFragment(line);
   if (structuredFragment) {
     identifiers.push(`codefrag:${structuredFragment}`);

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { diffLinesFromLines } from "./diffLines";
+import { diffInline } from "./diffInline";
 import { pairReplace } from "./pairReplace";
 import { diffWithAnchors, type Anchor } from "./anchors";
 import type { PairedOp } from "./types";
@@ -277,6 +278,32 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "function test()", "function test()")).toBe(true);
     expect(findReplace(ops, "console.log", "console.log")).toBe(true);
     expect(findReplace(ops, "}", "}\"")).toBe(true);
+  });
+
+  it("aligns indented word lines against appendline strings", () => {
+    const left = ["            FOO"];
+    const right = ["sb.AppendLine(\"     FOO\");"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "FOO", "FOO")).toBe(true);
+    expect(findEqual(ops, "FOO", "FOO")).toBe(false);
+    const inline = diffInline(left[0], right[0]);
+    expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
+  });
+
+  it("aligns php option lines against interpolated string builders", () => {
+    const left = [
+      `<option value="<?= $foo ?>" <?= ($foo == "foo" ? " selected" : "") ?>>$bar</option>`,
+    ];
+    const right = [
+      "sb.AppendLine(\"<option value=\\\"{foo}\\\"{(foo == \"foo\" ? \" selected\" : \"\")}>{bar}</option>\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<option", "<option")).toBe(true);
+    expect(findEqual(ops, "<option", "<option")).toBe(false);
+    const inline = diffInline(left[0], right[0]);
+    expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
   });
 
   it("aligns js lines with backslash and yen variants", () => {
