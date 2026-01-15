@@ -31,7 +31,7 @@
 └── vite.config.ts
 ```
 
-## src/ 全ファイル一覧（88件）
+## src/ 全ファイル一覧（97件）
 
 ### src/
 
@@ -130,6 +130,8 @@
 - `src/ui/anchorReset.test.ts` アンカーリセットのテスト。
 - `src/ui/fileBoundaryZones.ts` ファイル境界の表示ゾーン生成（差分行と整列）。exports: `buildAlignedFileBoundaryZones` と関連型。
 - `src/ui/fileBoundaryZones.test.ts` 境界ゾーンのテスト。
+- `src/ui/recalcScheduler.ts` 差分再計算のデバウンス/重複実行抑止スケジューラ。export: `createRecalcScheduler`。
+- `src/ui/recalcScheduler.test.ts` 再計算スケジューラのテスト。
 
 ### src/storage/
 

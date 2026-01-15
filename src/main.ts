@@ -48,6 +48,7 @@ import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
+import { createRecalcScheduler } from "./ui/recalcScheduler";
 import { createEditorOptions } from "./ui/editorOptions";
 import { renderFileCards } from "./ui/fileCards";
 import { bindFileCardJump } from "./ui/fileCardJump";
@@ -102,6 +103,7 @@ const storage = getStorage();
 const persistedState = loadPersistedState(storage);
 let persistScheduler: ReturnType<typeof createPersistScheduler> | null = null;
 let persistSuppressed = false;
+let suppressRecalc = false;
 
 function schedulePersist() {
   if (persistSuppressed) {
@@ -318,6 +320,14 @@ const refreshSyntaxHighlight = () => {
   syntaxHighlightController?.applyHighlight(highlightToggle.checked);
 };
 
+const recalcScheduler = createRecalcScheduler(() => recalcDiff(), 200);
+const scheduleRecalc = () => {
+  if (suppressRecalc) {
+    return;
+  }
+  recalcScheduler.schedule();
+};
+
 let lastFocusedSide: "left" | "right" = "left";
 const leftFileBytes: FileBytes[] = [];
 const rightFileBytes: FileBytes[] = [];
@@ -328,6 +338,7 @@ function withProgrammaticEdit(
   side: "left" | "right",
   action: () => void,
 ): void {
+  suppressRecalc = true;
   if (side === "left") {
     suppressLeftFileBytesClear = true;
   } else {
@@ -341,6 +352,7 @@ function withProgrammaticEdit(
     } else {
       suppressRightFileBytesClear = false;
     }
+    suppressRecalc = false;
   }
 }
 
@@ -593,6 +605,7 @@ leftEditor.onDidChangeModelContent(() => {
   }
   leftFileBytes.length = 0;
   schedulePersist();
+  scheduleRecalc();
 });
 rightEditor.onDidChangeModelContent(() => {
   if (suppressRightFileBytesClear) {
@@ -600,6 +613,7 @@ rightEditor.onDidChangeModelContent(() => {
   }
   rightFileBytes.length = 0;
   schedulePersist();
+  scheduleRecalc();
 });
 
 function updateLineNumbers(
@@ -1859,7 +1873,7 @@ function recalcDiff() {
 
 const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
 recalcButton?.addEventListener("click", () => {
-  recalcDiff();
+  recalcScheduler.runNow();
 });
 
 bindPaneClearButton(leftClearButton, {
