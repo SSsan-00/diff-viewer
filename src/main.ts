@@ -37,6 +37,7 @@ import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
 import { bindPaneClearButton, clearEditorModel } from "./ui/paneClear";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
+import { handleAnchorShortcut } from "./ui/anchorShortcut";
 import {
   handleLeftAnchorClick,
   handleRightAnchorClick,
@@ -1019,6 +1020,15 @@ window.addEventListener(
         return;
       }
     } else {
+      const anchorHandled = handleAnchorShortcut(event, {
+        left: leftEditor,
+        right: rightEditor,
+        onLeft: handleLeftAnchorAction,
+        onRight: handleRightAnchorAction,
+      });
+      if (anchorHandled) {
+        return;
+      }
       const focusHandled = handlePaneFocusShortcut(event, {
         focusLeft: () => focusEditorAtTop(leftEditor),
         focusRight: () => focusEditorAtTop(rightEditor),
@@ -1119,52 +1129,7 @@ leftEditor.onMouseDown((event) => {
   if (!lineNumber) {
     return;
   }
-  const leftLineNo = lineNumber - 1;
-  const result = handleLeftAnchorClick({
-    manualAnchors,
-    pendingLeftLineNo,
-    pendingRightLineNo,
-    autoAnchor,
-    suppressedAutoAnchorKey,
-    lineNo: leftLineNo,
-  });
-  manualAnchors = result.manualAnchors;
-  pendingLeftLineNo = result.pendingLeftLineNo;
-  pendingRightLineNo = result.pendingRightLineNo;
-  autoAnchor = result.autoAnchor;
-  suppressedAutoAnchorKey = result.suppressedAutoAnchorKey;
-
-  if (result.action === "removed" && result.removedAnchor) {
-    setAnchorMessage(`Anchor removed: ${formatAnchor(result.removedAnchor)}`);
-  } else if (result.action === "auto-removed") {
-    if (selectedAnchorKey === suppressedAutoAnchorKey) {
-      selectedAnchorKey = null;
-    }
-    setAnchorMessage("Auto anchor removed.");
-  } else if (result.action === "added" && result.addedAnchor) {
-    setAnchorMessage(`Anchor added: ${formatAnchor(result.addedAnchor)}`);
-  } else if (result.action === "pending-cleared") {
-    setAnchorMessage("左行の選択を解除しました。");
-  } else if (result.action === "pending-set") {
-    setAnchorMessage("左行を選択しました。右行を選んでください。");
-  }
-
-  if (
-    result.action === "added" ||
-    result.action === "removed" ||
-    result.action === "auto-removed"
-  ) {
-    recalcDiff();
-  }
-  updatePendingAnchorDecoration();
-  const validation = validateAnchors(
-    manualAnchors,
-    getNormalizedLineCount(leftEditor.getValue()),
-    getNormalizedLineCount(rightEditor.getValue()),
-  );
-  updateAnchorWarning(validation.invalid);
-  renderAnchors(validation.invalid, validation.valid);
-  schedulePersist();
+  handleLeftAnchorAction(lineNumber - 1);
 });
 
 rightEditor.onMouseDown((event) => {
@@ -1175,15 +1140,13 @@ rightEditor.onMouseDown((event) => {
   if (!lineNumber) {
     return;
   }
-  const rightLineNo = lineNumber - 1;
-  const result = handleRightAnchorClick({
-    manualAnchors,
-    pendingLeftLineNo,
-    pendingRightLineNo,
-    autoAnchor,
-    suppressedAutoAnchorKey,
-    lineNo: rightLineNo,
-  });
+  handleRightAnchorAction(lineNumber - 1);
+});
+
+function applyAnchorResult(
+  result: ReturnType<typeof handleLeftAnchorClick | typeof handleRightAnchorClick>,
+  side: "left" | "right",
+) {
   manualAnchors = result.manualAnchors;
   pendingLeftLineNo = result.pendingLeftLineNo;
   pendingRightLineNo = result.pendingRightLineNo;
@@ -1200,9 +1163,13 @@ rightEditor.onMouseDown((event) => {
   } else if (result.action === "added" && result.addedAnchor) {
     setAnchorMessage(`Anchor added: ${formatAnchor(result.addedAnchor)}`);
   } else if (result.action === "pending-cleared") {
-    setAnchorMessage("右行の選択を解除しました。");
+    setAnchorMessage(side === "left" ? "左行の選択を解除しました。" : "右行の選択を解除しました。");
   } else if (result.action === "pending-set") {
-    setAnchorMessage("右行を選択しました。左行を選んでください。");
+    setAnchorMessage(
+      side === "left"
+        ? "左行を選択しました。右行を選んでください。"
+        : "右行を選択しました。左行を選んでください。",
+    );
   }
 
   if (
@@ -1221,7 +1188,31 @@ rightEditor.onMouseDown((event) => {
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
   schedulePersist();
-});
+}
+
+function handleLeftAnchorAction(lineNo: number) {
+  const result = handleLeftAnchorClick({
+    manualAnchors,
+    pendingLeftLineNo,
+    pendingRightLineNo,
+    autoAnchor,
+    suppressedAutoAnchorKey,
+    lineNo,
+  });
+  applyAnchorResult(result, "left");
+}
+
+function handleRightAnchorAction(lineNo: number) {
+  const result = handleRightAnchorClick({
+    manualAnchors,
+    pendingLeftLineNo,
+    pendingRightLineNo,
+    autoAnchor,
+    suppressedAutoAnchorKey,
+    lineNo,
+  });
+  applyAnchorResult(result, "right");
+}
 
 type ZoneSide = "insert" | "delete";
 
