@@ -49,6 +49,8 @@ import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
 import { createRecalcScheduler } from "./ui/recalcScheduler";
+import { bindEditorLayoutRecalc } from "./ui/layoutRecalcWatcher";
+import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
 import { createEditorOptions } from "./ui/editorOptions";
 import { renderFileCards } from "./ui/fileCards";
 import { bindFileCardJump } from "./ui/fileCardJump";
@@ -327,6 +329,8 @@ const scheduleRecalc = () => {
   }
   recalcScheduler.schedule();
 };
+
+bindEditorLayoutRecalc([leftEditor, rightEditor], scheduleRecalc);
 
 let lastFocusedSide: "left" | "right" = "left";
 const leftFileBytes: FileBytes[] = [];
@@ -987,6 +991,13 @@ window.addEventListener(
       close: closeGoToLinePanel,
       isOpen: isGoToLineOpen,
     });
+    if (findHandled) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          scheduleRecalc();
+        });
+      });
+    }
     if (findHandled || goToHandled) {
       event.stopPropagation();
     }
@@ -1850,8 +1861,9 @@ function recalcDiff() {
   );
   const zones = buildViewZones(pairedOps);
   const fileZones = buildAlignedFileBoundaryZones(pairedOps, leftSegments, rightSegments);
-  const leftZones = zones.left.concat(fileZones.left);
-  const rightZones = zones.right.concat(fileZones.right);
+  const findOffsets = buildFindWidgetOffsetZones(leftEditor, rightEditor);
+  const leftZones = findOffsets.left.concat(zones.left, fileZones.left);
+  const rightZones = findOffsets.right.concat(zones.right, fileZones.right);
 
   leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
   rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);

@@ -132,6 +132,10 @@
 - `src/ui/fileBoundaryZones.test.ts` 境界ゾーンのテスト。
 - `src/ui/recalcScheduler.ts` 差分再計算のデバウンス/重複実行抑止スケジューラ。export: `createRecalcScheduler`。
 - `src/ui/recalcScheduler.test.ts` 再計算スケジューラのテスト。
+- `src/ui/layoutRecalcWatcher.ts` Monaco のレイアウト/コンテンツサイズ変化を監視し再計算をスケジュール。export: `bindEditorLayoutRecalc`。
+- `src/ui/layoutRecalcWatcher.test.ts` レイアウト監視のテスト。
+- `src/ui/findWidgetOffset.ts` Find Widget 表示時の左右レイアウト差を検知し、オフセット用 viewZone を生成。
+- `src/ui/findWidgetOffset.test.ts` Find Widget オフセット生成のテスト。
 
 ### src/storage/
 
