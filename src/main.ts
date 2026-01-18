@@ -44,6 +44,8 @@ import {
 import { resetAllAnchors } from "./ui/anchorReset";
 import { handleFindShortcut } from "./ui/editorFind";
 import { handleGoToLineShortcut } from "./ui/goToLine";
+import { handleGoToLineFileMoveShortcut, moveSelectedIndex } from "./ui/goToLineNavigation";
+import { focusEditorAtTop, handlePaneFocusShortcut } from "./ui/paneFocusShortcut";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
@@ -451,6 +453,34 @@ function setGoToLineSelection(side: "left" | "right", fileName: string | null): 
   updateGoToLineHint(side, fileName);
 }
 
+function moveGoToLineSelection(side: "left" | "right", delta: number): void {
+  const pane = goToLinePanes[side];
+  const buttons = Array.from(
+    pane.files.querySelectorAll<HTMLButtonElement>("button.goto-line-file"),
+  );
+  if (buttons.length === 0) {
+    return;
+  }
+  const selectedIndex = Math.max(
+    buttons.findIndex((button) => button.dataset.file === goToLineSelection[side]),
+    0,
+  );
+  const nextIndex = moveSelectedIndex(selectedIndex, delta, buttons.length);
+  const nextFile = buttons[nextIndex]?.dataset.file ?? null;
+  setGoToLineSelection(side, nextFile);
+  buttons[nextIndex]?.focus();
+}
+
+function getOpenGoToLineSide(): "left" | "right" | null {
+  if (isGoToLineOpen("left")) {
+    return "left";
+  }
+  if (isGoToLineOpen("right")) {
+    return "right";
+  }
+  return null;
+}
+
 function renderGoToLineFiles(
   side: "left" | "right",
   files: readonly string[],
@@ -848,6 +878,14 @@ function bindGoToLinePanel(side: "left" | "right") {
   }
 
   const stopPanelKey = (event: KeyboardEvent) => {
+    if (
+      handleGoToLineFileMoveShortcut(event, {
+        isOpen: true,
+        move: (delta) => moveGoToLineSelection(side, delta),
+      })
+    ) {
+      return;
+    }
     event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
@@ -869,6 +907,14 @@ function bindGoToLinePanel(side: "left" | "right") {
   });
 
   pane.input.addEventListener("keydown", (event) => {
+    if (
+      handleGoToLineFileMoveShortcut(event, {
+        isOpen: true,
+        move: (delta) => moveGoToLineSelection(side, delta),
+      })
+    ) {
+      return;
+    }
     event.stopPropagation();
     if (event.key === "Enter") {
       event.preventDefault();
@@ -978,6 +1024,25 @@ window.addEventListener("drop", preventWindowDrop);
 window.addEventListener(
   "keydown",
   (event) => {
+    const openSide = getOpenGoToLineSide();
+    if (openSide) {
+      const moveHandled = handleGoToLineFileMoveShortcut(event, {
+        isOpen: true,
+        move: (delta) => moveGoToLineSelection(openSide, delta),
+      });
+      if (moveHandled) {
+        return;
+      }
+    } else {
+      const focusHandled = handlePaneFocusShortcut(event, {
+        focusLeft: () => focusEditorAtTop(leftEditor),
+        focusRight: () => focusEditorAtTop(rightEditor),
+      });
+      if (focusHandled) {
+        return;
+      }
+    }
+
     const findHandled = handleFindShortcut(event, {
       left: leftEditor,
       right: rightEditor,
