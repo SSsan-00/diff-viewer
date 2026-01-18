@@ -31,11 +31,13 @@
 └── vite.config.ts
 ```
 
-## src/ 全ファイル一覧（97件）
+## src/ 主要ファイル一覧
+
+注記: 役割の理解に必要な主要ファイルに絞って記載する。全量の列挙は更新コストが高く、実装との差分が生じやすいため採用しない。
 
 ### src/
 
-- `src/main.ts` アプリ起点。Monaco 初期化、イベント配線、差分再計算、アンカー描画、読み込み/保存を統合。主に `src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` を利用。
+- `src/main.ts` アプリ起点。Monaco 初期化、ショートカット/フォーカス管理、差分再計算、アンカー描画、読み込み/保存を統合。`src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` を束ねる。
 - `src/style.css` 画面全体のレイアウト/配色/差分ハイライト/アンカー/境界表示のスタイル。`src/main.ts` から読み込む。
 - `src/licenses.ts` 依存ライセンス本文データ。export: `THIRD_PARTY_LICENSES`（`src/main.ts` から参照）。
 - `src/smoke.test.ts` Vitest の起動確認用スモークテスト。
@@ -70,6 +72,8 @@
 - `src/diffEngine/folding.test.ts` 折りたたみ範囲のテスト。
 
 ### src/file/
+
+segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts` / `lineNumbering.ts` / `segmentIndex.ts` / `segmentAppend.ts` が担う。
 
 - `src/file/decode.ts` 文字コードデコード（UTF-8/SJIS/EUC-JP/auto）。exports: `FileEncoding`, `decodeArrayBuffer`。
 - `src/file/decode.test.ts` `decodeArrayBuffer` のユニットテスト。
@@ -118,8 +122,20 @@
 - `src/ui/editorOptions.test.ts` エディタ生成オプションのテスト。
 - `src/ui/themeToggle.ts` ☀️/🌙 テーマ切替と保存。exports: `setupThemeToggle`, `ThemeMode`。
 - `src/ui/themeToggle.test.ts` テーマ切替のテスト。
+- `src/ui/toast.ts` トースト通知（成功/失敗メッセージ）の管理。export: `createToastManager`。
+- `src/ui/toast.test.ts` トースト通知のテスト。
 - `src/ui/diffJumpButtons.ts` 差分ジャンプボタンの有効/無効制御。export: `updateDiffJumpButtons`。
 - `src/ui/diffJumpButtons.test.ts` 差分ジャンプのテスト。
+- `src/ui/favoritePanel.ts` パス登録ポップオーバーの開閉制御。export: `createFavoritePanelController`。
+- `src/ui/favoritePanel.test.ts` パス登録パネル開閉のテスト。
+- `src/ui/favoritePanelShortcut.ts` Ctrl/Cmd+P の開閉トグル判定。export: `handleFavoritePanelShortcut`。
+- `src/ui/favoritePanelShortcut.test.ts` パス登録UIトグルのテスト。
+- `src/ui/favoritePanelKeyRouting.ts` パス登録UI表示中の文字入力フォーカス制御。exports: `shouldFocusFavoriteInput`, `focusFavoriteInputOnKey`。
+- `src/ui/favoritePanelKeyRouting.test.ts` 入力フォーカスルーティングのテスト。
+- `src/ui/favoritePaths.ts` 登録パス一覧の描画と操作抽出（クリック/ドラッグ）。永続化は担当しない。exports: `renderFavoritePaths`, `bindFavoritePathHandlers`, `bindFavoritePathDragHandlers` ほか。
+- `src/ui/favoritePaths.test.ts` 登録パスUIのテスト。
+- `src/ui/favoritePathNavigation.ts` パス一覧のキーボード選択制御。exports: `moveFavoriteFocusIndex`, `handleFavoriteListKeydown` ほか。
+- `src/ui/favoritePathNavigation.test.ts` パス一覧ナビゲーションのテスト。
 - `src/ui/anchorPanelToggle.ts` アンカーパネル折りたたみ制御。exports: `setupAnchorPanelToggle`, `setAnchorPanelCollapsed`。
 - `src/ui/anchorPanelToggle.test.ts` 折りたたみ UI のテスト。
 - `src/ui/anchorClick.ts` 行クリックでのアンカー追加/解除ロジック。exports: `handleLeftAnchorClick`, `handleRightAnchorClick` と関連型。
@@ -139,6 +155,8 @@
 
 ### src/storage/
 
+- `src/storage/favoritePaths.ts` パス登録の永続化（左右別キー・上限10件・ロード時補正）。exports: `loadFavoritePaths`, `addFavoritePath`, `removeFavoritePath`, `moveFavoritePath` ほか。
+- `src/storage/favoritePaths.test.ts` パス登録保存のテスト。
 - `src/storage/persistedState.ts` LocalStorage 保存/復元とスケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。
 - `src/storage/paneSummary.ts` 読み込み完了サマリの保存/復元。exports: `loadPaneSummary`, `savePaneSummary`, `clearPaneSummary`。

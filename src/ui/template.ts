@@ -123,8 +123,15 @@ export const APP_TEMPLATE = `
             >
               クリア
             </button>
+            <button
+              id="left-favorite-add"
+              class="button button-subtle pane-favorite-add"
+              type="button"
+              aria-label="左のパスを登録"
+            >
+              パス登録
+            </button>
             <label class="pane-select">
-              <span class="pane-select-label">文字コード</span>
               <select id="left-encoding">
                 <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
                 <option value="utf-8">UTF-8</option>
@@ -133,6 +140,51 @@ export const APP_TEMPLATE = `
               </select>
             </label>
           </div>
+        </div>
+        <div
+          id="left-favorite-overlay"
+          class="favorite-overlay"
+          aria-hidden="true"
+          hidden
+        ></div>
+        <div
+          id="left-favorite-panel"
+          class="favorite-panel"
+          aria-hidden="true"
+          hidden
+        >
+          <div class="favorite-panel__header">
+            <span>パス登録</span>
+          </div>
+          <div class="favorite-panel__row">
+            <input
+              id="left-favorite-input"
+              class="favorite-panel__input"
+              type="text"
+              autocomplete="off"
+              placeholder="パスを入力"
+            />
+            <button
+              id="left-favorite-save"
+              class="button button-subtle favorite-panel__action"
+              type="button"
+            >
+              追加
+            </button>
+            <button
+              id="left-favorite-cancel"
+              class="button button-subtle favorite-panel__action"
+              type="button"
+            >
+              閉じる
+            </button>
+          </div>
+          <div id="left-favorite-error" class="favorite-panel__error" aria-live="polite"></div>
+          <div
+            id="left-favorite-paths"
+            class="favorite-paths-list"
+            aria-label="favorite paths"
+          ></div>
         </div>
         <div
           id="left-file-cards"
@@ -185,8 +237,15 @@ export const APP_TEMPLATE = `
             >
               クリア
             </button>
+            <button
+              id="right-favorite-add"
+              class="button button-subtle pane-favorite-add"
+              type="button"
+              aria-label="右のパスを登録"
+            >
+              パス登録
+            </button>
             <label class="pane-select">
-              <span class="pane-select-label">文字コード</span>
               <select id="right-encoding">
                 <option value="auto" selected>自動（BOM/UTF-8/SJIS/EUC）</option>
                 <option value="utf-8">UTF-8</option>
@@ -195,6 +254,51 @@ export const APP_TEMPLATE = `
               </select>
             </label>
           </div>
+        </div>
+        <div
+          id="right-favorite-overlay"
+          class="favorite-overlay"
+          aria-hidden="true"
+          hidden
+        ></div>
+        <div
+          id="right-favorite-panel"
+          class="favorite-panel"
+          aria-hidden="true"
+          hidden
+        >
+          <div class="favorite-panel__header">
+            <span>パス登録</span>
+          </div>
+          <div class="favorite-panel__row">
+            <input
+              id="right-favorite-input"
+              class="favorite-panel__input"
+              type="text"
+              autocomplete="off"
+              placeholder="パスを入力"
+            />
+            <button
+              id="right-favorite-save"
+              class="button button-subtle favorite-panel__action"
+              type="button"
+            >
+              追加
+            </button>
+            <button
+              id="right-favorite-cancel"
+              class="button button-subtle favorite-panel__action"
+              type="button"
+            >
+              閉じる
+            </button>
+          </div>
+          <div id="right-favorite-error" class="favorite-panel__error" aria-live="polite"></div>
+          <div
+            id="right-favorite-paths"
+            class="favorite-paths-list"
+            aria-label="favorite paths"
+          ></div>
         </div>
         <div
           id="right-file-cards"
@@ -227,5 +331,6 @@ export const APP_TEMPLATE = `
         <div id="right-editor" class="editor"></div>
       </section>
     </div>
+    <div id="toast-root" class="toast-root" aria-live="polite"></div>
   </div>
 `;

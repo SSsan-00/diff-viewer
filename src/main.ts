@@ -57,6 +57,29 @@ import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
 import { createEditorOptions } from "./ui/editorOptions";
 import { renderFileCards } from "./ui/fileCards";
 import { bindFileCardJump } from "./ui/fileCardJump";
+import { copyText } from "./ui/clipboard";
+import {
+  addFavoritePath,
+  loadFavoritePaths,
+  moveFavoritePath,
+  removeFavoritePath,
+  type FavoritePane,
+  type FavoritePathResult,
+} from "./storage/favoritePaths";
+import {
+  bindFavoritePathDragHandlers,
+  bindFavoritePathHandlers,
+  applyFavoritePathFocus,
+  renderFavoritePaths,
+} from "./ui/favoritePaths";
+import { createFavoritePanelController } from "./ui/favoritePanel";
+import { handleFavoritePanelShortcut } from "./ui/favoritePanelShortcut";
+import {
+  clampFavoriteFocusIndex,
+  handleFavoriteListKeydown,
+} from "./ui/favoritePathNavigation";
+import { focusFavoriteInputOnKey } from "./ui/favoritePanelKeyRouting";
+import { createToastManager } from "./ui/toast";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -158,6 +181,25 @@ const leftMessage = getRequiredElement<HTMLDivElement>("#left-message");
 const rightMessage = getRequiredElement<HTMLDivElement>("#right-message");
 const leftFileCards = getRequiredElement<HTMLDivElement>("#left-file-cards");
 const rightFileCards = getRequiredElement<HTMLDivElement>("#right-file-cards");
+const leftFavoriteAdd = getRequiredElement<HTMLButtonElement>("#left-favorite-add");
+const rightFavoriteAdd = getRequiredElement<HTMLButtonElement>("#right-favorite-add");
+const leftFavoriteOverlay =
+  getRequiredElement<HTMLDivElement>("#left-favorite-overlay");
+const rightFavoriteOverlay =
+  getRequiredElement<HTMLDivElement>("#right-favorite-overlay");
+const leftFavoritePanel = getRequiredElement<HTMLDivElement>("#left-favorite-panel");
+const rightFavoritePanel = getRequiredElement<HTMLDivElement>("#right-favorite-panel");
+const leftFavoriteInput = getRequiredElement<HTMLInputElement>("#left-favorite-input");
+const rightFavoriteInput = getRequiredElement<HTMLInputElement>("#right-favorite-input");
+const leftFavoriteSave = getRequiredElement<HTMLButtonElement>("#left-favorite-save");
+const rightFavoriteSave = getRequiredElement<HTMLButtonElement>("#right-favorite-save");
+const leftFavoriteCancel = getRequiredElement<HTMLButtonElement>("#left-favorite-cancel");
+const rightFavoriteCancel = getRequiredElement<HTMLButtonElement>("#right-favorite-cancel");
+const leftFavoriteError = getRequiredElement<HTMLDivElement>("#left-favorite-error");
+const rightFavoriteError = getRequiredElement<HTMLDivElement>("#right-favorite-error");
+const leftFavoritePaths = getRequiredElement<HTMLDivElement>("#left-favorite-paths");
+const rightFavoritePaths = getRequiredElement<HTMLDivElement>("#right-favorite-paths");
+const toastRoot = getRequiredElement<HTMLDivElement>("#toast-root");
 const leftGotoPanel = getRequiredElement<HTMLDivElement>("#left-goto-line");
 const rightGotoPanel = getRequiredElement<HTMLDivElement>("#right-goto-line");
 const leftGotoFiles = getRequiredElement<HTMLDivElement>("#left-goto-line .goto-line-files");
@@ -184,6 +226,268 @@ const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
 
 applyEncodingSelection(leftEncodingSelect, persistedState?.leftEncoding);
 applyEncodingSelection(rightEncodingSelect, persistedState?.rightEncoding);
+
+let leftFavoriteList = loadFavoritePaths(storage, "left");
+let rightFavoriteList = loadFavoritePaths(storage, "right");
+const favoriteFocusIndex: Record<FavoritePane, number | null> = {
+  left: null,
+  right: null,
+};
+const toast = createToastManager(toastRoot);
+
+function setFavoriteError(target: HTMLDivElement, message: string) {
+  target.textContent = message;
+  target.classList.toggle("is-error", message.length > 0);
+}
+
+function getFavoritePaths(side: FavoritePane): string[] {
+  return side === "left" ? leftFavoriteList : rightFavoriteList;
+}
+
+function getFavoriteList(side: FavoritePane): HTMLDivElement {
+  return side === "left" ? leftFavoritePaths : rightFavoritePaths;
+}
+
+function focusFavoriteItem(side: FavoritePane, index: number) {
+  const list = getFavoriteList(side);
+  const target = list.querySelector<HTMLElement>(
+    `.favorite-path[data-index="${index}"]`,
+  );
+  target?.focus();
+}
+
+function renderFavoriteList(
+  side: FavoritePane,
+  options?: { focusItem?: boolean },
+) {
+  const paths = getFavoritePaths(side);
+  const list = getFavoriteList(side);
+  const nextIndex = clampFavoriteFocusIndex(
+    favoriteFocusIndex[side],
+    paths.length,
+  );
+  favoriteFocusIndex[side] = nextIndex;
+  renderFavoritePaths(list, paths, { focusedIndex: nextIndex });
+  if (options?.focusItem && nextIndex !== null) {
+    focusFavoriteItem(side, nextIndex);
+  }
+}
+
+function setFavoriteFocus(
+  side: FavoritePane,
+  nextIndex: number | null,
+  options?: { focusItem?: boolean },
+) {
+  const paths = getFavoritePaths(side);
+  const list = getFavoriteList(side);
+  const clamped = clampFavoriteFocusIndex(nextIndex, paths.length);
+  favoriteFocusIndex[side] = clamped;
+  applyFavoritePathFocus(list, clamped);
+  if (options?.focusItem && clamped !== null) {
+    focusFavoriteItem(side, clamped);
+  }
+}
+
+function adjustFavoriteFocusAfterRemove(
+  currentIndex: number | null,
+  removedIndex: number,
+  nextLength: number,
+): number | null {
+  if (nextLength <= 0) {
+    return null;
+  }
+  if (currentIndex === null) {
+    return null;
+  }
+  if (currentIndex > removedIndex) {
+    return currentIndex - 1;
+  }
+  return Math.min(currentIndex, nextLength - 1);
+}
+
+function adjustFavoriteFocusAfterMove(
+  currentIndex: number | null,
+  fromIndex: number,
+  toIndex: number,
+): number | null {
+  if (currentIndex === null) {
+    return null;
+  }
+  if (currentIndex === fromIndex) {
+    return toIndex;
+  }
+  if (fromIndex < currentIndex && currentIndex <= toIndex) {
+    return currentIndex - 1;
+  }
+  if (toIndex <= currentIndex && currentIndex < fromIndex) {
+    return currentIndex + 1;
+  }
+  return currentIndex;
+}
+
+
+function handleFavoriteAddResult(
+  side: FavoritePane,
+  result: FavoritePathResult,
+) {
+  if (!result.ok) {
+    const message =
+      result.reason === "empty"
+        ? "パスを入力してください"
+        : result.reason === "duplicate"
+          ? "同じパスが登録されています"
+          : "最大10件まで登録できます";
+    toast.show(message, "error");
+    return false;
+  }
+  if (side === "left") {
+    leftFavoriteList = result.paths;
+  } else {
+    rightFavoriteList = result.paths;
+  }
+  renderFavoriteList(side);
+  toast.show("パスを追加しました");
+  return true;
+}
+
+function bindFavoritePane(
+  side: FavoritePane,
+  options: {
+    input: HTMLInputElement;
+    saveButton: HTMLButtonElement;
+    error: HTMLDivElement;
+    list: HTMLDivElement;
+  },
+) {
+  const { input, saveButton, error, list } = options;
+
+  const getPaths = () => (side === "left" ? leftFavoriteList : rightFavoriteList);
+  const setPaths = (paths: string[]) => {
+    if (side === "left") {
+      leftFavoriteList = paths;
+    } else {
+      rightFavoriteList = paths;
+    }
+  };
+
+  const handleAdd = () => {
+    const current = getPaths();
+    const result = addFavoritePath(storage, side, current, input.value);
+    const ok = handleFavoriteAddResult(side, result);
+    if (ok) {
+      input.value = "";
+      input.focus();
+      setFavoriteError(error, "");
+    }
+  };
+
+  saveButton.addEventListener("click", handleAdd);
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      handleAdd();
+    }
+  });
+
+  bindFavoritePathHandlers(list, async (action) => {
+    const paths = getPaths();
+    if (action.type === "copy") {
+      const ok = await copyText(action.path, document);
+      if (ok) {
+        toast.show("パスをコピーしました");
+      } else {
+        toast.show("コピーに失敗しました", "error");
+      }
+      return;
+    }
+
+    let next = paths;
+    if (action.type === "remove") {
+      next = removeFavoritePath(storage, side, paths, action.index);
+    }
+
+    if (next !== paths) {
+      setPaths(next);
+      favoriteFocusIndex[side] = adjustFavoriteFocusAfterRemove(
+        favoriteFocusIndex[side],
+        action.index,
+        next.length,
+      );
+      renderFavoriteList(side, { focusItem: true });
+      setFavoriteError(error, "");
+    }
+  });
+
+  bindFavoritePathDragHandlers(list, (move) => {
+    const paths = getPaths();
+    const next = moveFavoritePath(storage, side, paths, move.from, move.to);
+    if (next === paths) {
+      return;
+    }
+    setPaths(next);
+    favoriteFocusIndex[side] = adjustFavoriteFocusAfterMove(
+      favoriteFocusIndex[side],
+      move.from,
+      move.to,
+    );
+    renderFavoriteList(side, { focusItem: true });
+    setFavoriteError(error, "");
+  });
+
+  list.addEventListener("click", (event) => {
+    const item = (event.target as HTMLElement).closest<HTMLElement>(
+      ".favorite-path",
+    );
+    if (!item) {
+      return;
+    }
+    const index = Number(item.dataset.index);
+    if (!Number.isFinite(index)) {
+      return;
+    }
+    setFavoriteFocus(side, index, { focusItem: true });
+  });
+
+  list.addEventListener("keydown", (event) => {
+    const paths = getPaths();
+    handleFavoriteListKeydown(event, {
+      length: paths.length,
+      currentIndex: favoriteFocusIndex[side],
+      onMove: (nextIndex) => {
+        setFavoriteFocus(side, nextIndex, { focusItem: true });
+      },
+      onCopy: async (index) => {
+        const path = paths[index] ?? "";
+        if (!path) {
+          toast.show("コピー対象がありません", "error");
+          return;
+        }
+        const ok = await copyText(path, document);
+        if (ok) {
+          toast.show("パスをコピーしました");
+        } else {
+          toast.show("コピーに失敗しました", "error");
+        }
+      },
+      onRemove: (index) => {
+        const current = getPaths();
+        const next = removeFavoritePath(storage, side, current, index);
+        if (next === current) {
+          return;
+        }
+        setPaths(next);
+        favoriteFocusIndex[side] = adjustFavoriteFocusAfterRemove(
+          favoriteFocusIndex[side],
+          index,
+          next.length,
+        );
+        renderFavoriteList(side, { focusItem: true });
+        setFavoriteError(error, "");
+      },
+    });
+  });
+}
 
 const leftInitial =
   persistedState?.leftText ??
@@ -369,6 +673,16 @@ function updateFileCards(
 ): void {
   const target = side === "left" ? leftFileCards : rightFileCards;
   renderFileCards(target, names);
+}
+
+function getOpenFavoriteSide(): FavoritePane | null {
+  if (leftFavoriteController.isOpen()) {
+    return "left";
+  }
+  if (rightFavoriteController.isOpen()) {
+    return "right";
+  }
+  return null;
 }
 
 type GoToLinePane = {
@@ -845,6 +1159,45 @@ updateLineNumbers(rightEditor, rightSegments);
 refreshSyntaxHighlight();
 updateFileCards("left", listLoadedFileNames(leftSegments));
 updateFileCards("right", listLoadedFileNames(rightSegments));
+renderFavoriteList("left");
+renderFavoriteList("right");
+
+const leftFavoriteController = createFavoritePanelController({
+  panel: leftFavoritePanel,
+  overlay: leftFavoriteOverlay,
+  addButton: leftFavoriteAdd,
+  cancelButton: leftFavoriteCancel,
+  input: leftFavoriteInput,
+  onReset: () => {
+    setFavoriteError(leftFavoriteError, "");
+    setFavoriteFocus("left", null);
+  },
+});
+const rightFavoriteController = createFavoritePanelController({
+  panel: rightFavoritePanel,
+  overlay: rightFavoriteOverlay,
+  addButton: rightFavoriteAdd,
+  cancelButton: rightFavoriteCancel,
+  input: rightFavoriteInput,
+  onReset: () => {
+    setFavoriteError(rightFavoriteError, "");
+    setFavoriteFocus("right", null);
+  },
+});
+
+leftFavoriteAdd.addEventListener("click", () => {
+  if (rightFavoriteController.isOpen()) {
+    rightFavoriteController.close();
+  }
+  leftFavoriteController.toggle();
+});
+
+rightFavoriteAdd.addEventListener("click", () => {
+  if (leftFavoriteController.isOpen()) {
+    leftFavoriteController.close();
+  }
+  rightFavoriteController.toggle();
+});
 
 bindDropZone(
   leftPane,
@@ -869,6 +1222,20 @@ bindFileCardJump(leftFileCards, (fileName) => {
 });
 bindFileCardJump(rightFileCards, (fileName) => {
   jumpToFileStart(rightEditor, rightSegments, fileName);
+});
+
+bindFavoritePane("left", {
+  input: leftFavoriteInput,
+  saveButton: leftFavoriteSave,
+  error: leftFavoriteError,
+  list: leftFavoritePaths,
+});
+
+bindFavoritePane("right", {
+  input: rightFavoriteInput,
+  saveButton: rightFavoriteSave,
+  error: rightFavoriteError,
+  list: rightFavoritePaths,
 });
 
 function bindGoToLinePanel(side: "left" | "right") {
@@ -1034,6 +1401,82 @@ window.addEventListener(
         rightEditor,
       });
       if (focusHandled) {
+        return;
+      }
+    }
+
+    const favoriteHandled = handleFavoritePanelShortcut(event, {
+      left: leftFavoriteController,
+      right: rightFavoriteController,
+      getLastFocused: () => lastFocusedSide,
+    });
+    if (favoriteHandled) {
+      event.stopPropagation();
+      return;
+    }
+
+    const favoriteOpenSide = getOpenFavoriteSide();
+    if (favoriteOpenSide) {
+      const paths = getFavoritePaths(favoriteOpenSide);
+      const input =
+        favoriteOpenSide === "left" ? leftFavoriteInput : rightFavoriteInput;
+      const inputHasFocus = document.activeElement === input;
+      if (
+        !(
+          inputHasFocus &&
+          (event.key === "Enter" || event.key === "Delete")
+        )
+      ) {
+        const listHandled = handleFavoriteListKeydown(event, {
+          length: paths.length,
+          currentIndex: favoriteFocusIndex[favoriteOpenSide],
+          onMove: (nextIndex) => {
+            setFavoriteFocus(favoriteOpenSide, nextIndex, { focusItem: true });
+          },
+          onCopy: async (index) => {
+            const path = paths[index] ?? "";
+            if (!path) {
+              toast.show("コピー対象がありません", "error");
+              return;
+            }
+            const ok = await copyText(path, document);
+            if (ok) {
+              toast.show("パスをコピーしました");
+            } else {
+              toast.show("コピーに失敗しました", "error");
+            }
+          },
+          onRemove: (index) => {
+            const current = getFavoritePaths(favoriteOpenSide);
+            const next = removeFavoritePath(
+              storage,
+              favoriteOpenSide,
+              current,
+              index,
+            );
+            if (next === current) {
+              return;
+            }
+            if (favoriteOpenSide === "left") {
+              leftFavoriteList = next;
+            } else {
+              rightFavoriteList = next;
+            }
+            favoriteFocusIndex[favoriteOpenSide] =
+              adjustFavoriteFocusAfterRemove(
+                favoriteFocusIndex[favoriteOpenSide],
+                index,
+                next.length,
+              );
+            renderFavoriteList(favoriteOpenSide, { focusItem: true });
+          },
+        });
+        if (listHandled) {
+          return;
+        }
+      }
+      const focused = focusFavoriteInputOnKey(event, input);
+      if (focused) {
         return;
       }
     }

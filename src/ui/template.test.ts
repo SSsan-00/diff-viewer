@@ -33,19 +33,19 @@ describe("pane action layout", () => {
     );
   });
 
-  it("renders encoding labels with a dedicated class", () => {
+  it("does not render encoding labels but keeps the select", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
 
-    const leftLabel = doc.querySelector(
-      "#left-pane .pane-select .pane-select-label",
-    );
-    const rightLabel = doc.querySelector(
-      "#right-pane .pane-select .pane-select-label",
-    );
+    const leftLabel = doc.querySelector("#left-pane .pane-select-label");
+    const rightLabel = doc.querySelector("#right-pane .pane-select-label");
+    const leftSelect = doc.querySelector("#left-pane .pane-select select");
+    const rightSelect = doc.querySelector("#right-pane .pane-select select");
 
-    expect(leftLabel?.textContent).toBe("文字コード");
-    expect(rightLabel?.textContent).toBe("文字コード");
+    expect(leftLabel).toBeNull();
+    expect(rightLabel).toBeNull();
+    expect(leftSelect).toBeTruthy();
+    expect(rightSelect).toBeTruthy();
   });
 
   it("does not render a wrap toggle in the toolbar", () => {
@@ -129,6 +129,34 @@ describe("pane action layout", () => {
     expect(leftBar?.classList.contains("file-cards-bar--horizontal")).toBe(
       true,
     );
+  });
+
+  it("renders favorite path controls for both panes", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const leftButton = doc.querySelector("#left-favorite-add");
+    const rightButton = doc.querySelector("#right-favorite-add");
+    const leftBar = doc.querySelector("#left-favorite-paths");
+    const rightBar = doc.querySelector("#right-favorite-paths");
+
+    expect(leftButton).toBeTruthy();
+    expect(rightButton).toBeTruthy();
+    expect(leftBar).toBeTruthy();
+    expect(rightBar).toBeTruthy();
+    expect(leftBar?.classList.contains("favorite-paths-list")).toBe(true);
+    expect(rightBar?.classList.contains("favorite-paths-list")).toBe(true);
+  });
+
+  it("does not render favorite panel close buttons", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const leftClose = doc.querySelector("#left-favorite-close");
+    const rightClose = doc.querySelector("#right-favorite-close");
+
+    expect(leftClose).toBeNull();
+    expect(rightClose).toBeNull();
   });
 
   it("renders goto line panels for both panes", () => {
