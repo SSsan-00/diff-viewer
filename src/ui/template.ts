@@ -137,7 +137,7 @@ export const APP_TEMPLATE = `
       </div>
       <div id="anchor-panel-body" class="anchor-panel-body">
         <div id="anchor-warning" class="anchor-warning" aria-live="polite"></div>
-        <ul id="anchor-list" class="anchor-list"></ul>
+        <ul id="anchor-list" class="anchor-list" tabindex="0"></ul>
       </div>
     </section>
     <div class="editors">

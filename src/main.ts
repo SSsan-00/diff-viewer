@@ -43,6 +43,7 @@ import {
   handleRightAnchorClick,
 } from "./ui/anchorClick";
 import { resetAllAnchors } from "./ui/anchorReset";
+import { getNextAnchorKey, resolveAnchorMoveDelta } from "./ui/anchorNavigation";
 import { handleFindShortcut } from "./ui/editorFind";
 import { handleGoToLineShortcut } from "./ui/goToLine";
 import { handleGoToLineFileMoveShortcut, moveSelectedIndex } from "./ui/goToLineNavigation";
@@ -848,6 +849,26 @@ function getPaneSegments(side: "left" | "right"): LineSegment[] {
 function getPaneEditor(side: "left" | "right"): monaco.editor.IStandaloneCodeEditor {
   return side === "left" ? leftEditor : rightEditor;
 }
+
+anchorList.addEventListener("keydown", (event) => {
+  if (!selectedAnchorKey) {
+    return;
+  }
+  const delta = resolveAnchorMoveDelta(event);
+  if (delta === null) {
+    return;
+  }
+  const nextKey = getNextAnchorKey(anchorEntryKeys, selectedAnchorKey, delta);
+  if (!nextKey || nextKey === selectedAnchorKey) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  selectedAnchorKey = nextKey;
+  renderAnchors(anchorValidationState.invalid, anchorValidationState.valid);
+  jumpToAnchorEntry(nextKey);
+  anchorList.focus();
+});
 
 function setGoToLineOpen(side: "left" | "right", open: boolean): void {
   const pane = goToLinePanes[side];
@@ -1838,6 +1859,12 @@ let rightAnchorDecorationIds: string[] = [];
 let selectedAnchorKey: string | null = null;
 let pendingLeftDecorationIds: string[] = [];
 let pendingRightDecorationIds: string[] = [];
+let anchorEntryKeys: string[] = [];
+const anchorEntryMap = new Map<string, { anchor: Anchor; canJump: boolean }>();
+let anchorValidationState: {
+  invalid: { anchor: Anchor; reasons: string[] }[];
+  valid: Anchor[];
+} = { invalid: [], valid: [] };
 
 function isGutterClick(event: monaco.editor.IEditorMouseEvent): boolean {
   const targetType = event.target.type;
@@ -2112,6 +2139,9 @@ function renderAnchors(
   invalid: { anchor: Anchor; reasons: string[] }[],
   valid: Anchor[],
 ) {
+  anchorValidationState = { invalid, valid };
+  anchorEntryKeys = [];
+  anchorEntryMap.clear();
   anchorList.innerHTML = "";
   const entries: AnchorEntry[] = [];
   if (autoAnchor) {
@@ -2203,6 +2233,8 @@ function renderAnchors(
     }
 
     const canJump = entry.source === "auto" || validSet.has(anchor);
+    anchorEntryKeys.push(entryKey);
+    anchorEntryMap.set(entryKey, { anchor, canJump });
     if (canJump) {
       item.addEventListener("click", (event) => {
         if ((event.target as HTMLElement).closest(".anchor-remove")) {
@@ -2214,6 +2246,7 @@ function renderAnchors(
         rightEditor.revealLineInCenter(anchor.rightLineNo + 1);
         focusDiffLines(anchor.leftLineNo, anchor.rightLineNo);
         setAnchorMessage(`Anchor jump: ${formatAnchor(anchor)}`);
+        anchorList.focus();
       });
     }
 
@@ -2259,6 +2292,17 @@ function renderAnchors(
     item.appendChild(removeButton);
     anchorList.appendChild(item);
   });
+}
+
+function jumpToAnchorEntry(entryKey: string) {
+  const entry = anchorEntryMap.get(entryKey);
+  if (!entry || !entry.canJump) {
+    return;
+  }
+  leftEditor.revealLineInCenter(entry.anchor.leftLineNo + 1);
+  rightEditor.revealLineInCenter(entry.anchor.rightLineNo + 1);
+  focusDiffLines(entry.anchor.leftLineNo, entry.anchor.rightLineNo);
+  setAnchorMessage(`Anchor jump: ${formatAnchor(entry.anchor)}`);
 }
 
 function getNormalizedLineCount(text: string): number {
