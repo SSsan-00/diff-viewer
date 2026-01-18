@@ -468,7 +468,7 @@ function moveGoToLineSelection(side: "left" | "right", delta: number): void {
   const nextIndex = moveSelectedIndex(selectedIndex, delta, buttons.length);
   const nextFile = buttons[nextIndex]?.dataset.file ?? null;
   setGoToLineSelection(side, nextFile);
-  buttons[nextIndex]?.focus();
+  pane.input.focus();
 }
 
 function getOpenGoToLineSide(): "left" | "right" | null {
@@ -878,14 +878,6 @@ function bindGoToLinePanel(side: "left" | "right") {
   }
 
   const stopPanelKey = (event: KeyboardEvent) => {
-    if (
-      handleGoToLineFileMoveShortcut(event, {
-        isOpen: true,
-        move: (delta) => moveGoToLineSelection(side, delta),
-      })
-    ) {
-      return;
-    }
     event.stopPropagation();
     if (event.key === "Escape") {
       event.preventDefault();
@@ -904,17 +896,10 @@ function bindGoToLinePanel(side: "left" | "right") {
       return;
     }
     setGoToLineSelection(side, target.dataset.file ?? null);
+    pane.input.focus();
   });
 
   pane.input.addEventListener("keydown", (event) => {
-    if (
-      handleGoToLineFileMoveShortcut(event, {
-        isOpen: true,
-        move: (delta) => moveGoToLineSelection(side, delta),
-      })
-    ) {
-      return;
-    }
     event.stopPropagation();
     if (event.key === "Enter") {
       event.preventDefault();
