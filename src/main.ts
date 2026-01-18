@@ -1125,6 +1125,9 @@ function bindDropZone(
     zone.classList.remove("is-dragover");
 
     const files = event.dataTransfer?.files;
+    if (event.dataTransfer?.types.includes("application/x-favorite-path")) {
+      return;
+    }
     if (!files || files.length === 0) {
       setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
       return;

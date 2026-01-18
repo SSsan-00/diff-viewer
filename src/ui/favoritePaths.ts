@@ -169,6 +169,7 @@ export function bindFavoritePathDragHandlers(
     if (event.dataTransfer) {
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", String(index));
+      event.dataTransfer.setData("application/x-favorite-path", "1");
       event.dataTransfer.setDragImage(item, 12, 12);
     }
   });
