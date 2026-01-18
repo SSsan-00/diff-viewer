@@ -38,7 +38,7 @@
 ### src/
 
 - `src/main.ts` アプリ起点。Monaco 初期化、ショートカット/フォーカス管理、差分再計算、アンカー描画、読み込み/保存を統合。`src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` を束ねる。
-- `src/style.css` 画面全体のレイアウト/配色/差分ハイライト/アンカー/境界表示のスタイル。`src/main.ts` から読み込む。
+- `src/style.css` 画面全体のレイアウト/配色/差分ハイライト/アンカー/境界表示のスタイル。ワークスペース/パス登録UIのパネルも定義する。`src/main.ts` から読み込む。
 - `src/licenses.ts` 依存ライセンス本文データ。export: `THIRD_PARTY_LICENSES`（`src/main.ts` から参照）。
 - `src/smoke.test.ts` Vitest の起動確認用スモークテスト。
 - `src/distGate.test.ts` 配布物ゲート（禁止文字列/SourceMap/modulepreload）の検査テスト。
@@ -128,6 +128,18 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/diffJumpButtons.test.ts` 差分ジャンプのテスト。
 - `src/ui/favoritePanel.ts` パス登録ポップオーバーの開閉制御。export: `createFavoritePanelController`。
 - `src/ui/favoritePanel.test.ts` パス登録パネル開閉のテスト。
+- `src/ui/workspacePanel.ts` ワークスペースUIパネルの開閉制御。export: `createWorkspacePanelController`。
+- `src/ui/workspacePanel.test.ts` ワークスペースパネル開閉のテスト。
+- `src/ui/workspaceShortcut.ts` Ctrl+N のトグルショートカット判定。export: `handleWorkspaceShortcut`。
+- `src/ui/workspaceShortcut.test.ts` ワークスペースショートカットのテスト。
+- `src/ui/workspaceNavigation.ts` ワークスペース一覧の↑/↓移動ロジック。exports: `handleWorkspaceNavigation`, `getNextWorkspaceId`。
+- `src/ui/workspaceNavigation.test.ts` ワークスペースナビゲーションのテスト。
+- `src/ui/workspaceTitle.ts` ワークスペース名からタイトル表示文字列を決定する。export: `getWorkspaceTitle`。
+- `src/ui/workspaceTitle.test.ts` タイトル表示のテスト。
+- `src/ui/workspaces.ts` ワークスペース一覧の描画と操作抽出（クリック/ドラッグ）。永続化は担当しない。exports: `renderWorkspaces`, `getWorkspaceAction`, `bindWorkspaceDragHandlers`。
+- `src/ui/workspaces.test.ts` ワークスペースUIのテスト。
+- `src/ui/workspaceRemoval.ts` ワークスペース削除の確認と削除実行。export: `removeWorkspaceWithConfirm`。
+- `src/ui/workspaceRemoval.test.ts` 削除確認のテスト。
 - `src/ui/favoritePanelShortcut.ts` Ctrl/Cmd+P の開閉トグル判定。export: `handleFavoritePanelShortcut`。
 - `src/ui/favoritePanelShortcut.test.ts` パス登録UIトグルのテスト。
 - `src/ui/favoritePanelKeyRouting.ts` パス登録UI表示中の文字入力フォーカス制御。exports: `shouldFocusFavoriteInput`, `focusFavoriteInputOnKey`。
@@ -155,8 +167,10 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 ### src/storage/
 
-- `src/storage/favoritePaths.ts` パス登録の永続化（左右別キー・上限10件・ロード時補正）。exports: `loadFavoritePaths`, `addFavoritePath`, `removeFavoritePath`, `moveFavoritePath` ほか。
+- `src/storage/favoritePaths.ts` パス登録の永続化（左右別 + ワークスペース別キー・上限10件・ロード時補正・旧キー移行）。exports: `loadFavoritePaths`, `addFavoritePath`, `removeFavoritePath`, `moveFavoritePath` ほか。
 - `src/storage/favoritePaths.test.ts` パス登録保存のテスト。
+- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字）。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`。
+- `src/storage/workspaces.test.ts` ワークスペース保存のテスト。
 - `src/storage/persistedState.ts` LocalStorage 保存/復元とスケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。
 - `src/storage/paneSummary.ts` 読み込み完了サマリの保存/復元。exports: `loadPaneSummary`, `savePaneSummary`, `clearPaneSummary`。

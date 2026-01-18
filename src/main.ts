@@ -67,6 +67,16 @@ import {
   type FavoritePathResult,
 } from "./storage/favoritePaths";
 import {
+  createWorkspace,
+  loadWorkspaces,
+  renameWorkspace,
+  reorderWorkspaces,
+  selectWorkspace,
+  WORKSPACE_LIMIT,
+  WORKSPACE_NAME_LIMIT,
+  type WorkspacesState,
+} from "./storage/workspaces";
+import {
   bindFavoritePathDragHandlers,
   bindFavoritePathHandlers,
   applyFavoritePathFocus,
@@ -79,6 +89,16 @@ import {
   handleFavoriteListKeydown,
 } from "./ui/favoritePathNavigation";
 import { focusFavoriteInputOnKey } from "./ui/favoritePanelKeyRouting";
+import {
+  bindWorkspaceDragHandlers,
+  getWorkspaceAction,
+  renderWorkspaces,
+} from "./ui/workspaces";
+import { createWorkspacePanelController } from "./ui/workspacePanel";
+import { handleWorkspaceShortcut } from "./ui/workspaceShortcut";
+import { removeWorkspaceWithConfirm } from "./ui/workspaceRemoval";
+import { getWorkspaceTitle } from "./ui/workspaceTitle";
+import { handleWorkspaceNavigation } from "./ui/workspaceNavigation";
 import { createToastManager } from "./ui/toast";
 import {
   clearPersistedState,
@@ -177,6 +197,11 @@ const leftContainer = getRequiredElement<HTMLDivElement>("#left-editor");
 const rightContainer = getRequiredElement<HTMLDivElement>("#right-editor");
 const leftPane = getRequiredElement<HTMLElement>("#left-pane");
 const rightPane = getRequiredElement<HTMLElement>("#right-pane");
+const workspaceToggle = getRequiredElement<HTMLButtonElement>("#workspace-toggle");
+const workspacePanel = getRequiredElement<HTMLDivElement>("#workspace-panel");
+const workspaceOverlay = getRequiredElement<HTMLDivElement>("#workspace-overlay");
+const workspaceList = getRequiredElement<HTMLDivElement>("#workspace-list");
+const workspaceCreate = getRequiredElement<HTMLButtonElement>("#workspace-create");
 const leftMessage = getRequiredElement<HTMLDivElement>("#left-message");
 const rightMessage = getRequiredElement<HTMLDivElement>("#right-message");
 const leftFileCards = getRequiredElement<HTMLDivElement>("#left-file-cards");
@@ -227,12 +252,22 @@ const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
 applyEncodingSelection(leftEncodingSelect, persistedState?.leftEncoding);
 applyEncodingSelection(rightEncodingSelect, persistedState?.rightEncoding);
 
-let leftFavoriteList = loadFavoritePaths(storage, "left");
-let rightFavoriteList = loadFavoritePaths(storage, "right");
+let workspaceState: WorkspacesState = loadWorkspaces(storage);
+let leftFavoriteList = loadFavoritePaths(
+  storage,
+  "left",
+  workspaceState.selectedId,
+);
+let rightFavoriteList = loadFavoritePaths(
+  storage,
+  "right",
+  workspaceState.selectedId,
+);
 const favoriteFocusIndex: Record<FavoritePane, number | null> = {
   left: null,
   right: null,
 };
+let editingWorkspaceId: string | null = null;
 const toast = createToastManager(toastRoot);
 
 function setFavoriteError(target: HTMLDivElement, message: string) {
@@ -325,6 +360,74 @@ function adjustFavoriteFocusAfterMove(
   return currentIndex;
 }
 
+function setWorkspaceTitle(state: WorkspacesState) {
+  workspaceToggle.textContent = getWorkspaceTitle(state);
+}
+
+function renderWorkspacePanel(options?: { focusInput?: boolean }) {
+  renderWorkspaces(workspaceList, workspaceState.workspaces, {
+    selectedId: workspaceState.selectedId,
+    editingId: editingWorkspaceId,
+  });
+  workspaceCreate.disabled = workspaceState.workspaces.length >= WORKSPACE_LIMIT;
+  setWorkspaceTitle(workspaceState);
+  if (options?.focusInput && editingWorkspaceId) {
+    const input = workspaceList.querySelector<HTMLInputElement>(
+      `.workspace-item[data-id="${editingWorkspaceId}"] .workspace-item__input`,
+    );
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }
+}
+
+function loadFavoriteListsForWorkspace(workspaceId: string) {
+  leftFavoriteList = loadFavoritePaths(storage, "left", workspaceId);
+  rightFavoriteList = loadFavoritePaths(storage, "right", workspaceId);
+  favoriteFocusIndex.left = null;
+  favoriteFocusIndex.right = null;
+  renderFavoriteList("left");
+  renderFavoriteList("right");
+}
+
+function applyWorkspaceState(
+  nextState: WorkspacesState,
+  options?: { focusInput?: boolean },
+) {
+  const previousSelectedId = workspaceState.selectedId;
+  workspaceState = nextState;
+  renderWorkspacePanel(options);
+  if (nextState.selectedId !== previousSelectedId) {
+    loadFavoriteListsForWorkspace(nextState.selectedId);
+  }
+}
+
+function applyWorkspaceResult(result: ReturnType<typeof selectWorkspace>) {
+  if (!result.ok) {
+    return;
+  }
+  applyWorkspaceState(result.state);
+}
+
+function handleWorkspaceRename(id: string, rawName: string) {
+  const result = renameWorkspace(storage, workspaceState, id, rawName);
+  if (!result.ok) {
+    const message =
+      result.reason === "empty"
+        ? "名前を入力してください"
+        : result.reason === "length"
+          ? `名前は${WORKSPACE_NAME_LIMIT}文字以内です`
+          : "名前を変更できません";
+    toast.show(message, "error");
+    editingWorkspaceId = null;
+    renderWorkspacePanel();
+    return;
+  }
+  workspaceState = result.state;
+  editingWorkspaceId = null;
+  renderWorkspacePanel();
+}
 
 function handleFavoriteAddResult(
   side: FavoritePane,
@@ -361,6 +464,7 @@ function bindFavoritePane(
 ) {
   const { input, saveButton, error, list } = options;
 
+  const getWorkspaceId = () => workspaceState.selectedId;
   const getPaths = () => (side === "left" ? leftFavoriteList : rightFavoriteList);
   const setPaths = (paths: string[]) => {
     if (side === "left") {
@@ -372,7 +476,13 @@ function bindFavoritePane(
 
   const handleAdd = () => {
     const current = getPaths();
-    const result = addFavoritePath(storage, side, current, input.value);
+    const result = addFavoritePath(
+      storage,
+      side,
+      getWorkspaceId(),
+      current,
+      input.value,
+    );
     const ok = handleFavoriteAddResult(side, result);
     if (ok) {
       input.value = "";
@@ -404,7 +514,13 @@ function bindFavoritePane(
 
     let next = paths;
     if (action.type === "remove") {
-      next = removeFavoritePath(storage, side, paths, action.index);
+      next = removeFavoritePath(
+        storage,
+        side,
+        getWorkspaceId(),
+        paths,
+        action.index,
+      );
     }
 
     if (next !== paths) {
@@ -421,7 +537,14 @@ function bindFavoritePane(
 
   bindFavoritePathDragHandlers(list, (move) => {
     const paths = getPaths();
-    const next = moveFavoritePath(storage, side, paths, move.from, move.to);
+    const next = moveFavoritePath(
+      storage,
+      side,
+      getWorkspaceId(),
+      paths,
+      move.from,
+      move.to,
+    );
     if (next === paths) {
       return;
     }
@@ -472,7 +595,13 @@ function bindFavoritePane(
       },
       onRemove: (index) => {
         const current = getPaths();
-        const next = removeFavoritePath(storage, side, current, index);
+        const next = removeFavoritePath(
+          storage,
+          side,
+          getWorkspaceId(),
+          current,
+          index,
+        );
         if (next === current) {
           return;
         }
@@ -1104,6 +1233,12 @@ function bindDropZone(
   side: "left" | "right",
 ) {
   zone.addEventListener("dragover", (event: DragEvent) => {
+    if (
+      event.dataTransfer?.types.includes("application/x-favorite-path") ||
+      event.dataTransfer?.types.includes("application/x-workspace")
+    ) {
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     zone.classList.add("is-dragover");
@@ -1125,7 +1260,10 @@ function bindDropZone(
     zone.classList.remove("is-dragover");
 
     const files = event.dataTransfer?.files;
-    if (event.dataTransfer?.types.includes("application/x-favorite-path")) {
+    if (
+      event.dataTransfer?.types.includes("application/x-favorite-path") ||
+      event.dataTransfer?.types.includes("application/x-workspace")
+    ) {
       return;
     }
     if (!files || files.length === 0) {
@@ -1164,6 +1302,17 @@ updateFileCards("left", listLoadedFileNames(leftSegments));
 updateFileCards("right", listLoadedFileNames(rightSegments));
 renderFavoriteList("left");
 renderFavoriteList("right");
+renderWorkspacePanel();
+
+const workspaceController = createWorkspacePanelController({
+  panel: workspacePanel,
+  overlay: workspaceOverlay,
+  toggleButton: workspaceToggle,
+  onReset: () => {
+    editingWorkspaceId = null;
+    renderWorkspacePanel();
+  },
+});
 
 const leftFavoriteController = createFavoritePanelController({
   panel: leftFavoritePanel,
@@ -1200,6 +1349,106 @@ rightFavoriteAdd.addEventListener("click", () => {
     leftFavoriteController.close();
   }
   rightFavoriteController.toggle();
+});
+
+workspaceCreate.addEventListener("click", () => {
+  const result = createWorkspace(storage, workspaceState, "Workspace");
+  if (!result.ok) {
+    if (result.reason === "limit") {
+      toast.show("最大10件です", "error");
+    } else if (result.reason === "length") {
+      toast.show(`名前は${WORKSPACE_NAME_LIMIT}文字以内です`, "error");
+    } else {
+      toast.show("ワークスペースを追加できませんでした", "error");
+    }
+    return;
+  }
+  editingWorkspaceId = result.state.selectedId;
+  applyWorkspaceState(result.state, { focusInput: true });
+});
+
+workspaceList.addEventListener("click", (event) => {
+  const action = getWorkspaceAction(event.target as HTMLElement);
+  if (!action) {
+    return;
+  }
+  if (action.type === "select") {
+    editingWorkspaceId = null;
+    const result = selectWorkspace(storage, workspaceState, action.id);
+    applyWorkspaceResult(result);
+    return;
+  }
+  if (action.type === "rename") {
+    editingWorkspaceId = action.id;
+    renderWorkspacePanel({ focusInput: true });
+    return;
+  }
+  if (action.type === "remove") {
+    const result = removeWorkspaceWithConfirm(
+      storage,
+      workspaceState,
+      action.id,
+      window.confirm,
+    );
+    if (!result.ok) {
+      if (result.reason === "last") {
+        toast.show("最後の1件は削除できません", "error");
+      }
+      return;
+    }
+    editingWorkspaceId = null;
+    applyWorkspaceState(result.state);
+  }
+});
+
+workspaceList.addEventListener("keydown", (event) => {
+  const input = (event.target as HTMLElement).closest<HTMLInputElement>(
+    ".workspace-item__input",
+  );
+  if (!input) {
+    return;
+  }
+  if (event.key === "Enter") {
+    event.preventDefault();
+    const item = input.closest<HTMLElement>(".workspace-item");
+    const id = item?.dataset.id;
+    if (id) {
+      handleWorkspaceRename(id, input.value);
+    }
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    editingWorkspaceId = null;
+    renderWorkspacePanel();
+  }
+});
+
+workspaceList.addEventListener("focusout", (event) => {
+  const input = (event.target as HTMLElement).closest<HTMLInputElement>(
+    ".workspace-item__input",
+  );
+  if (!input) {
+    return;
+  }
+  const item = input.closest<HTMLElement>(".workspace-item");
+  const id = item?.dataset.id;
+  if (!id) {
+    return;
+  }
+  handleWorkspaceRename(id, input.value);
+});
+
+bindWorkspaceDragHandlers(workspaceList, (move) => {
+  const result = reorderWorkspaces(
+    storage,
+    workspaceState,
+    move.from,
+    move.to,
+  );
+  if (!result.ok) {
+    return;
+  }
+  workspaceState = result.state;
+  renderWorkspacePanel();
 });
 
 bindDropZone(
@@ -1408,6 +1657,36 @@ window.addEventListener(
       }
     }
 
+    const workspaceHandled = handleWorkspaceShortcut(event, {
+      panel: workspaceController,
+      isEditing: () =>
+        document.activeElement?.classList.contains("workspace-item__input") ??
+        false,
+    });
+    if (workspaceHandled) {
+      event.stopPropagation();
+      return;
+    }
+
+    if (workspaceController.isOpen()) {
+      const isEditing =
+        document.activeElement?.classList.contains("workspace-item__input") ??
+        false;
+      if (!isEditing) {
+        const navigationHandled = handleWorkspaceNavigation(event, {
+          workspaces: workspaceState.workspaces,
+          selectedId: workspaceState.selectedId,
+          onSelect: (id) => {
+            const result = selectWorkspace(storage, workspaceState, id);
+            applyWorkspaceResult(result);
+          },
+        });
+        if (navigationHandled) {
+          return;
+        }
+      }
+    }
+
     const favoriteHandled = handleFavoritePanelShortcut(event, {
       left: leftFavoriteController,
       right: rightFavoriteController,
@@ -1454,6 +1733,7 @@ window.addEventListener(
             const next = removeFavoritePath(
               storage,
               favoriteOpenSide,
+              workspaceState.selectedId,
               current,
               index,
             );

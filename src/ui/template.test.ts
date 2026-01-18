@@ -112,7 +112,7 @@ describe("pane action layout", () => {
     const title = doc.querySelector(".title");
 
     expect(title?.classList.contains("app-title")).toBe(true);
-    expect(title?.textContent).toBe("Diff Viewer");
+    expect(title?.textContent?.trim()).toBe("Workspace");
   });
 
   it("renders file card bars for both panes", () => {
@@ -146,6 +146,23 @@ describe("pane action layout", () => {
     expect(rightBar).toBeTruthy();
     expect(leftBar?.classList.contains("favorite-paths-list")).toBe(true);
     expect(rightBar?.classList.contains("favorite-paths-list")).toBe(true);
+  });
+
+  it("renders workspace controls in the toolbar", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const toggle = doc.querySelector("#workspace-toggle");
+    const panel = doc.querySelector("#workspace-panel");
+    const list = doc.querySelector("#workspace-list");
+    const create = doc.querySelector("#workspace-create");
+    const overlay = doc.querySelector("#workspace-overlay");
+
+    expect(toggle).toBeTruthy();
+    expect(panel).toBeTruthy();
+    expect(list).toBeTruthy();
+    expect(create).toBeTruthy();
+    expect(overlay).toBeTruthy();
   });
 
   it("does not render favorite panel close buttons", () => {

@@ -2,7 +2,40 @@ export const APP_TEMPLATE = `
   <div class="app">
     <header class="toolbar">
       <div class="toolbar-left">
-        <div class="title app-title">Diff Viewer</div>
+        <div class="workspace">
+          <button
+            id="workspace-toggle"
+            class="title app-title workspace-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-haspopup="true"
+          >
+            Workspace
+          </button>
+          <div
+            id="workspace-panel"
+            class="workspace-panel"
+            aria-hidden="true"
+            hidden
+          >
+            <div class="workspace-panel__header">
+              <span>Workspace</span>
+              <button
+                id="workspace-create"
+                class="workspace-panel__create"
+                type="button"
+                aria-label="ワークスペースを追加"
+              >
+                ＋
+              </button>
+            </div>
+            <div
+              id="workspace-list"
+              class="workspace-list"
+              aria-label="workspaces"
+            ></div>
+          </div>
+        </div>
       </div>
       <div class="toolbar-right">
         <button id="recalc" class="button" type="button">差分再計算</button>
@@ -85,6 +118,12 @@ export const APP_TEMPLATE = `
         <button id="clear" class="button button-subtle" type="button">クリア</button>
       </div>
     </header>
+    <div
+      id="workspace-overlay"
+      class="workspace-overlay"
+      aria-hidden="true"
+      hidden
+    ></div>
     <section class="anchor-panel">
       <div class="anchor-header">
         <div class="anchor-title">アンカー</div>
