@@ -46,7 +46,7 @@ import { resetAllAnchors } from "./ui/anchorReset";
 import { handleFindShortcut } from "./ui/editorFind";
 import { handleGoToLineShortcut } from "./ui/goToLine";
 import { handleGoToLineFileMoveShortcut, moveSelectedIndex } from "./ui/goToLineNavigation";
-import { focusEditorAtTop, handlePaneFocusShortcut } from "./ui/paneFocusShortcut";
+import { handlePaneFocusShortcut } from "./ui/paneFocusShortcut";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
@@ -1030,8 +1030,8 @@ window.addEventListener(
         return;
       }
       const focusHandled = handlePaneFocusShortcut(event, {
-        focusLeft: () => focusEditorAtTop(leftEditor),
-        focusRight: () => focusEditorAtTop(rightEditor),
+        leftEditor,
+        rightEditor,
       });
       if (focusHandled) {
         return;
