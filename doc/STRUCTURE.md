@@ -8,6 +8,8 @@
 ├── README.md
 ├── doc/
 │   ├── BACKLOG.md
+│   ├── MANUAL.html
+│   ├── MANUAL.md
 │   ├── SETUP.md
 │   ├── SPEC.md
 │   └── STRUCTURE.md
@@ -118,6 +120,17 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/wordWrapShortcut.test.ts` Alt+Z ショートカットのテスト。
 - `src/ui/syntaxHighlightToggle.ts` シンタックスハイライトの ON/OFF を切替。export: `bindSyntaxHighlightToggle`。
 - `src/ui/syntaxHighlightToggle.test.ts` ハイライト切替のテスト。
+
+## doc/
+
+- `doc/MANUAL.md` テキスト版の利用マニュアル（Windows前提の操作一覧）。
+- `doc/MANUAL.html` 画像付きの操作マニュアル（単一HTML）。
+- `doc/manual-assets/` MANUAL.html 生成用のスクリーンショット素材。
+
+## scripts/
+
+- `scripts/capture-manual-screenshots.mjs` Playwrightでマニュアル用スクショを取得。
+- `scripts/build-manual-html.mjs` スクショをBase64埋め込みして MANUAL.html を生成。
 - `src/ui/editorOptions.ts` Monaco エディタ生成用の共通オプション（sticky scroll 無効化含む）。export: `createEditorOptions`。
 - `src/ui/editorOptions.test.ts` エディタ生成オプションのテスト。
 - `src/ui/themeToggle.ts` ☀️/🌙 テーマ切替と保存。exports: `setupThemeToggle`, `ThemeMode`。
