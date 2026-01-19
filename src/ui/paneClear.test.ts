@@ -113,6 +113,50 @@ describe("pane clear buttons", () => {
     expect(applyEdits).toHaveBeenCalledWith([{ range: model!.range, text: "" }]);
     expect(editor.value).toBe("");
   });
+
+  it("prefers editor executeEdits to preserve undo stack", () => {
+    const editor = createEditor("filled");
+    const executeEdits = vi.fn((_, edits: Array<{ range: object; text: string }>) => {
+      const next = edits[0]?.text ?? "";
+      editor.value = next;
+    });
+    const pushUndoStop = vi.fn();
+    editor.executeEdits = executeEdits;
+    editor.pushUndoStop = pushUndoStop;
+
+    clearEditorModel(editor);
+
+    expect(executeEdits).toHaveBeenCalledWith(
+      "pane-clear",
+      [{ range: editor.getModel()!.range, text: "" }],
+      expect.any(Function),
+    );
+    expect(pushUndoStop).toHaveBeenCalled();
+    expect(editor.value).toBe("");
+  });
+
+  it("invokes onBeforeClear before clearing", () => {
+    const document = setupDocument();
+    const leftButton = document.querySelector<HTMLButtonElement>("#left-clear");
+    const leftEditor = createEditor("left");
+    const leftSegments: LineSegment[] = [
+      { startLine: 1, lineCount: 2, fileIndex: 1 },
+    ];
+    const beforeClear = vi.fn();
+    const updateLeft = vi.fn();
+
+    bindPaneClearButton(leftButton, {
+      editor: leftEditor,
+      segments: leftSegments,
+      updateLineNumbers: updateLeft,
+      onBeforeClear: beforeClear,
+    });
+
+    leftButton?.click();
+
+    expect(beforeClear).toHaveBeenCalledTimes(1);
+    expect(leftEditor.value).toBe("");
+  });
 });
 
 function createEditor(initial: string) {

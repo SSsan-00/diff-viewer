@@ -2,6 +2,13 @@ import type { LineSegment } from "../file/lineNumbering";
 
 type EditorLike = {
   setValue: (value: string) => void;
+  focus?: () => void;
+  executeEdits?: (
+    source: string,
+    edits: Array<{ range: object; text: string }>,
+    endCursorState?: object[] | null,
+  ) => void;
+  pushUndoStop?: () => void;
   getModel?: () => {
     getFullModelRange?: () => object;
     applyEdits?: (edits: Array<{ range: object; text: string }>) => void;
@@ -18,17 +25,20 @@ type PaneClearOptions<Editor extends EditorLike> = {
   editor: Editor;
   segments: LineSegment[];
   updateLineNumbers: (editor: Editor, segments: LineSegment[]) => void;
+  onBeforeClear?: () => void;
   onAfterClear?: () => void;
 };
 
 export function clearPaneState<Editor extends EditorLike>(
   options: PaneClearOptions<Editor>,
 ): void {
-  const { editor, segments, updateLineNumbers, onAfterClear } = options;
+  const { editor, segments, updateLineNumbers, onBeforeClear, onAfterClear } = options;
+  onBeforeClear?.();
   clearEditorModel(editor);
   segments.length = 0;
   updateLineNumbers(editor, segments);
   onAfterClear?.();
+  editor.focus?.();
 }
 
 export function clearEditorModel(editor: EditorLike): void {
@@ -38,6 +48,12 @@ export function clearEditorModel(editor: EditorLike): void {
     return;
   }
   const range = model.getFullModelRange();
+  if (editor.executeEdits) {
+    editor.pushUndoStop?.();
+    editor.executeEdits("pane-clear", [{ range, text: "" }], () => null);
+    editor.pushUndoStop?.();
+    return;
+  }
   model.pushStackElement?.();
   if (model.applyEdits) {
     model.applyEdits([{ range, text: "" }]);
