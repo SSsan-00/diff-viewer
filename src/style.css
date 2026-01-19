@@ -62,8 +62,10 @@
   --theme-transition-ease: cubic-bezier(0.4, 0, 0.2, 1);
   --theme-switch-width: 92px;
   --theme-switch-height: 44px;
-  --theme-switch-padding: 4px;
-  --theme-switch-thumb-size: 32px;
+  --theme-switch-padding: 2px;
+  --theme-switch-thumb-size: 35px;
+  --theme-switch-thumb-offset-x: -2px;
+  --theme-switch-sun-offset-x: 0px;
   --theme-switch-shift: calc(
     var(--theme-switch-width) - var(--theme-switch-thumb-size) -
       (var(--theme-switch-padding) * 2)
@@ -685,7 +687,7 @@ body {
   height: 100%;
   border-radius: 999px;
   background: var(--theme-switch-day-bg);
-  border: 4px solid var(--theme-switch-day-border);
+  border: 2px solid var(--theme-switch-day-border);
   overflow: hidden;
   box-shadow: inset 0 -4px 0 rgba(83, 166, 210, 0.3);
   transition: background-color 0.35s var(--theme-transition-ease),
@@ -749,10 +751,23 @@ body {
   border-radius: 50%;
   top: var(--theme-switch-padding);
   left: var(--theme-switch-padding);
-  transform: translateX(var(--theme-switch-shift)) rotate(0deg);
+  transform: translate3d(
+      calc(var(--theme-switch-shift) + var(--theme-switch-thumb-offset-x)),
+      0,
+      0
+    );
   transition: transform 0.65s var(--theme-transition-ease),
     box-shadow 0.35s var(--theme-transition-ease);
   z-index: 4;
+}
+
+.theme-switch__orb {
+  width: 100%;
+  height: 100%;
+  display: block;
+  transform-origin: center;
+  transform: rotate(0deg);
+  transition: transform 0.65s var(--theme-transition-ease);
 }
 
 .theme-switch__sun,
@@ -765,6 +780,7 @@ body {
 
 .theme-switch__sun {
   opacity: 1;
+  transform: translateX(var(--theme-switch-sun-offset-x));
 }
 
 .theme-switch__moon {
@@ -792,10 +808,13 @@ body {
 }
 
 .theme-switch input:checked + .theme-switch__track .theme-switch__thumb {
-  transform: translateX(0) rotate(-180deg);
+  transform: translate3d(var(--theme-switch-thumb-offset-x), 0, 0);
   box-shadow: 0 6px 14px rgba(10, 18, 28, 0.35);
 }
 
+.theme-switch input:checked + .theme-switch__track .theme-switch__orb {
+  transform: rotate(-540deg);
+}
 .theme-switch input:checked + .theme-switch__track .theme-switch__sun {
   opacity: 0;
 }
