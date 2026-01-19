@@ -130,10 +130,14 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/favoritePanel.test.ts` パス登録パネル開閉のテスト。
 - `src/ui/workspacePanel.ts` ワークスペースUIパネルの開閉制御。export: `createWorkspacePanelController`。
 - `src/ui/workspacePanel.test.ts` ワークスペースパネル開閉のテスト。
-- `src/ui/workspaceShortcut.ts` Ctrl+N のトグルショートカット判定。export: `handleWorkspaceShortcut`。
+- `src/ui/workspaceShortcut.ts` Alt+N のトグルショートカット判定。export: `handleWorkspaceShortcut`。
 - `src/ui/workspaceShortcut.test.ts` ワークスペースショートカットのテスト。
 - `src/ui/workspaceNavigation.ts` ワークスペース一覧の↑/↓移動ロジック。exports: `handleWorkspaceNavigation`, `getNextWorkspaceId`。
 - `src/ui/workspaceNavigation.test.ts` ワークスペースナビゲーションのテスト。
+- `src/ui/workspaceContent.ts` ワークスペース切替時のエディタ内容保存/復元を補助する。exports: `applyWorkspaceSwitch`, `applyWorkspaceSwitchWithHooks`。
+- `src/ui/workspaceContent.test.ts` ワークスペース切替のテキスト保存/復元とフック順序のテスト。
+- `src/ui/workspaceSwitchFlow.ts` ワークスペース切替の一連フロー（保存→復元→フック）をまとめる。export: `runWorkspaceSwitch`。
+- `src/ui/workspaceSwitchFlow.test.ts` 切替フローの順序とアンカー分離のテスト。
 - `src/ui/workspaceTitle.ts` ワークスペース名からタイトル表示文字列を決定する。export: `getWorkspaceTitle`。
 - `src/ui/workspaceTitle.test.ts` タイトル表示のテスト。
 - `src/ui/workspaces.ts` ワークスペース一覧の描画と操作抽出（クリック/ドラッグ）。永続化は担当しない。exports: `renderWorkspaces`, `getWorkspaceAction`, `bindWorkspaceDragHandlers`。
@@ -171,7 +175,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 - `src/storage/favoritePaths.ts` パス登録の永続化（左右別 + ワークスペース別キー・上限10件・ロード時補正・旧キー移行）。exports: `loadFavoritePaths`, `addFavoritePath`, `removeFavoritePath`, `moveFavoritePath` ほか。
 - `src/storage/favoritePaths.test.ts` パス登録保存のテスト。
-- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字）。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`。
+- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト・アンカー状態）。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`, `setWorkspaceTexts`, `setWorkspaceAnchors`。
 - `src/storage/workspaces.test.ts` ワークスペース保存のテスト。
 - `src/storage/persistedState.ts` LocalStorage 保存/復元とスケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。

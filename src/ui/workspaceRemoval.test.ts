@@ -15,8 +15,34 @@ describe("workspace removal confirmation", () => {
     const storage = createStorage();
     const state: WorkspacesState = {
       workspaces: [
-        { id: "ws-a", name: "Alpha" },
-        { id: "ws-b", name: "Beta" },
+        {
+          id: "ws-a",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+        {
+          id: "ws-b",
+          name: "Beta",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
       ],
       selectedId: "ws-a",
     };
@@ -38,8 +64,34 @@ describe("workspace removal confirmation", () => {
     const storage = createStorage();
     const state: WorkspacesState = {
       workspaces: [
-        { id: "ws-a", name: "Alpha" },
-        { id: "ws-b", name: "Beta" },
+        {
+          id: "ws-a",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+        {
+          id: "ws-b",
+          name: "Beta",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
       ],
       selectedId: "ws-b",
     };
@@ -49,7 +101,22 @@ describe("workspace removal confirmation", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.state.workspaces).toEqual([{ id: "ws-a", name: "Alpha" }]);
+      expect(result.state.workspaces).toEqual([
+        {
+          id: "ws-a",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+      ]);
       expect(result.state.selectedId).toBe("ws-a");
     }
   });
@@ -57,7 +124,22 @@ describe("workspace removal confirmation", () => {
   it("rejects deletion when only one workspace remains", () => {
     const storage = createStorage();
     const state: WorkspacesState = {
-      workspaces: [{ id: "ws-a", name: "Alpha" }],
+      workspaces: [
+        {
+          id: "ws-a",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+      ],
       selectedId: "ws-a",
     };
     const confirm = vi.fn(() => true);

@@ -72,9 +72,12 @@ import {
   loadWorkspaces,
   renameWorkspace,
   reorderWorkspaces,
-  selectWorkspace,
+  setWorkspaceAnchors,
+  setWorkspaceTexts,
   WORKSPACE_LIMIT,
   WORKSPACE_NAME_LIMIT,
+  type Workspace,
+  type WorkspaceAnchorState,
   type WorkspacesState,
 } from "./storage/workspaces";
 import {
@@ -93,6 +96,7 @@ import { focusFavoriteInputOnKey } from "./ui/favoritePanelKeyRouting";
 import {
   bindWorkspaceDragHandlers,
   getWorkspaceAction,
+  applyWorkspaceFocus,
   renderWorkspaces,
 } from "./ui/workspaces";
 import { createWorkspacePanelController } from "./ui/workspacePanel";
@@ -100,6 +104,7 @@ import { handleWorkspaceShortcut } from "./ui/workspaceShortcut";
 import { removeWorkspaceWithConfirm } from "./ui/workspaceRemoval";
 import { getWorkspaceTitle } from "./ui/workspaceTitle";
 import { handleWorkspaceNavigation } from "./ui/workspaceNavigation";
+import { runWorkspaceSwitch } from "./ui/workspaceSwitchFlow";
 import { createToastManager } from "./ui/toast";
 import {
   clearPersistedState,
@@ -153,6 +158,7 @@ const persistedState = loadPersistedState(storage);
 let persistScheduler: ReturnType<typeof createPersistScheduler> | null = null;
 let persistSuppressed = false;
 let suppressRecalc = false;
+let workspacePersistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function schedulePersist() {
   if (persistSuppressed) {
@@ -163,6 +169,45 @@ function schedulePersist() {
 
 function cancelPersist() {
   persistScheduler?.cancel();
+  cancelWorkspacePersist();
+}
+
+function scheduleWorkspacePersist() {
+  if (!storage) {
+    return;
+  }
+  if (workspacePersistTimer) {
+    clearTimeout(workspacePersistTimer);
+  }
+  workspacePersistTimer = setTimeout(() => {
+    workspacePersistTimer = null;
+    let result = setWorkspaceTexts(
+      storage,
+      workspaceState,
+      workspaceState.selectedId,
+      leftEditor.getValue(),
+      rightEditor.getValue(),
+    );
+    if (result.ok) {
+      workspaceState = result.state;
+    }
+    result = setWorkspaceAnchors(
+      storage,
+      workspaceState,
+      workspaceState.selectedId,
+      getCurrentAnchorState(),
+    );
+    if (result.ok) {
+      workspaceState = result.state;
+    }
+  }, 220);
+}
+
+function cancelWorkspacePersist() {
+  if (workspacePersistTimer) {
+    clearTimeout(workspacePersistTimer);
+    workspacePersistTimer = null;
+  }
 }
 
 function withPersistSuppressed(action: () => void) {
@@ -290,6 +335,35 @@ document.addEventListener("keydown", interceptWorkspaceToggleShortcut, {
 });
 
 let workspaceState: WorkspacesState = loadWorkspaces(storage);
+
+const emptyWorkspaceAnchors: WorkspaceAnchorState = {
+  manualAnchors: [],
+  autoAnchor: null,
+  suppressedAutoAnchorKey: null,
+  pendingLeftLineNo: null,
+  pendingRightLineNo: null,
+  selectedAnchorKey: null,
+};
+
+function cloneWorkspaceAnchors(state: WorkspaceAnchorState): WorkspaceAnchorState {
+  return {
+    manualAnchors: state.manualAnchors.map((anchor) => ({ ...anchor })),
+    autoAnchor: state.autoAnchor ? { ...state.autoAnchor } : null,
+    suppressedAutoAnchorKey: state.suppressedAutoAnchorKey,
+    pendingLeftLineNo: state.pendingLeftLineNo,
+    pendingRightLineNo: state.pendingRightLineNo,
+    selectedAnchorKey: state.selectedAnchorKey,
+  };
+}
+
+function getSelectedWorkspace(state: WorkspacesState): Workspace | null {
+  return (
+    state.workspaces.find((workspace) => workspace.id === state.selectedId) ??
+    state.workspaces[0] ??
+    null
+  );
+}
+
 let leftFavoriteList = loadFavoritePaths(
   storage,
   "left",
@@ -305,6 +379,7 @@ const favoriteFocusIndex: Record<FavoritePane, number | null> = {
   right: null,
 };
 let editingWorkspaceId: string | null = null;
+let focusedWorkspaceId: string | null = null;
 const toast = createToastManager(toastRoot);
 
 function setFavoriteError(target: HTMLDivElement, message: string) {
@@ -401,10 +476,51 @@ function setWorkspaceTitle(state: WorkspacesState) {
   workspaceToggle.textContent = getWorkspaceTitle(state);
 }
 
-function renderWorkspacePanel(options?: { focusInput?: boolean }) {
+function focusWorkspaceItem(id: string) {
+  const item = workspaceList.querySelector<HTMLElement>(
+    `.workspace-item[data-id="${id}"]`,
+  );
+  if (!item) {
+    return;
+  }
+  const input = item.querySelector<HTMLInputElement>(".workspace-item__input");
+  if (input) {
+    input.focus();
+    return;
+  }
+  const nameButton = item.querySelector<HTMLButtonElement>(
+    ".workspace-item__name",
+  );
+  if (nameButton) {
+    nameButton.focus();
+    return;
+  }
+  const fallback = item.querySelector<HTMLButtonElement>("button");
+  fallback?.focus();
+}
+
+function setWorkspaceFocus(
+  nextId: string | null,
+  options?: { focusItem?: boolean },
+) {
+  focusedWorkspaceId = nextId;
+  applyWorkspaceFocus(workspaceList, focusedWorkspaceId);
+  if (options?.focusItem && nextId) {
+    focusWorkspaceItem(nextId);
+  }
+}
+
+function renderWorkspacePanel(options?: {
+  focusInput?: boolean;
+  focusItemId?: string | null;
+}) {
+  if (options?.focusInput && editingWorkspaceId) {
+    focusedWorkspaceId = editingWorkspaceId;
+  }
   renderWorkspaces(workspaceList, workspaceState.workspaces, {
     selectedId: workspaceState.selectedId,
     editingId: editingWorkspaceId,
+    focusedId: focusedWorkspaceId,
   });
   workspaceCreate.disabled = workspaceState.workspaces.length >= WORKSPACE_LIMIT;
   setWorkspaceTitle(workspaceState);
@@ -417,6 +533,9 @@ function renderWorkspacePanel(options?: { focusInput?: boolean }) {
       input.select();
     }
   }
+  if (options?.focusItemId) {
+    setWorkspaceFocus(options.focusItemId, { focusItem: true });
+  }
 }
 
 function loadFavoriteListsForWorkspace(workspaceId: string) {
@@ -428,6 +547,64 @@ function loadFavoriteListsForWorkspace(workspaceId: string) {
   renderFavoriteList("right");
 }
 
+function persistCurrentWorkspaceState() {
+  let result = setWorkspaceTexts(
+    storage,
+    workspaceState,
+    workspaceState.selectedId,
+    leftEditor.getValue(),
+    rightEditor.getValue(),
+  );
+  if (result.ok) {
+    workspaceState = result.state;
+  }
+  result = setWorkspaceAnchors(
+    storage,
+    workspaceState,
+    workspaceState.selectedId,
+    getCurrentAnchorState(),
+  );
+  if (result.ok) {
+    workspaceState = result.state;
+  }
+}
+
+function resetWorkspaceAfterContentChange() {
+  leftSegments.length = 0;
+  rightSegments.length = 0;
+  leftFileBytes.length = 0;
+  rightFileBytes.length = 0;
+  updateLineNumbers(leftEditor, leftSegments);
+  updateLineNumbers(rightEditor, rightSegments);
+  updateFileCards("left", []);
+  updateFileCards("right", []);
+  clearPaneMessage(leftMessage);
+  clearPaneMessage(rightMessage);
+  clearPaneSummary(storage, "left");
+  clearPaneSummary(storage, "right");
+  refreshSyntaxHighlight();
+}
+
+function applyWorkspaceContent(workspace: Workspace) {
+  withProgrammaticEdit("left", () => {
+    leftEditor.setValue(workspace.leftText);
+  });
+  withProgrammaticEdit("right", () => {
+    rightEditor.setValue(workspace.rightText);
+  });
+}
+
+function applyWorkspaceAnchors(anchors: WorkspaceAnchorState) {
+  manualAnchors = anchors.manualAnchors.map((anchor) => ({ ...anchor }));
+  autoAnchor = anchors.autoAnchor ? { ...anchors.autoAnchor } : null;
+  suppressedAutoAnchorKey = anchors.suppressedAutoAnchorKey;
+  pendingLeftLineNo = anchors.pendingLeftLineNo;
+  pendingRightLineNo = anchors.pendingRightLineNo;
+  selectedAnchorKey = anchors.selectedAnchorKey;
+  updatePendingAnchorDecoration();
+  setAnchorMessage("");
+}
+
 function applyWorkspaceState(
   nextState: WorkspacesState,
   options?: { focusInput?: boolean },
@@ -437,14 +614,70 @@ function applyWorkspaceState(
   renderWorkspacePanel(options);
   if (nextState.selectedId !== previousSelectedId) {
     loadFavoriteListsForWorkspace(nextState.selectedId);
+    const selected = getSelectedWorkspace(workspaceState);
+    if (selected) {
+      applyWorkspaceContent(selected);
+      resetWorkspaceAfterContentChange();
+      applyWorkspaceAnchors(selected.anchors);
+      anchorUndoState = null;
+      recalcScheduler.runNow();
+      schedulePersist();
+    }
   }
 }
 
-function applyWorkspaceResult(result: ReturnType<typeof selectWorkspace>) {
-  if (!result.ok) {
+function switchWorkspaceById(
+  id: string,
+  options?: { focusItem?: boolean },
+) {
+  if (id === workspaceState.selectedId) {
     return;
   }
-  applyWorkspaceState(result.state);
+  if (options?.focusItem) {
+    focusedWorkspaceId = id;
+  }
+  const currentAnchors = getCurrentAnchorState();
+  const nextState = runWorkspaceSwitch(
+    workspaceState,
+    id,
+    {
+      left: {
+        getValue: () => leftEditor.getValue(),
+        setValue: (value) =>
+          withProgrammaticEdit("left", () => {
+            leftEditor.setValue(value);
+          }),
+      },
+      right: {
+        getValue: () => rightEditor.getValue(),
+        setValue: (value) =>
+          withProgrammaticEdit("right", () => {
+            rightEditor.setValue(value);
+          }),
+      },
+    },
+    currentAnchors,
+    {
+      onAfterRestore: (_stateAfter, target) => {
+        applyWorkspaceAnchors(target.anchors);
+      },
+      onAfterSwitch: () => {
+        resetWorkspaceAfterContentChange();
+        anchorUndoState = null;
+        recalcScheduler.runNow();
+        schedulePersist();
+      },
+    },
+  );
+  if (nextState.selectedId === workspaceState.selectedId) {
+    return;
+  }
+  workspaceState = nextState;
+  saveWorkspaces(storage, workspaceState);
+  renderWorkspacePanel({
+    focusItemId: options?.focusItem ? id : null,
+  });
+  loadFavoriteListsForWorkspace(workspaceState.selectedId);
 }
 
 function handleWorkspaceRename(id: string, rawName: string) {
@@ -655,9 +888,7 @@ function bindFavoritePane(
   });
 }
 
-const leftInitial =
-  persistedState?.leftText ??
-  `// Left sample (47 lines)
+const leftSample = `// Left sample (47 lines)
 const config = {
   app: "diff-viewer",
   version: "0.1.0",
@@ -706,9 +937,7 @@ flags.set("ready", true);
 export { config, greet, add, sumList };
 `;
 
-const rightInitial =
-  persistedState?.rightText ??
-  `// Right sample (47 lines)
+const rightSample = `// Right sample (47 lines)
 const config = {
   app: "diff-viewer",
   version: "0.1.1",
@@ -756,6 +985,41 @@ flags.set("ready", true);
 
 export { config, greet, add, sumList };
 `;
+
+const selectedWorkspace = getSelectedWorkspace(workspaceState);
+const hasWorkspaceText = workspaceState.workspaces.some(
+  (workspace) => workspace.leftText.length > 0 || workspace.rightText.length > 0,
+);
+const seedLeft = persistedState?.leftText || leftSample;
+const seedRight = persistedState?.rightText || rightSample;
+let leftInitial = selectedWorkspace?.leftText ?? "";
+let rightInitial = selectedWorkspace?.rightText ?? "";
+
+if (!hasWorkspaceText && selectedWorkspace) {
+  if (!leftInitial) {
+    leftInitial = seedLeft;
+  }
+  if (!rightInitial) {
+    rightInitial = seedRight;
+  }
+}
+
+if (
+  selectedWorkspace &&
+  (selectedWorkspace.leftText !== leftInitial ||
+    selectedWorkspace.rightText !== rightInitial)
+) {
+  const result = setWorkspaceTexts(
+    storage,
+    workspaceState,
+    selectedWorkspace.id,
+    leftInitial,
+    rightInitial,
+  );
+  if (result.ok) {
+    workspaceState = result.state;
+  }
+}
 
 const leftEditor = monaco.editor.create(
   leftContainer,
@@ -936,12 +1200,14 @@ function restoreAnchorsFromSnapshot(snapshot: AnchorSnapshot) {
   selectedAnchorKey = snapshot.selectedAnchorKey;
   recalcDiff();
   schedulePersist();
+  scheduleWorkspacePersist();
 }
 
 function clearAnchorsForRedo() {
   resetAllAnchorsAndDecorations();
   recalcDiff();
   schedulePersist();
+  scheduleWorkspacePersist();
 }
 
 function bindAnchorUndoHandler(
@@ -997,6 +1263,7 @@ anchorList.addEventListener("keydown", (event) => {
   renderAnchors(anchorValidationState.invalid, anchorValidationState.valid);
   jumpToAnchorEntry(nextKey);
   anchorList.focus();
+  scheduleWorkspacePersist();
 });
 
 function setGoToLineOpen(side: "left" | "right", open: boolean): void {
@@ -1233,6 +1500,7 @@ leftEditor.onDidChangeModelContent(() => {
   }
   leftFileBytes.length = 0;
   schedulePersist();
+  scheduleWorkspacePersist();
   scheduleRecalc();
 });
 rightEditor.onDidChangeModelContent(() => {
@@ -1241,6 +1509,7 @@ rightEditor.onDidChangeModelContent(() => {
   }
   rightFileBytes.length = 0;
   schedulePersist();
+  scheduleWorkspacePersist();
   scheduleRecalc();
 });
 
@@ -1460,6 +1729,7 @@ const workspaceController = createWorkspacePanelController({
   toggleButton: workspaceToggle,
   onReset: () => {
     editingWorkspaceId = null;
+    focusedWorkspaceId = null;
     renderWorkspacePanel();
   },
 });
@@ -1507,6 +1777,7 @@ rightFavoriteAdd.addEventListener("click", () => {
 });
 
 workspaceCreate.addEventListener("click", () => {
+  persistCurrentWorkspaceState();
   const result = createWorkspace(storage, workspaceState, "Workspace");
   if (!result.ok) {
     if (result.reason === "limit") {
@@ -1529,16 +1800,23 @@ workspaceList.addEventListener("click", (event) => {
   }
   if (action.type === "select") {
     editingWorkspaceId = null;
-    const result = selectWorkspace(storage, workspaceState, action.id);
-    applyWorkspaceResult(result);
+    if (action.id === workspaceState.selectedId) {
+      setWorkspaceFocus(action.id, { focusItem: true });
+      workspaceController.close();
+      return;
+    }
+    switchWorkspaceById(action.id, { focusItem: true });
+    workspaceController.close();
     return;
   }
   if (action.type === "rename") {
     editingWorkspaceId = action.id;
+    focusedWorkspaceId = action.id;
     renderWorkspacePanel({ focusInput: true });
     return;
   }
   if (action.type === "remove") {
+    persistCurrentWorkspaceState();
     const result = removeWorkspaceWithConfirm(
       storage,
       workspaceState,
@@ -1577,6 +1855,14 @@ workspaceList.addEventListener("keydown", (event) => {
   }
 });
 
+workspaceList.addEventListener("focusin", (event) => {
+  const item = (event.target as HTMLElement).closest<HTMLElement>(".workspace-item");
+  if (!item) {
+    return;
+  }
+  setWorkspaceFocus(item.dataset.id ?? null);
+});
+
 workspaceList.addEventListener("focusout", (event) => {
   const input = (event.target as HTMLElement).closest<HTMLInputElement>(
     ".workspace-item__input",
@@ -1590,6 +1876,14 @@ workspaceList.addEventListener("focusout", (event) => {
     return;
   }
   handleWorkspaceRename(id, input.value);
+});
+
+workspaceList.addEventListener("focusout", (event) => {
+  const nextTarget = event.relatedTarget as HTMLElement | null;
+  if (nextTarget && workspaceList.contains(nextTarget)) {
+    return;
+  }
+  setWorkspaceFocus(null);
 });
 
 bindWorkspaceDragHandlers(workspaceList, (move) => {
@@ -1820,12 +2114,36 @@ window.addEventListener(
         const navigationHandled = handleWorkspaceNavigation(event, {
           workspaces: workspaceState.workspaces,
           selectedId: workspaceState.selectedId,
+          onMove: (id) => {
+            setWorkspaceFocus(id, { focusItem: true });
+          },
           onSelect: (id) => {
-            const result = selectWorkspace(storage, workspaceState, id);
-            applyWorkspaceResult(result);
+            switchWorkspaceById(id, { focusItem: true });
           },
         });
         if (navigationHandled) {
+          return;
+        }
+        if (event.key === "Enter") {
+          const targetId = focusedWorkspaceId ?? workspaceState.selectedId;
+          if (targetId) {
+            if (targetId === workspaceState.selectedId) {
+              setWorkspaceFocus(targetId, { focusItem: true });
+            } else {
+              switchWorkspaceById(targetId, { focusItem: true });
+            }
+            workspaceController.close();
+          }
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        if (event.key === "Tab") {
+          event.preventDefault();
+          event.stopPropagation();
+          if (focusedWorkspaceId) {
+            setWorkspaceFocus(focusedWorkspaceId, { focusItem: true });
+          }
           return;
         }
       }
@@ -1970,16 +2288,38 @@ let foldRanges: FoldRange[] = [];
 let leftFoldZoneIds: string[] = [];
 let rightFoldZoneIds: string[] = [];
 const expandedFoldStarts = new Set<number>();
-let manualAnchors: Anchor[] = persistedState?.anchors
-  ? persistedState.anchors.map((anchor) => ({ ...anchor }))
-  : [];
-let autoAnchor: Anchor | null = null;
-let suppressedAutoAnchorKey: string | null = null;
-let pendingLeftLineNo: number | null = null;
-let pendingRightLineNo: number | null = null;
+const hasWorkspaceAnchors = workspaceState.workspaces.some(
+  (workspace) => workspace.anchors.manualAnchors.length > 0,
+);
+let initialWorkspaceAnchors =
+  getSelectedWorkspace(workspaceState)?.anchors ?? emptyWorkspaceAnchors;
+
+if (!hasWorkspaceAnchors && persistedState?.anchors?.length) {
+  const selected = getSelectedWorkspace(workspaceState);
+  if (selected) {
+    const migrated = setWorkspaceAnchors(storage, workspaceState, selected.id, {
+      ...emptyWorkspaceAnchors,
+      manualAnchors: persistedState.anchors.map((anchor) => ({ ...anchor })),
+    });
+    if (migrated.ok) {
+      workspaceState = migrated.state;
+      initialWorkspaceAnchors =
+        getSelectedWorkspace(workspaceState)?.anchors ?? emptyWorkspaceAnchors;
+    }
+  }
+}
+
+initialWorkspaceAnchors = cloneWorkspaceAnchors(initialWorkspaceAnchors);
+
+let manualAnchors: Anchor[] = initialWorkspaceAnchors.manualAnchors;
+let autoAnchor: Anchor | null = initialWorkspaceAnchors.autoAnchor;
+let suppressedAutoAnchorKey: string | null =
+  initialWorkspaceAnchors.suppressedAutoAnchorKey;
+let pendingLeftLineNo: number | null = initialWorkspaceAnchors.pendingLeftLineNo;
+let pendingRightLineNo: number | null = initialWorkspaceAnchors.pendingRightLineNo;
 let leftAnchorDecorationIds: string[] = [];
 let rightAnchorDecorationIds: string[] = [];
-let selectedAnchorKey: string | null = null;
+let selectedAnchorKey: string | null = initialWorkspaceAnchors.selectedAnchorKey;
 let pendingLeftDecorationIds: string[] = [];
 let pendingRightDecorationIds: string[] = [];
 let anchorEntryKeys: string[] = [];
@@ -2005,6 +2345,17 @@ type AnchorUndoState = {
 };
 
 let anchorUndoState: AnchorUndoState | null = null;
+
+function getCurrentAnchorState(): WorkspaceAnchorState {
+  return {
+    manualAnchors: manualAnchors.map((anchor) => ({ ...anchor })),
+    autoAnchor: autoAnchor ? { ...autoAnchor } : null,
+    suppressedAutoAnchorKey,
+    pendingLeftLineNo,
+    pendingRightLineNo,
+    selectedAnchorKey,
+  };
+}
 
 function isGutterClick(event: monaco.editor.IEditorMouseEvent): boolean {
   const targetType = event.target.type;
@@ -2082,6 +2433,7 @@ function applyAnchorResult(
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
   schedulePersist();
+  scheduleWorkspacePersist();
 }
 
 function handleLeftAnchorAction(lineNo: number) {
@@ -2388,6 +2740,7 @@ function renderAnchors(
         focusDiffLines(anchor.leftLineNo, anchor.rightLineNo);
         setAnchorMessage(`Anchor jump: ${formatAnchor(anchor)}`);
         anchorList.focus();
+        scheduleWorkspacePersist();
       });
     }
 
@@ -2427,6 +2780,7 @@ function renderAnchors(
       updateAnchorWarning(validation.invalid);
       renderAnchors(validation.invalid, validation.valid);
       schedulePersist();
+      scheduleWorkspacePersist();
     });
 
     item.appendChild(label);
@@ -2864,6 +3218,7 @@ bindPaneClearButton(leftClearButton, {
     refreshSyntaxHighlight();
     recalcDiff();
     schedulePersist();
+    scheduleWorkspacePersist();
   },
 });
 
@@ -2891,6 +3246,7 @@ bindPaneClearButton(rightClearButton, {
     refreshSyntaxHighlight();
     recalcDiff();
     schedulePersist();
+    scheduleWorkspacePersist();
   },
 });
 
@@ -2919,6 +3275,7 @@ clearButton.addEventListener("click", () => {
     refreshSyntaxHighlight();
     recalcDiff();
     setAnchorMessage("アンカーを全てクリアしました。");
+    scheduleWorkspacePersist();
   });
 });
 

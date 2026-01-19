@@ -15,7 +15,11 @@ export type WorkspaceDragMove = {
 export function renderWorkspaces(
   container: HTMLElement,
   workspaces: readonly Workspace[],
-  options: { selectedId: string; editingId: string | null },
+  options: {
+    selectedId: string;
+    editingId: string | null;
+    focusedId?: string | null;
+  },
 ): void {
   const doc = container.ownerDocument;
   container.textContent = "";
@@ -29,8 +33,16 @@ export function renderWorkspaces(
     item.dataset.index = String(index);
     item.setAttribute("role", "option");
     const isSelected = workspace.id === options.selectedId;
+    if (isSelected) {
+      item.classList.add("workspace-item--selected");
+    }
+    const isFocused = workspace.id === options.focusedId;
+    if (isFocused) {
+      item.classList.add("workspace-item--focused");
+    }
     item.setAttribute("aria-selected", isSelected ? "true" : "false");
     item.setAttribute("data-selected", isSelected ? "true" : "false");
+    item.setAttribute("data-focused", isFocused ? "true" : "false");
 
     const dragHandle = doc.createElement("button");
     dragHandle.type = "button";
@@ -90,16 +102,30 @@ export function renderWorkspaces(
   container.appendChild(fragment);
 }
 
+export function applyWorkspaceFocus(
+  container: HTMLElement,
+  focusedId: string | null,
+): void {
+  container.querySelectorAll<HTMLElement>(".workspace-item").forEach((item) => {
+    const isFocused = focusedId !== null && item.dataset.id === focusedId;
+    item.classList.toggle("workspace-item--focused", isFocused);
+    item.setAttribute("data-focused", isFocused ? "true" : "false");
+  });
+}
+
 export function getWorkspaceAction(target: HTMLElement): WorkspaceAction | null {
   const button = target.closest<HTMLElement>("[data-action]");
-  if (!button) {
+  const source = button ?? target.closest<HTMLElement>(".workspace-item");
+  if (!source) {
     return null;
   }
-  const action = button.dataset.action as WorkspaceActionType | undefined;
+  const action = (source.dataset.action ?? "select") as
+    | WorkspaceActionType
+    | undefined;
   if (!action) {
     return null;
   }
-  const item = button.closest<HTMLElement>(".workspace-item");
+  const item = source.closest<HTMLElement>(".workspace-item");
   if (!item) {
     return null;
   }

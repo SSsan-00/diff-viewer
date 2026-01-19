@@ -6,9 +6,48 @@ import {
 import type { Workspace } from "../storage/workspaces";
 
 const workspaces: Workspace[] = [
-  { id: "ws-a", name: "Alpha" },
-  { id: "ws-b", name: "Beta" },
-  { id: "ws-c", name: "Gamma" },
+  {
+    id: "ws-a",
+    name: "Alpha",
+    leftText: "",
+    rightText: "",
+    anchors: {
+      manualAnchors: [],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: null,
+    },
+  },
+  {
+    id: "ws-b",
+    name: "Beta",
+    leftText: "",
+    rightText: "",
+    anchors: {
+      manualAnchors: [],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: null,
+    },
+  },
+  {
+    id: "ws-c",
+    name: "Gamma",
+    leftText: "",
+    rightText: "",
+    anchors: {
+      manualAnchors: [],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: null,
+    },
+  },
 ];
 
 describe("workspace navigation", () => {

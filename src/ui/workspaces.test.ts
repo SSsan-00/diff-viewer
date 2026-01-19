@@ -14,10 +14,36 @@ describe("workspaces ui helpers", () => {
     renderWorkspaces(
       container,
       [
-        { id: "one", name: "One" },
-        { id: "two", name: "Two" },
+        {
+          id: "one",
+          name: "One",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+        {
+          id: "two",
+          name: "Two",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
       ],
-      { selectedId: "one", editingId: null },
+      { selectedId: "one", editingId: null, focusedId: null },
     );
 
     const items = container.querySelectorAll(".workspace-item");
@@ -33,8 +59,23 @@ describe("workspaces ui helpers", () => {
     const container = doc.createElement("div");
     renderWorkspaces(
       container,
-      [{ id: "alpha", name: "Alpha" }],
-      { selectedId: "alpha", editingId: null },
+      [
+        {
+          id: "alpha",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+      ],
+      { selectedId: "alpha", editingId: null, focusedId: null },
     );
 
     const renameButton = container.querySelector<HTMLElement>(
@@ -45,6 +86,125 @@ describe("workspaces ui helpers", () => {
     expect(action).toEqual({ type: "rename", id: "alpha" });
   });
 
+  it("treats workspace item clicks as selection", () => {
+    const dom = new JSDOM("<!doctype html><html><body></body></html>");
+    const doc = dom.window.document;
+    const container = doc.createElement("div");
+    renderWorkspaces(
+      container,
+      [
+        {
+          id: "alpha",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+      ],
+      { selectedId: "alpha", editingId: null, focusedId: null },
+    );
+
+    const item = container.querySelector<HTMLElement>(".workspace-item");
+    const action = item ? getWorkspaceAction(item) : null;
+
+    expect(action).toEqual({ type: "select", id: "alpha" });
+  });
+
+  it("marks only the selected workspace item", () => {
+    const dom = new JSDOM("<!doctype html><html><body></body></html>");
+    const doc = dom.window.document;
+    const container = doc.createElement("div");
+    renderWorkspaces(
+      container,
+      [
+        {
+          id: "one",
+          name: "One",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+        {
+          id: "two",
+          name: "Two",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+      ],
+      { selectedId: "two", editingId: null, focusedId: null },
+    );
+
+    const selected = container.querySelectorAll(".workspace-item--selected");
+    expect(selected.length).toBe(1);
+    expect(selected[0]?.dataset.id).toBe("two");
+  });
+
+  it("marks the focused workspace item when focusedId is provided", () => {
+    const dom = new JSDOM("<!doctype html><html><body></body></html>");
+    const doc = dom.window.document;
+    const container = doc.createElement("div");
+    renderWorkspaces(
+      container,
+      [
+        {
+          id: "one",
+          name: "One",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+        {
+          id: "two",
+          name: "Two",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+      ],
+      { selectedId: "one", editingId: null, focusedId: "two" },
+    );
+
+    const focused = container.querySelectorAll(".workspace-item--focused");
+    expect(focused.length).toBe(1);
+    expect(focused[0]?.dataset.id).toBe("two");
+  });
+
   it("emits drag move events when items are dropped", () => {
     const dom = new JSDOM("<!doctype html><html><body></body></html>");
     const doc = dom.window.document;
@@ -52,10 +212,36 @@ describe("workspaces ui helpers", () => {
     renderWorkspaces(
       container,
       [
-        { id: "first", name: "First" },
-        { id: "second", name: "Second" },
+        {
+          id: "first",
+          name: "First",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+        {
+          id: "second",
+          name: "Second",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
       ],
-      { selectedId: "first", editingId: null },
+      { selectedId: "first", editingId: null, focusedId: null },
     );
 
     const moves: Array<{ from: number; to: number }> = [];

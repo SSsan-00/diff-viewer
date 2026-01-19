@@ -6,6 +6,8 @@ import {
   loadWorkspaces,
   renameWorkspace,
   reorderWorkspaces,
+  setWorkspaceAnchors,
+  setWorkspaceTexts,
   selectWorkspace,
   WORKSPACE_LIMIT,
   WORKSPACE_NAME_LIMIT,
@@ -23,6 +25,16 @@ function createState(names: string[]): WorkspacesState {
   const workspaces = names.map((name, index) => ({
     id: `ws-${index}`,
     name,
+    leftText: "",
+    rightText: "",
+    anchors: {
+      manualAnchors: [],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: null,
+    },
   }));
   return { workspaces, selectedId: workspaces[0]?.id ?? "" };
 }
@@ -101,6 +113,44 @@ describe("workspaces storage", () => {
     expect(selected.ok).toBe(true);
     if (selected.ok) {
       expect(selected.state.selectedId).toBe("ws-1");
+    }
+  });
+
+  it("stores pane texts per workspace", () => {
+    const storage = createStorage();
+    const state = createState(["Alpha", "Beta"]);
+    const updated = setWorkspaceTexts(storage, state, "ws-0", "left-a", "right-a");
+    expect(updated.ok).toBe(true);
+    if (updated.ok) {
+      const stored = loadWorkspaces(storage);
+      const alpha = stored.workspaces.find((item) => item.id === "ws-0");
+      const beta = stored.workspaces.find((item) => item.id === "ws-1");
+      expect(alpha?.leftText).toBe("left-a");
+      expect(alpha?.rightText).toBe("right-a");
+      expect(beta?.leftText).toBe("");
+      expect(beta?.rightText).toBe("");
+    }
+  });
+
+  it("stores anchors per workspace", () => {
+    const storage = createStorage();
+    const state = createState(["Alpha", "Beta"]);
+    const result = setWorkspaceAnchors(storage, state, "ws-1", {
+      manualAnchors: [{ leftLineNo: 1, rightLineNo: 2 }],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: "manual:1:2",
+    });
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const stored = loadWorkspaces(storage);
+      const beta = stored.workspaces.find((item) => item.id === "ws-1");
+      const alpha = stored.workspaces.find((item) => item.id === "ws-0");
+      expect(beta?.anchors.manualAnchors).toHaveLength(1);
+      expect(beta?.anchors.selectedAnchorKey).toBe("manual:1:2");
+      expect(alpha?.anchors.manualAnchors).toHaveLength(0);
     }
   });
 });

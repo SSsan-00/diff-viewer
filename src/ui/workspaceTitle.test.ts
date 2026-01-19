@@ -5,7 +5,22 @@ import type { WorkspacesState } from "../storage/workspaces";
 describe("workspace title", () => {
   it("returns the selected workspace name", () => {
     const state: WorkspacesState = {
-      workspaces: [{ id: "ws-a", name: "Alpha" }],
+      workspaces: [
+        {
+          id: "ws-a",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+      ],
       selectedId: "ws-a",
     };
 
@@ -15,8 +30,34 @@ describe("workspace title", () => {
   it("falls back to the first workspace when selection is missing", () => {
     const state: WorkspacesState = {
       workspaces: [
-        { id: "ws-a", name: "Alpha" },
-        { id: "ws-b", name: "Beta" },
+        {
+          id: "ws-a",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+        {
+          id: "ws-b",
+          name: "Beta",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
       ],
       selectedId: "ws-missing",
     };

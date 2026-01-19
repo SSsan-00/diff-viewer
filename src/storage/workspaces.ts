@@ -1,9 +1,23 @@
 export const WORKSPACE_LIMIT = 10;
 export const WORKSPACE_NAME_LIMIT = 25;
 
+import type { Anchor } from "../diffEngine/anchors";
+
+export type WorkspaceAnchorState = {
+  manualAnchors: Anchor[];
+  autoAnchor: Anchor | null;
+  suppressedAutoAnchorKey: string | null;
+  pendingLeftLineNo: number | null;
+  pendingRightLineNo: number | null;
+  selectedAnchorKey: string | null;
+};
+
 export type Workspace = {
   id: string;
   name: string;
+  leftText: string;
+  rightText: string;
+  anchors: WorkspaceAnchorState;
 };
 
 export type WorkspacesState = {
@@ -45,8 +59,77 @@ function isValidName(name: string): WorkspaceError | null {
   return null;
 }
 
+function normalizeAnchor(value: unknown): Anchor | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const candidate = value as Anchor;
+  if (
+    typeof candidate.leftLineNo !== "number" ||
+    !Number.isFinite(candidate.leftLineNo) ||
+    typeof candidate.rightLineNo !== "number" ||
+    !Number.isFinite(candidate.rightLineNo)
+  ) {
+    return null;
+  }
+  return { leftLineNo: candidate.leftLineNo, rightLineNo: candidate.rightLineNo };
+}
+
+function normalizeAnchorList(value: unknown): Anchor[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const anchors: Anchor[] = [];
+  value.forEach((entry) => {
+    const anchor = normalizeAnchor(entry);
+    if (anchor) {
+      anchors.push(anchor);
+    }
+  });
+  return anchors;
+}
+
+function normalizeAnchorState(value: unknown): WorkspaceAnchorState {
+  const record = value as Record<string, unknown> | null;
+  const manualAnchors = normalizeAnchorList(record?.manualAnchors);
+  const autoAnchor = normalizeAnchor(record?.autoAnchor);
+  return {
+    manualAnchors,
+    autoAnchor,
+    suppressedAutoAnchorKey:
+      typeof record?.suppressedAutoAnchorKey === "string"
+        ? record.suppressedAutoAnchorKey
+        : null,
+    pendingLeftLineNo:
+      typeof record?.pendingLeftLineNo === "number" &&
+      Number.isFinite(record.pendingLeftLineNo)
+        ? record.pendingLeftLineNo
+        : null,
+    pendingRightLineNo:
+      typeof record?.pendingRightLineNo === "number" &&
+      Number.isFinite(record.pendingRightLineNo)
+        ? record.pendingRightLineNo
+        : null,
+    selectedAnchorKey:
+      typeof record?.selectedAnchorKey === "string" ? record.selectedAnchorKey : null,
+  };
+}
+
 function ensureDefaultState(): WorkspacesState {
-  const workspace: Workspace = { id: createWorkspaceId(), name: "Default" };
+  const workspace: Workspace = {
+    id: createWorkspaceId(),
+    name: "Default",
+    leftText: "",
+    rightText: "",
+    anchors: {
+      manualAnchors: [],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: null,
+    },
+  };
   return { workspaces: [workspace], selectedId: workspace.id };
 }
 
@@ -67,11 +150,15 @@ function normalizeState(raw: unknown): WorkspacesState {
         typeof (item as Workspace).name === "string",
     )
     .map((item) => {
+      const workspace = item as Workspace;
       const name = normalizeName(item.name);
       const error = isValidName(name);
       return {
-        id: item.id,
+        id: workspace.id,
         name: error ? "Workspace" : name,
+        leftText: typeof workspace.leftText === "string" ? workspace.leftText : "",
+        rightText: typeof workspace.rightText === "string" ? workspace.rightText : "",
+        anchors: normalizeAnchorState(workspace.anchors),
       };
     })
     .slice(0, WORKSPACE_LIMIT);
@@ -132,7 +219,20 @@ export function createWorkspace(
   if (error) {
     return { ok: false, reason: error, state };
   }
-  const nextWorkspace: Workspace = { id: createWorkspaceId(), name };
+  const nextWorkspace: Workspace = {
+    id: createWorkspaceId(),
+    name,
+    leftText: "",
+    rightText: "",
+    anchors: {
+      manualAnchors: [],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: null,
+    },
+  };
   const nextState: WorkspacesState = {
     workspaces: [...state.workspaces, nextWorkspace],
     selectedId: nextWorkspace.id,
@@ -221,6 +321,43 @@ export function reorderWorkspaces(
     workspaces: nextWorkspaces,
     selectedId: state.selectedId,
   };
+  saveWorkspaces(storage, nextState);
+  return { ok: true, state: nextState };
+}
+
+export function setWorkspaceTexts(
+  storage: Storage | null,
+  state: WorkspacesState,
+  id: string,
+  leftText: string,
+  rightText: string,
+): WorkspaceResult {
+  const index = state.workspaces.findIndex((workspace) => workspace.id === id);
+  if (index === -1) {
+    return { ok: false, reason: "not-found", state };
+  }
+  const nextWorkspaces = state.workspaces.map((workspace) =>
+    workspace.id === id ? { ...workspace, leftText, rightText } : workspace,
+  );
+  const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
+  saveWorkspaces(storage, nextState);
+  return { ok: true, state: nextState };
+}
+
+export function setWorkspaceAnchors(
+  storage: Storage | null,
+  state: WorkspacesState,
+  id: string,
+  anchors: WorkspaceAnchorState,
+): WorkspaceResult {
+  const index = state.workspaces.findIndex((workspace) => workspace.id === id);
+  if (index === -1) {
+    return { ok: false, reason: "not-found", state };
+  }
+  const nextWorkspaces = state.workspaces.map((workspace) =>
+    workspace.id === id ? { ...workspace, anchors } : workspace,
+  );
+  const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
   saveWorkspaces(storage, nextState);
   return { ok: true, state: nextState };
 }

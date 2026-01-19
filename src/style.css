@@ -260,11 +260,27 @@ body {
   color: var(--favorite-path-fg);
   font-size: 0.75rem;
   line-height: 1.4;
+  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease;
 }
 
-.workspace-item[data-selected="true"] {
+.workspace-item:hover {
+  background-color: var(--favorite-path-hover-bg);
+  border-color: var(--favorite-path-focus);
+}
+
+.workspace-item--selected {
+  background-color: var(--favorite-path-hover-bg);
+  border-color: var(--favorite-path-focus);
+  box-shadow: inset 0 0 0 1px rgba(63, 110, 208, 0.18);
+}
+
+.workspace-item--focused,
+.workspace-item:focus-within {
+  background-color: var(--favorite-path-hover-bg);
+  border-color: var(--favorite-path-focus);
   outline: 2px solid var(--favorite-path-focus);
   outline-offset: 2px;
+  box-shadow: 0 0 0 2px rgba(63, 110, 208, 0.25);
 }
 
 .workspace-item--dragging {

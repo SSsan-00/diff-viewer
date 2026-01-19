@@ -34,6 +34,7 @@ export function handleWorkspaceNavigation(
   options: {
     workspaces: readonly Workspace[];
     selectedId: string;
+    onMove?: (id: string) => void;
     onSelect: (id: string) => void;
   },
 ): boolean {
@@ -51,6 +52,7 @@ export function handleWorkspaceNavigation(
   }
   event.preventDefault();
   event.stopPropagation();
+  options.onMove?.(nextId);
   if (nextId !== options.selectedId) {
     options.onSelect(nextId);
   }
