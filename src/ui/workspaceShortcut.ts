@@ -2,7 +2,6 @@ import type { WorkspacePanelController } from "./workspacePanel";
 
 type WorkspaceShortcutContext = {
   panel: WorkspacePanelController;
-  isEditing: () => boolean;
 };
 
 function isWorkspaceShortcut(event: KeyboardEvent): boolean {
@@ -17,9 +16,6 @@ export function handleWorkspaceShortcut(
   context: WorkspaceShortcutContext,
 ): boolean {
   if (!isWorkspaceShortcut(event)) {
-    return false;
-  }
-  if (context.isEditing()) {
     return false;
   }
   event.preventDefault();

@@ -1699,9 +1699,6 @@ window.addEventListener(
 
     const workspaceHandled = handleWorkspaceShortcut(event, {
       panel: workspaceController,
-      isEditing: () =>
-        document.activeElement?.classList.contains("workspace-item__input") ??
-        false,
     });
     if (workspaceHandled) {
       event.stopPropagation();

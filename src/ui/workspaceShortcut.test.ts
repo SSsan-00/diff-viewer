@@ -29,16 +29,13 @@ describe("workspace shortcut", () => {
       ctrlKey: true,
       bubbles: true,
     });
-    const handled = handleWorkspaceShortcut(event, {
-      panel,
-      isEditing: () => false,
-    });
+    const handled = handleWorkspaceShortcut(event, { panel });
 
     expect(handled).toBe(true);
     expect(panel.isOpen()).toBe(true);
   });
 
-  it("does not toggle when editing", () => {
+  it("toggles even when focus is inside inputs", () => {
     const dom = new JSDOM("<!doctype html><html><body></body></html>");
     const panel = createController();
 
@@ -47,12 +44,9 @@ describe("workspace shortcut", () => {
       ctrlKey: true,
       bubbles: true,
     });
-    const handled = handleWorkspaceShortcut(event, {
-      panel,
-      isEditing: () => true,
-    });
+    const handled = handleWorkspaceShortcut(event, { panel });
 
-    expect(handled).toBe(false);
-    expect(panel.isOpen()).toBe(false);
+    expect(handled).toBe(true);
+    expect(panel.isOpen()).toBe(true);
   });
 });
