@@ -72,6 +72,7 @@ import {
   loadWorkspaces,
   renameWorkspace,
   reorderWorkspaces,
+  saveWorkspaces,
   setWorkspaceAnchors,
   setWorkspaceTexts,
   WORKSPACE_LIMIT,
