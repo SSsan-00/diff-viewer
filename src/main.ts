@@ -731,6 +731,25 @@ const rightEditor = monaco.editor.create(
   createEditorOptions(rightInitial),
 );
 
+function enableBrowserZoomOnCtrlWheel(target: HTMLElement | null) {
+  if (!target) {
+    return;
+  }
+  target.addEventListener(
+    "wheel",
+    (event) => {
+      if (event.ctrlKey) {
+        // Let the browser handle zoom when Ctrl+wheel is used.
+        event.stopPropagation();
+      }
+    },
+    { capture: true },
+  );
+}
+
+enableBrowserZoomOnCtrlWheel(leftContainer);
+enableBrowserZoomOnCtrlWheel(rightContainer);
+
 let wordWrapEnabled = false;
 bindWordWrapShortcut({
   editors: [leftEditor, rightEditor],
