@@ -5,7 +5,7 @@ type WorkspaceShortcutContext = {
 };
 
 function isWorkspaceShortcut(event: KeyboardEvent): boolean {
-  if (!event.ctrlKey || event.metaKey || event.altKey) {
+  if (!event.altKey || event.ctrlKey || event.metaKey) {
     return false;
   }
   return event.key.toLowerCase() === "n" || event.code === "KeyN";

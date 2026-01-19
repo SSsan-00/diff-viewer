@@ -253,6 +253,42 @@ const nextButton = document.querySelector<HTMLButtonElement>("#diff-next");
 applyEncodingSelection(leftEncodingSelect, persistedState?.leftEncoding);
 applyEncodingSelection(rightEncodingSelect, persistedState?.rightEncoding);
 
+let pendingWorkspaceToggle = false;
+let requestWorkspaceToggle: (() => void) | null = null;
+
+function isWorkspaceToggleShortcut(event: KeyboardEvent): boolean {
+  if (!event.altKey || event.ctrlKey || event.metaKey) {
+    return false;
+  }
+  return event.key.toLowerCase() === "n" || event.code === "KeyN";
+}
+
+function interceptWorkspaceToggleShortcut(event: KeyboardEvent) {
+  if (!isWorkspaceToggleShortcut(event)) {
+    return;
+  }
+  if (event.repeat) {
+    return;
+  }
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  (event as KeyboardEvent & { returnValue?: boolean }).returnValue = false;
+  (event as KeyboardEvent & { cancelBubble?: boolean }).cancelBubble = true;
+  if (requestWorkspaceToggle) {
+    requestWorkspaceToggle();
+  } else {
+    pendingWorkspaceToggle = true;
+  }
+}
+
+window.addEventListener("keydown", interceptWorkspaceToggleShortcut, {
+  capture: true,
+});
+document.addEventListener("keydown", interceptWorkspaceToggleShortcut, {
+  capture: true,
+});
+
 let workspaceState: WorkspacesState = loadWorkspaces(storage);
 let leftFavoriteList = loadFavoritePaths(
   storage,
@@ -1353,6 +1389,11 @@ const workspaceController = createWorkspacePanelController({
     renderWorkspacePanel();
   },
 });
+requestWorkspaceToggle = () => workspaceController.toggle();
+if (pendingWorkspaceToggle) {
+  pendingWorkspaceToggle = false;
+  requestWorkspaceToggle();
+}
 
 const leftFavoriteController = createFavoritePanelController({
   panel: leftFavoritePanel,
@@ -1695,14 +1736,6 @@ window.addEventListener(
       if (focusHandled) {
         return;
       }
-    }
-
-    const workspaceHandled = handleWorkspaceShortcut(event, {
-      panel: workspaceController,
-    });
-    if (workspaceHandled) {
-      event.stopPropagation();
-      return;
     }
 
     if (workspaceController.isOpen()) {

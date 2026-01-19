@@ -20,13 +20,13 @@ function createController(): WorkspacePanelController {
 }
 
 describe("workspace shortcut", () => {
-  it("toggles the panel with Ctrl+N", () => {
+  it("toggles the panel with Alt+N", () => {
     const dom = new JSDOM("<!doctype html><html><body></body></html>");
     const panel = createController();
 
     const event = new dom.window.KeyboardEvent("keydown", {
       key: "n",
-      ctrlKey: true,
+      altKey: true,
       bubbles: true,
     });
     const handled = handleWorkspaceShortcut(event, { panel });
@@ -41,7 +41,7 @@ describe("workspace shortcut", () => {
 
     const event = new dom.window.KeyboardEvent("keydown", {
       key: "n",
-      ctrlKey: true,
+      altKey: true,
       bubbles: true,
     });
     const handled = handleWorkspaceShortcut(event, { panel });
