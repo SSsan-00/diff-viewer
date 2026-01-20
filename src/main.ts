@@ -35,7 +35,12 @@ import { normalizeText } from "./diffEngine/normalize";
 import { THIRD_PARTY_LICENSES } from "./licenses";
 import { APP_TEMPLATE } from "./ui/template";
 import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
-import { bindPaneClearButton, clearEditorModel, clearEditorsForUndo } from "./ui/paneClear";
+import {
+  bindPaneClearButton,
+  clearEditorModel,
+  clearEditorsForUndo,
+  clearPaneState,
+} from "./ui/paneClear";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import { handleAnchorShortcut } from "./ui/anchorShortcut";
@@ -93,6 +98,8 @@ import {
 } from "./ui/favoritePaths";
 import { createFavoritePanelController } from "./ui/favoritePanel";
 import { handleFavoritePanelShortcut } from "./ui/favoritePanelShortcut";
+import { handleFileOpenShortcut } from "./ui/fileOpenShortcut";
+import { handlePaneClearShortcut } from "./ui/paneClearShortcut";
 import {
   clampFavoriteFocusIndex,
   handleFavoriteListKeydown,
@@ -2504,6 +2511,25 @@ window.addEventListener(
       return;
     }
 
+    const fileOpenHandled = handleFileOpenShortcut(event, {
+      openLeft: () => leftFileInput.click(),
+      openRight: () => rightFileInput.click(),
+      getLastFocused: () => lastFocusedSide,
+    });
+    if (fileOpenHandled) {
+      event.stopPropagation();
+      return;
+    }
+
+    const clearHandled = handlePaneClearShortcut(event, {
+      clearFocused: clearFocusedPane,
+      clearAll: clearAllPanes,
+    });
+    if (clearHandled) {
+      event.stopPropagation();
+      return;
+    }
+
     const favoriteOpenSide = getOpenFavoriteSide();
     if (favoriteOpenSide) {
       const paths = getFavoritePaths(favoriteOpenSide);
@@ -3555,7 +3581,7 @@ recalcButton?.addEventListener("click", () => {
   recalcScheduler.runNow();
 });
 
-bindPaneClearButton(leftClearButton, {
+const leftClearOptions = {
   editor: leftEditor,
   segments: leftSegments,
   updateLineNumbers,
@@ -3582,9 +3608,9 @@ bindPaneClearButton(leftClearButton, {
     schedulePersist();
     scheduleWorkspacePersist();
   },
-});
+};
 
-bindPaneClearButton(rightClearButton, {
+const rightClearOptions = {
   editor: rightEditor,
   segments: rightSegments,
   updateLineNumbers,
@@ -3611,9 +3637,20 @@ bindPaneClearButton(rightClearButton, {
     schedulePersist();
     scheduleWorkspacePersist();
   },
-});
+};
 
-clearButton.addEventListener("click", () => {
+bindPaneClearButton(leftClearButton, leftClearOptions);
+bindPaneClearButton(rightClearButton, rightClearOptions);
+
+function clearFocusedPane(): void {
+  if (lastFocusedSide === "left") {
+    clearPaneState(leftClearOptions);
+  } else {
+    clearPaneState(rightClearOptions);
+  }
+}
+
+function clearAllPanes(): void {
   const confirmed = window.confirm("左右の内容とアンカーを全てクリアします。よろしいですか？");
   if (!confirmed) {
     return;
@@ -3659,6 +3696,10 @@ clearButton.addEventListener("click", () => {
     clearUndoState.left.afterVersionId = getEditorAlternativeVersionId(leftEditor);
     clearUndoState.right.afterVersionId = getEditorAlternativeVersionId(rightEditor);
   }
+}
+
+clearButton.addEventListener("click", () => {
+  clearAllPanes();
 });
 
 const syncToggle = document.querySelector<HTMLInputElement>("#sync-toggle");
