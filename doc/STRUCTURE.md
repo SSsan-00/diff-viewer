@@ -165,6 +165,8 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/favoritePanelKeyRouting.test.ts` 入力フォーカスルーティングのテスト。
 - `src/ui/favoritePaths.ts` 登録パス一覧の描画と操作抽出（クリック/ドラッグ）。永続化は担当しない。exports: `renderFavoritePaths`, `bindFavoritePathHandlers`, `bindFavoritePathDragHandlers` ほか。
 - `src/ui/favoritePaths.test.ts` 登録パスUIのテスト。
+- `src/ui/favoriteCopy.ts` パスコピーの成功/失敗通知とクローズ連携。export: `copyFavoritePath`。
+- `src/ui/favoriteCopy.test.ts` パスコピー成功/失敗のテスト。
 - `src/ui/favoritePathNavigation.ts` パス一覧のキーボード選択制御。exports: `moveFavoriteFocusIndex`, `handleFavoriteListKeydown` ほか。
 - `src/ui/favoritePathNavigation.test.ts` パス一覧ナビゲーションのテスト。
 - `src/ui/anchorPanelToggle.ts` アンカーパネル折りたたみ制御。exports: `setupAnchorPanelToggle`, `setAnchorPanelCollapsed`。

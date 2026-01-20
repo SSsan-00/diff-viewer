@@ -59,6 +59,7 @@ import { createEditorOptions } from "./ui/editorOptions";
 import { renderFileCards } from "./ui/fileCards";
 import { bindFileCardJump } from "./ui/fileCardJump";
 import { copyText } from "./ui/clipboard";
+import { copyFavoritePath } from "./ui/favoriteCopy";
 import {
   addFavoritePath,
   loadFavoritePaths,
@@ -821,12 +822,13 @@ function bindFavoritePane(
   bindFavoritePathHandlers(list, async (action) => {
     const paths = getPaths();
     if (action.type === "copy") {
-      const ok = await copyText(action.path, document);
-      if (ok) {
-        toast.show("パスをコピーしました");
-      } else {
-        toast.show("コピーに失敗しました", "error");
-      }
+      await copyFavoritePath({
+        path: action.path,
+        doc: document,
+        copy: copyText,
+        toast,
+        onSuccess: () => closeFavoritePanel(side),
+      });
       return;
     }
 
@@ -904,12 +906,13 @@ function bindFavoritePane(
           toast.show("コピー対象がありません", "error");
           return;
         }
-        const ok = await copyText(path, document);
-        if (ok) {
-          toast.show("パスをコピーしました");
-        } else {
-          toast.show("コピーに失敗しました", "error");
-        }
+        await copyFavoritePath({
+          path,
+          doc: document,
+          copy: copyText,
+          toast,
+          onSuccess: () => closeFavoritePanel(side),
+        });
       },
       onRemove: (index) => {
         const current = getPaths();
@@ -1241,6 +1244,14 @@ function getOpenFavoriteSide(): FavoritePane | null {
     return "right";
   }
   return null;
+}
+
+function closeFavoritePanel(side: FavoritePane): void {
+  if (side === "left") {
+    leftFavoriteController.close();
+  } else {
+    rightFavoriteController.close();
+  }
 }
 
 type GoToLinePane = {
@@ -2512,12 +2523,13 @@ window.addEventListener(
               toast.show("コピー対象がありません", "error");
               return;
             }
-            const ok = await copyText(path, document);
-            if (ok) {
-              toast.show("パスをコピーしました");
-            } else {
-              toast.show("コピーに失敗しました", "error");
-            }
+            await copyFavoritePath({
+              path,
+              doc: document,
+              copy: copyText,
+              toast,
+              onSuccess: () => closeFavoritePanel(favoriteOpenSide),
+            });
           },
           onRemove: (index) => {
             const current = getFavoritePaths(favoriteOpenSide);
