@@ -145,6 +145,14 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/workspacePanel.test.ts` ワークスペースパネル開閉のテスト。
 - `src/ui/workspaceShortcut.ts` Alt+N のトグルショートカット判定。export: `handleWorkspaceShortcut`。
 - `src/ui/workspaceShortcut.test.ts` ワークスペースショートカットのテスト。
+- `src/ui/themeShortcut.ts` Alt+T のテーマトグルショートカット判定。export: `handleThemeShortcut`。
+- `src/ui/themeShortcut.test.ts` テーマショートカットのテスト。
+- `src/ui/highlightShortcut.ts` Alt+H のハイライトトグルショートカット判定。export: `handleHighlightShortcut`。
+- `src/ui/highlightShortcut.test.ts` ハイライトショートカットのテスト。
+- `src/ui/fileOpenShortcut.ts` Ctrl+U のファイル選択ショートカット判定。export: `handleFileOpenShortcut`。
+- `src/ui/fileOpenShortcut.test.ts` ファイル選択ショートカットのテスト。
+- `src/ui/paneClearShortcut.ts` Ctrl+I / Ctrl+Shift+I のクリアショートカット判定。export: `handlePaneClearShortcut`。
+- `src/ui/paneClearShortcut.test.ts` クリアショートカットのテスト。
 - `src/ui/workspaceNavigation.ts` ワークスペース一覧の↑/↓移動ロジック。exports: `handleWorkspaceNavigation`, `getNextWorkspaceId`。
 - `src/ui/workspaceNavigation.test.ts` ワークスペースナビゲーションのテスト。
 - `src/ui/workspaceContent.ts` ワークスペース切替時のエディタ内容保存/復元を補助する。exports: `applyWorkspaceSwitch`, `applyWorkspaceSwitchWithHooks`。
