@@ -13,6 +13,7 @@ import { type FileEncoding } from "./file/decode";
 import {
   createLineNumberFormatter,
   getLineSegmentInfo,
+  updateSegmentsForChanges,
   type LineSegment,
 } from "./file/lineNumbering";
 import {
@@ -1829,19 +1830,23 @@ setupThemeToggle(document, {
   },
 });
 
-leftEditor.onDidChangeModelContent(() => {
+leftEditor.onDidChangeModelContent((event) => {
   if (suppressLeftFileBytesClear) {
     return;
   }
+  updateSegmentsForChanges(leftSegments, event.changes);
+  updateLineNumbers(leftEditor, leftSegments);
   leftFileBytes.length = 0;
   schedulePersist();
   scheduleWorkspacePersist();
   scheduleRecalc();
 });
-rightEditor.onDidChangeModelContent(() => {
+rightEditor.onDidChangeModelContent((event) => {
   if (suppressRightFileBytesClear) {
     return;
   }
+  updateSegmentsForChanges(rightSegments, event.changes);
+  updateLineNumbers(rightEditor, rightSegments);
   rightFileBytes.length = 0;
   schedulePersist();
   scheduleWorkspacePersist();

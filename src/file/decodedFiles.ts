@@ -21,10 +21,13 @@ function appendText(currentValue: string, nextValue: string): string {
   return currentValue + separator + nextValue;
 }
 
-function getLogicalLineCount(text: string): { lineCount: number; endsWithNewline: boolean } {
+function getLogicalLineCount(
+  text: string,
+  includeTrailingEmptyLine: boolean,
+): { lineCount: number; endsWithNewline: boolean } {
   const endsWithNewline = text.endsWith("\n");
   const lines = text.split("\n");
-  const lineCount = endsWithNewline
+  const lineCount = endsWithNewline && !includeTrailingEmptyLine
     ? Math.max(1, lines.length - 1)
     : Math.max(1, lines.length);
   return { lineCount, endsWithNewline };
@@ -39,7 +42,7 @@ export function appendDecodedFiles(
   let text = currentText;
   const segments = [...currentSegments];
 
-  files.forEach((file) => {
+  files.forEach((file, index) => {
     normalizeLastSegmentForAppend(segments, text);
 
     const buffer = file.bytes.buffer.slice(
@@ -47,7 +50,11 @@ export function appendDecodedFiles(
       file.bytes.byteOffset + file.bytes.byteLength,
     );
     const decoded = normalizeText(decodeArrayBuffer(buffer, encoding));
-    const { lineCount, endsWithNewline } = getLogicalLineCount(decoded);
+    const includeTrailingEmptyLine = index === files.length - 1;
+    const { lineCount, endsWithNewline } = getLogicalLineCount(
+      decoded,
+      includeTrailingEmptyLine,
+    );
     const startLine =
       segments.length === 0
         ? 1

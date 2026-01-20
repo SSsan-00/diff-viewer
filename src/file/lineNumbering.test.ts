@@ -3,6 +3,7 @@ import {
   createLineNumberFormatter,
   getLineSegment,
   getLineSegmentInfo,
+  updateSegmentsForChanges,
   type LineSegment,
 } from "./lineNumbering";
 
@@ -54,5 +55,39 @@ describe("line number formatter", () => {
     const segment = getLineSegment(segments, 5);
     expect(segment?.fileName).toBe("beta.txt");
     expect(getLineSegment(segments, 10)).toBeNull();
+  });
+
+  it("updates segment line counts when edits add lines", () => {
+    const segments: LineSegment[] = [
+      { startLine: 1, lineCount: 2, fileIndex: 1 },
+      { startLine: 3, lineCount: 2, fileIndex: 2 },
+    ];
+
+    updateSegmentsForChanges(segments, [
+      {
+        range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: 1 },
+        text: "A\nB",
+      },
+    ]);
+
+    expect(segments[0].lineCount).toBe(3);
+    expect(segments[1].startLine).toBe(4);
+  });
+
+  it("updates segment line counts when edits remove lines", () => {
+    const segments: LineSegment[] = [
+      { startLine: 1, lineCount: 3, fileIndex: 1 },
+      { startLine: 4, lineCount: 2, fileIndex: 2 },
+    ];
+
+    updateSegmentsForChanges(segments, [
+      {
+        range: { startLineNumber: 2, startColumn: 1, endLineNumber: 3, endColumn: 1 },
+        text: "",
+      },
+    ]);
+
+    expect(segments[0].lineCount).toBe(2);
+    expect(segments[1].startLine).toBe(3);
   });
 });

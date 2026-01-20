@@ -81,7 +81,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/file/decode.test.ts` `decodeArrayBuffer` のユニットテスト。
 - `src/file/fileOrder.ts` 複数ファイル読み込み時の順序調整（cshtml.cs → cshtml）。export: `reorderRazorPairs`。
 - `src/file/fileOrder.test.ts` cshtml ペア順序のテスト。
-- `src/file/decodedFiles.ts` rawBytes から連結テキスト/セグメントを生成。exports: `FileBytes`, `DecodedFilesResult`, `buildDecodedFiles`。
+- `src/file/decodedFiles.ts` rawBytes から連結テキスト/セグメントを生成（最終ファイルの末尾改行は保持し、行番号がモデル行数と一致するよう整合）。exports: `FileBytes`, `DecodedFilesResult`, `buildDecodedFiles`。
 - `src/file/decodedFiles.test.ts` 再デコード/セグメント生成のテスト。
 - `src/file/lineNumbering.ts` file-local 行番号フォーマット/取得ユーティリティ。exports: `LineSegment`, `LineSegmentInfo`, `getLineSegment`, `getLineSegmentInfo`, `createLineNumberFormatter`。
 - `src/file/lineNumbering.test.ts` 行番号計算のテスト。

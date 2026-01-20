@@ -81,4 +81,33 @@ describe("buildDecodedFiles", () => {
     expect(info?.fileIndex).toBe(2);
     expect(info?.localLine).toBe(1);
   });
+
+  it("counts the trailing newline on the last file to match model lines", () => {
+    const files: FileBytes[] = [
+      { name: "a.txt", bytes: toBytes([0x41, 0x31, 0x0a, 0x41, 0x32, 0x0a]) },
+      { name: "b.txt", bytes: toBytes([0x42, 0x31, 0x0a, 0x42, 0x32, 0x0a]) },
+    ];
+    const result = buildDecodedFiles(files, "utf-8");
+    const totalLines = result.text.split("\n").length;
+    const segmentLines = result.segments.reduce((sum, segment) => sum + segment.lineCount, 0);
+
+    expect(segmentLines).toBe(totalLines);
+  });
+
+  it("keeps segment line counts aligned after append when the last file ends with newline", () => {
+    const first = buildDecodedFiles(
+      [{ name: "a.txt", bytes: toBytes([0x41, 0x31, 0x0a, 0x41, 0x32, 0x0a]) }],
+      "utf-8",
+    );
+    const appended = appendDecodedFiles(
+      first.text,
+      first.segments,
+      [{ name: "b.txt", bytes: toBytes([0x42, 0x31, 0x0a, 0x42, 0x32, 0x0a]) }],
+      "utf-8",
+    );
+    const totalLines = appended.text.split("\n").length;
+    const segmentLines = appended.segments.reduce((sum, segment) => sum + segment.lineCount, 0);
+
+    expect(segmentLines).toBe(totalLines);
+  });
 });
