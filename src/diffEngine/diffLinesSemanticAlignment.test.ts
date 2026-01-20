@@ -39,6 +39,14 @@ function findDelete(ops: PairedOp[], left: string): boolean {
   );
 }
 
+function findBlankDelete(ops: PairedOp[]): boolean {
+  return ops.some((op) => op.type === "delete" && (op.leftLine ?? "").trim() === "");
+}
+
+function findBlankInsert(ops: PairedOp[]): boolean {
+  return ops.some((op) => op.type === "insert" && (op.rightLine ?? "").trim() === "");
+}
+
 describe("semantic alignment across languages", () => {
   it("aligns indent-only changes without breaking alignment", () => {
     const left = ["    var foo = 1;"];
@@ -117,6 +125,39 @@ describe("semantic alignment across languages", () => {
 
     const ops = toPairedOps(left, right);
     expect(findReplace(ops, "define('FOO'", "FOO = 'foo'")).toBe(true);
+  });
+
+  it("keeps alignment when a blank line exists only on the left", () => {
+    const left = ["$foo = $list['foo'];", ""];
+    const right = ["HashMap foo = list[\"foo\"];"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "$foo = $list['foo'];", "HashMap foo = list[\"foo\"];")).toBe(
+      true,
+    );
+    expect(findBlankDelete(ops)).toBe(true);
+  });
+
+  it("keeps alignment when a blank line exists only on the right", () => {
+    const left = ["$foo = $list['foo'];"];
+    const right = ["", "HashMap foo = list[\"foo\"];"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "$foo = $list['foo'];", "HashMap foo = list[\"foo\"];")).toBe(
+      true,
+    );
+    expect(findBlankInsert(ops)).toBe(true);
+  });
+
+  it("treats whitespace-only lines as blanks without breaking matches", () => {
+    const left = ["$foo = $list['foo'];", "   "];
+    const right = ["HashMap foo = list[\"foo\"];"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "$foo = $list['foo'];", "HashMap foo = list[\"foo\"];")).toBe(
+      true,
+    );
+    expect(findBlankDelete(ops)).toBe(true);
   });
 
   it("aligns property references to variable declarations", () => {

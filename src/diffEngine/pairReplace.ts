@@ -167,40 +167,24 @@ function toPairedOp(op: LineOp): PairedOp {
 }
 
 function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
-  const usedDeletes = new Set<number>();
   const usedInserts = new Set<number>();
   const matches = new Array<number | undefined>(deletes.length).fill(undefined);
   const candidates = buildCandidates(deletes, inserts).sort(sortCandidates);
 
   for (const candidate of candidates) {
-    if (usedDeletes.has(candidate.deleteIndex) || usedInserts.has(candidate.insertIndex)) {
+    if (usedInserts.has(candidate.insertIndex) || matches[candidate.deleteIndex] !== undefined) {
       continue;
     }
     matches[candidate.deleteIndex] = candidate.insertIndex;
-    usedDeletes.add(candidate.deleteIndex);
     usedInserts.add(candidate.insertIndex);
   }
 
   const result: PairedOp[] = [];
-  const insertMatches = new Array<number | undefined>(inserts.length).fill(undefined);
-  for (let i = 0; i < matches.length; i += 1) {
+  for (let i = 0; i < deletes.length; i += 1) {
     const insertIndex = matches[i];
     if (insertIndex !== undefined) {
-      insertMatches[insertIndex] = i;
-    }
-  }
-
-  for (let i = 0; i < deletes.length; i += 1) {
-    if (!usedDeletes.has(i)) {
-      result.push(toPairedOp(deletes[i]));
-    }
-  }
-
-  for (let i = 0; i < inserts.length; i += 1) {
-    const matchedDelete = insertMatches[i];
-    if (matchedDelete !== undefined) {
-      const leftOp = deletes[matchedDelete];
-      const rightOp = inserts[i];
+      const leftOp = deletes[i];
+      const rightOp = inserts[insertIndex];
       result.push({
         type: "replace",
         leftLine: leftOp.leftLine,
@@ -210,6 +194,10 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
       });
       continue;
     }
+    result.push(toPairedOp(deletes[i]));
+  }
+
+  for (let i = 0; i < inserts.length; i += 1) {
     if (!usedInserts.has(i)) {
       result.push(toPairedOp(inserts[i]));
     }

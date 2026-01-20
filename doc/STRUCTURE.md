@@ -62,7 +62,7 @@
 - `src/diffEngine/diffLines.test.ts` 行差分の基本ケーステスト。
 - `src/diffEngine/diffLinesAlignment.test.ts` 行対応の安定性テスト。
 - `src/diffEngine/diffLinesSemanticAlignment.test.ts` 識別子ベースの対応付けテスト。
-- `src/diffEngine/pairReplace.ts` delete/insert を replace にペアリングする補助。export: `pairReplace`。
+- `src/diffEngine/pairReplace.ts` delete/insert を replace にペアリングする補助。空行が挟まるケースでも順序を崩さず対応行を揃える。export: `pairReplace`。
 - `src/diffEngine/pairReplace.test.ts` `pairReplace` のテスト。
 - `src/diffEngine/diffInline.ts` 行内差分の算出（LCS ベース）。export: `diffInline`。
 - `src/diffEngine/diffInline.test.ts` 行内差分のテスト。
