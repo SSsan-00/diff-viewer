@@ -34,7 +34,7 @@ import { normalizeText } from "./diffEngine/normalize";
 import { THIRD_PARTY_LICENSES } from "./licenses";
 import { APP_TEMPLATE } from "./ui/template";
 import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
-import { bindPaneClearButton, clearEditorModel } from "./ui/paneClear";
+import { bindPaneClearButton, clearEditorModel, clearEditorsForUndo } from "./ui/paneClear";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import { handleAnchorShortcut } from "./ui/anchorShortcut";
@@ -1393,6 +1393,126 @@ function restoreAnchorsFromSnapshot(snapshot: AnchorSnapshot) {
   scheduleWorkspacePersist();
 }
 
+function clearUndoMetaForSide(side: "left" | "right"): ClearUndoPaneState | null {
+  if (!clearUndoState) {
+    return null;
+  }
+  return side === "left" ? clearUndoState.left : clearUndoState.right;
+}
+
+function clearUndoMetaForOther(side: "left" | "right"): ClearUndoPaneState | null {
+  if (!clearUndoState) {
+    return null;
+  }
+  return side === "left" ? clearUndoState.right : clearUndoState.left;
+}
+
+function triggerEditorCommand(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  command: "undo" | "redo",
+): void {
+  const model = editor.getModel();
+  if (model) {
+    const modelWithUndo = model as monaco.editor.ITextModel & {
+      undo?: () => void | Promise<void>;
+      redo?: () => void | Promise<void>;
+    };
+    if (command === "undo" && typeof modelWithUndo.undo === "function") {
+      void modelWithUndo.undo();
+      return;
+    }
+    if (command === "redo" && typeof modelWithUndo.redo === "function") {
+      void modelWithUndo.redo();
+      return;
+    }
+  }
+  editor.trigger?.("clear-sync", command, null);
+}
+
+function restoreClearUndoState(): void {
+  if (!clearUndoState) {
+    return;
+  }
+  applyWorkspacePaneSnapshot("left", clearUndoState.left.pane, { applyText: false });
+  applyWorkspacePaneSnapshot("right", clearUndoState.right.pane, { applyText: false });
+  restoreAnchorsFromSnapshot(clearUndoState.snapshot);
+  clearUndoState.status = "restored";
+}
+
+function clearAfterRedo(): void {
+  leftSegments.length = 0;
+  rightSegments.length = 0;
+  updateLineNumbers(leftEditor, leftSegments);
+  updateLineNumbers(rightEditor, rightSegments);
+  updateFileCards("left", []);
+  updateFileCards("right", []);
+  setGoToLineSelection("left", null, { persist: false });
+  setGoToLineSelection("right", null, { persist: false });
+  resetAllAnchorsAndDecorations();
+  recalcDiff();
+  schedulePersist();
+  scheduleWorkspacePersist();
+}
+
+function handleClearUndoRedo(
+  event: monaco.editor.IModelContentChangedEvent,
+  side: "left" | "right",
+  editor: monaco.editor.IStandaloneCodeEditor,
+): boolean {
+  if (!clearUndoState) {
+    return false;
+  }
+  const meta = clearUndoMetaForSide(side);
+  if (!meta) {
+    return false;
+  }
+  const otherMeta = clearUndoMetaForOther(side);
+  const otherEditor = side === "left" ? rightEditor : leftEditor;
+  const versionId = getEditorAlternativeVersionId(editor);
+  if (event.isUndoing && clearUndoState.status === "armed") {
+    if (meta.beforeVersionId === null || versionId === meta.beforeVersionId) {
+      if (!suppressClearUndoSync && otherMeta) {
+        suppressClearUndoSync = true;
+        try {
+          const otherVersion = getEditorAlternativeVersionId(otherEditor);
+          if (
+            otherMeta.beforeVersionId === null ||
+            otherVersion !== otherMeta.beforeVersionId
+          ) {
+            triggerEditorCommand(otherEditor, "undo");
+          }
+        } finally {
+          suppressClearUndoSync = false;
+        }
+      }
+      restoreClearUndoState();
+      return true;
+    }
+  }
+  if (event.isRedoing && clearUndoState.status === "restored") {
+    if (meta.afterVersionId === null || versionId === meta.afterVersionId) {
+      if (!suppressClearUndoSync && otherMeta) {
+        suppressClearUndoSync = true;
+        try {
+          const otherVersion = getEditorAlternativeVersionId(otherEditor);
+          if (
+            otherMeta.afterVersionId === null ||
+            otherVersion !== otherMeta.afterVersionId
+          ) {
+            triggerEditorCommand(otherEditor, "redo");
+          }
+        } finally {
+          suppressClearUndoSync = false;
+        }
+      }
+      clearAfterRedo();
+      clearUndoState.status = "armed";
+      return true;
+    }
+  }
+  return false;
+}
+
 function clearAnchorsForRedo() {
   resetAllAnchorsAndDecorations();
   recalcDiff();
@@ -1409,6 +1529,9 @@ function bindAnchorUndoHandler(
     return;
   }
   model.onDidChangeContent((event) => {
+    if (handleClearUndoRedo(event, side, editor)) {
+      return;
+    }
     if (!anchorUndoState || anchorUndoState.editor !== side) {
       return;
     }
@@ -2551,6 +2674,21 @@ type AnchorUndoState = {
 };
 
 let anchorUndoState: AnchorUndoState | null = null;
+type ClearUndoPaneState = {
+  beforeVersionId: number | null;
+  afterVersionId: number | null;
+  pane: WorkspacePaneState;
+};
+
+type ClearUndoState = {
+  snapshot: AnchorSnapshot;
+  left: ClearUndoPaneState;
+  right: ClearUndoPaneState;
+  status: "armed" | "restored";
+};
+
+let clearUndoState: ClearUndoState | null = null;
+let suppressClearUndoSync = false;
 
 function getCurrentAnchorState(): WorkspaceAnchorState {
   return {
@@ -3405,6 +3543,7 @@ bindPaneClearButton(leftClearButton, {
   segments: leftSegments,
   updateLineNumbers,
   onBeforeClear: () => {
+    clearUndoState = null;
     anchorUndoState = {
       snapshot: captureAnchorSnapshot(),
       editor: "left",
@@ -3433,6 +3572,7 @@ bindPaneClearButton(rightClearButton, {
   segments: rightSegments,
   updateLineNumbers,
   onBeforeClear: () => {
+    clearUndoState = null;
     anchorUndoState = {
       snapshot: captureAnchorSnapshot(),
       editor: "right",
@@ -3461,12 +3601,27 @@ clearButton.addEventListener("click", () => {
   if (!confirmed) {
     return;
   }
+  const targetSide = lastFocusedSide;
+  const targetEditor = targetSide === "left" ? leftEditor : rightEditor;
   anchorUndoState = null;
+  clearUndoState = {
+    snapshot: captureAnchorSnapshot(),
+    left: {
+      beforeVersionId: getEditorAlternativeVersionId(leftEditor),
+      afterVersionId: null,
+      pane: collectWorkspacePaneSnapshot("left"),
+    },
+    right: {
+      beforeVersionId: getEditorAlternativeVersionId(rightEditor),
+      afterVersionId: null,
+      pane: collectWorkspacePaneSnapshot("right"),
+    },
+    status: "armed",
+  };
   cancelPersist();
   clearPersistedState(storage);
   withPersistSuppressed(() => {
-    clearEditorModel(leftEditor);
-    clearEditorModel(rightEditor);
+    clearEditorsForUndo([leftEditor, rightEditor], targetEditor);
     leftSegments.length = 0;
     rightSegments.length = 0;
     resetAllAnchorsAndDecorations();
@@ -3483,6 +3638,10 @@ clearButton.addEventListener("click", () => {
     setAnchorMessage("アンカーを全てクリアしました。");
     scheduleWorkspacePersist();
   });
+  if (clearUndoState) {
+    clearUndoState.left.afterVersionId = getEditorAlternativeVersionId(leftEditor);
+    clearUndoState.right.afterVersionId = getEditorAlternativeVersionId(rightEditor);
+  }
 });
 
 const syncToggle = document.querySelector<HTMLInputElement>("#sync-toggle");

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { JSDOM } from "jsdom";
 import { APP_TEMPLATE } from "./template";
-import { bindPaneClearButton, clearEditorModel } from "./paneClear";
+import { bindPaneClearButton, clearEditorModel, clearEditorsForUndo } from "./paneClear";
 import type { LineSegment } from "../file/lineNumbering";
 
 function setupDocument(): Document {
@@ -156,6 +156,19 @@ describe("pane clear buttons", () => {
 
     expect(beforeClear).toHaveBeenCalledTimes(1);
     expect(leftEditor.value).toBe("");
+  });
+
+  it("clears multiple editors and focuses the target", () => {
+    const leftEditor = createEditor("left");
+    const rightEditor = createEditor("right");
+    const focusLeft = vi.fn();
+    leftEditor.focus = focusLeft;
+
+    clearEditorsForUndo([leftEditor, rightEditor], leftEditor);
+
+    expect(leftEditor.value).toBe("");
+    expect(rightEditor.value).toBe("");
+    expect(focusLeft).toHaveBeenCalledTimes(1);
   });
 });
 

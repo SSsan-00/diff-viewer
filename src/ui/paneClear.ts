@@ -65,6 +65,16 @@ export function clearEditorModel(editor: EditorLike): void {
   model.pushStackElement?.();
 }
 
+export function clearEditorsForUndo<Editor extends EditorLike>(
+  editors: Editor[],
+  focusEditor?: Editor,
+): void {
+  editors.forEach((editor) => {
+    clearEditorModel(editor);
+  });
+  focusEditor?.focus?.();
+}
+
 export function bindPaneClearButton<Editor extends EditorLike>(
   button: HTMLButtonElement | null,
   options: PaneClearOptions<Editor>,
