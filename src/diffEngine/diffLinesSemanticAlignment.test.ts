@@ -433,6 +433,34 @@ describe("semantic alignment across languages", () => {
     expect(findEqual(ops, "console.log", "console.log")).toBe(false);
   });
 
+  it("aligns JS source lines with StringBuilder AppendLine wrappers", () => {
+    const left = [
+      "const foo = 'foo';",
+      "console.log(foo);",
+      "return;",
+    ];
+    const right = [
+      "js.AppendLine(\"const foo = \\\"foo\\\";\");",
+      "js.AppendLine(\"console.log(foo);\");",
+      "js.AppendLine(\"return;\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "const foo = 'foo';", "const foo = \\\"foo\\\";")).toBe(true);
+    expect(findReplace(ops, "console.log(foo);", "console.log(foo);")).toBe(true);
+    expect(findReplace(ops, "return;", "return;")).toBe(true);
+    const inline = diffInline(left[2], right[2]);
+    expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
+  });
+
+  it("does not align mismatched append literal statements", () => {
+    const left = ["return;"];
+    const right = ["js.AppendLine(\"break;\");"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "return;", "break;")).toBe(false);
+  });
+
   it("does not align close-but-different variable names", () => {
     const left = ["var foo = 1;"];
     const right = ["var food = 1;"];

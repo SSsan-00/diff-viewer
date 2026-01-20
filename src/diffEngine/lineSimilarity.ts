@@ -550,23 +550,23 @@ function pickPrimaryId(
 
 export function buildLineFeatures(line: string): LineFeatures {
   const normalizedLine = stripRazorLinePrefix(line);
-  const identifiers = extractIdentifiers(normalizedLine);
-  const literals = extractLiterals(normalizedLine);
-  const numbers = extractNumbers(normalizedLine);
   const appendLike = detectAppendLike(normalizedLine);
-  const templateSignature = normalizeTemplateLine(normalizedLine);
+  const appendLiteral = appendLike ? extractAppendLiteral(normalizedLine) : null;
+  const featureLine = appendLiteral ?? normalizedLine;
+  const identifiers = extractIdentifiers(featureLine);
+  const literals = extractLiterals(featureLine);
+  const numbers = extractNumbers(featureLine);
+  const templateSignature = normalizeTemplateLine(featureLine);
   if (templateSignature) {
     identifiers.push(`template:${templateSignature}`);
-    const signature = detectAppendLike(normalizedLine)
-      ? extractAppendLiteral(normalizedLine) ?? extractLiterals(normalizedLine)[0] ?? ""
-      : normalizedLine;
+    const signature = appendLiteral ?? extractLiterals(featureLine)[0] ?? featureLine;
     const htmlSignature = extractHtmlSignature(signature);
     if (htmlSignature.tag) {
       identifiers.push(`htmltag:${htmlSignature.tag}`);
     }
     htmlSignature.attrs.forEach((attr) => identifiers.push(`htmlattr:${attr}`));
   }
-  const structuredFragment = extractStructuredFragment(normalizedLine);
+  const structuredFragment = extractStructuredFragment(featureLine);
   if (structuredFragment) {
     identifiers.push(`codefrag:${structuredFragment}`);
     if (structuredFragment === "{") {
@@ -575,16 +575,16 @@ export function buildLineFeatures(line: string): LineFeatures {
       identifiers.push("brace_close");
     }
   }
-  if (isElseLine(normalizedLine)) {
+  if (isElseLine(featureLine)) {
     identifiers.push("else_line");
   }
-  const braceToken = extractBraceToken(normalizedLine);
+  const braceToken = extractBraceToken(featureLine);
   if (braceToken) {
     identifiers.push(braceToken);
   }
-  const category = detectCategory(normalizedLine);
-  const primaryId = pickPrimaryId(identifiers, literals, normalizedLine);
-  extractEmbeddedHintTokens(normalizedLine).forEach((token) => identifiers.push(token));
+  const category = detectCategory(featureLine);
+  const primaryId = pickPrimaryId(identifiers, literals, featureLine);
+  extractEmbeddedHintTokens(featureLine).forEach((token) => identifiers.push(token));
   if (appendLike) {
     literals.forEach((literal) => {
       extractEmbeddedHintTokens(literal).forEach((token) => identifiers.push(token));
@@ -593,12 +593,12 @@ export function buildLineFeatures(line: string): LineFeatures {
   if (appendLike && !identifiers.includes("append")) {
     identifiers.push("append");
   }
-  const initVar = extractInitVariable(normalizedLine);
+  const initVar = extractInitVariable(featureLine);
   if (initVar) {
     identifiers.push("init");
     identifiers.push(`init:${initVar}`);
   }
-  const dateFormat = extractDateFormatInfo(normalizedLine);
+  const dateFormat = extractDateFormatInfo(featureLine);
   if (dateFormat) {
     identifiers.push("dateformat");
     identifiers.push(`dateformat:${dateFormat.format}`);
