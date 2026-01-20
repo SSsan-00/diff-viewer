@@ -6,6 +6,7 @@ import {
   loadWorkspaces,
   renameWorkspace,
   reorderWorkspaces,
+  setWorkspacePaneState,
   setWorkspaceAnchors,
   setWorkspaceTexts,
   selectWorkspace,
@@ -129,6 +130,33 @@ describe("workspaces storage", () => {
       expect(alpha?.rightText).toBe("right-a");
       expect(beta?.leftText).toBe("");
       expect(beta?.rightText).toBe("");
+    }
+  });
+
+  it("stores pane metadata per workspace", () => {
+    const storage = createStorage();
+    const state = createState(["Alpha", "Beta"]);
+    const segments = [
+      { startLine: 1, lineCount: 2, fileIndex: 1, fileName: "alpha.txt" },
+    ];
+    const updated = setWorkspacePaneState(storage, state, "ws-0", "left", {
+      text: "left-a",
+      segments,
+      activeFile: "alpha.txt",
+      cursor: { lineNumber: 2, column: 1 },
+      scrollTop: 120,
+    });
+    expect(updated.ok).toBe(true);
+    if (updated.ok) {
+      const stored = loadWorkspaces(storage);
+      const alpha = stored.workspaces.find((item) => item.id === "ws-0");
+      const beta = stored.workspaces.find((item) => item.id === "ws-1");
+      expect(alpha?.leftText).toBe("left-a");
+      expect(alpha?.leftSegments).toEqual(segments);
+      expect(alpha?.leftActiveFile).toBe("alpha.txt");
+      expect(alpha?.leftCursor?.lineNumber).toBe(2);
+      expect(alpha?.leftScrollTop).toBe(120);
+      expect(beta?.leftSegments ?? []).toHaveLength(0);
     }
   });
 

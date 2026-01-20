@@ -2,6 +2,7 @@ export const WORKSPACE_LIMIT = 10;
 export const WORKSPACE_NAME_LIMIT = 25;
 
 import type { Anchor } from "../diffEngine/anchors";
+import type { LineSegment } from "../file/lineNumbering";
 
 export type WorkspaceAnchorState = {
   manualAnchors: Anchor[];
@@ -12,11 +13,32 @@ export type WorkspaceAnchorState = {
   selectedAnchorKey: string | null;
 };
 
+export type WorkspaceCursor = {
+  lineNumber: number;
+  column: number;
+};
+
+export type WorkspacePaneState = {
+  text: string;
+  segments: LineSegment[];
+  activeFile: string | null;
+  cursor: WorkspaceCursor | null;
+  scrollTop: number | null;
+};
+
 export type Workspace = {
   id: string;
   name: string;
   leftText: string;
   rightText: string;
+  leftSegments?: LineSegment[];
+  rightSegments?: LineSegment[];
+  leftActiveFile?: string | null;
+  rightActiveFile?: string | null;
+  leftCursor?: WorkspaceCursor | null;
+  rightCursor?: WorkspaceCursor | null;
+  leftScrollTop?: number | null;
+  rightScrollTop?: number | null;
   anchors: WorkspaceAnchorState;
 };
 
@@ -115,12 +137,80 @@ function normalizeAnchorState(value: unknown): WorkspaceAnchorState {
   };
 }
 
+function normalizeSegments(value: unknown): LineSegment[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const segments: LineSegment[] = [];
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+    const record = entry as LineSegment;
+    if (
+      typeof record.startLine !== "number" ||
+      !Number.isFinite(record.startLine) ||
+      typeof record.lineCount !== "number" ||
+      !Number.isFinite(record.lineCount) ||
+      typeof record.fileIndex !== "number" ||
+      !Number.isFinite(record.fileIndex)
+    ) {
+      return;
+    }
+    const fileName = typeof record.fileName === "string" ? record.fileName : undefined;
+    const endsWithNewline =
+      typeof record.endsWithNewline === "boolean" ? record.endsWithNewline : undefined;
+    segments.push({
+      startLine: record.startLine,
+      lineCount: record.lineCount,
+      fileIndex: record.fileIndex,
+      fileName,
+      endsWithNewline,
+    });
+  });
+  return segments;
+}
+
+function normalizeCursor(value: unknown): WorkspaceCursor | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const record = value as WorkspaceCursor;
+  if (
+    typeof record.lineNumber !== "number" ||
+    !Number.isFinite(record.lineNumber) ||
+    typeof record.column !== "number" ||
+    !Number.isFinite(record.column)
+  ) {
+    return null;
+  }
+  return {
+    lineNumber: record.lineNumber,
+    column: record.column,
+  };
+}
+
+function normalizeScrollTop(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return value;
+}
+
 function ensureDefaultState(): WorkspacesState {
   const workspace: Workspace = {
     id: createWorkspaceId(),
     name: "Default",
     leftText: "",
     rightText: "",
+    leftSegments: [],
+    rightSegments: [],
+    leftActiveFile: null,
+    rightActiveFile: null,
+    leftCursor: null,
+    rightCursor: null,
+    leftScrollTop: null,
+    rightScrollTop: null,
     anchors: {
       manualAnchors: [],
       autoAnchor: null,
@@ -158,6 +248,16 @@ function normalizeState(raw: unknown): WorkspacesState {
         name: error ? "Workspace" : name,
         leftText: typeof workspace.leftText === "string" ? workspace.leftText : "",
         rightText: typeof workspace.rightText === "string" ? workspace.rightText : "",
+        leftSegments: normalizeSegments(workspace.leftSegments),
+        rightSegments: normalizeSegments(workspace.rightSegments),
+        leftActiveFile:
+          typeof workspace.leftActiveFile === "string" ? workspace.leftActiveFile : null,
+        rightActiveFile:
+          typeof workspace.rightActiveFile === "string" ? workspace.rightActiveFile : null,
+        leftCursor: normalizeCursor(workspace.leftCursor),
+        rightCursor: normalizeCursor(workspace.rightCursor),
+        leftScrollTop: normalizeScrollTop(workspace.leftScrollTop),
+        rightScrollTop: normalizeScrollTop(workspace.rightScrollTop),
         anchors: normalizeAnchorState(workspace.anchors),
       };
     })
@@ -224,6 +324,14 @@ export function createWorkspace(
     name,
     leftText: "",
     rightText: "",
+    leftSegments: [],
+    rightSegments: [],
+    leftActiveFile: null,
+    rightActiveFile: null,
+    leftCursor: null,
+    rightCursor: null,
+    leftScrollTop: null,
+    rightScrollTop: null,
     anchors: {
       manualAnchors: [],
       autoAnchor: null,
@@ -339,6 +447,45 @@ export function setWorkspaceTexts(
   const nextWorkspaces = state.workspaces.map((workspace) =>
     workspace.id === id ? { ...workspace, leftText, rightText } : workspace,
   );
+  const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
+  saveWorkspaces(storage, nextState);
+  return { ok: true, state: nextState };
+}
+
+export function setWorkspacePaneState(
+  storage: Storage | null,
+  state: WorkspacesState,
+  id: string,
+  pane: "left" | "right",
+  snapshot: WorkspacePaneState,
+): WorkspaceResult {
+  const index = state.workspaces.findIndex((workspace) => workspace.id === id);
+  if (index === -1) {
+    return { ok: false, reason: "not-found", state };
+  }
+  const nextWorkspaces = state.workspaces.map((workspace) => {
+    if (workspace.id !== id) {
+      return workspace;
+    }
+    if (pane === "left") {
+      return {
+        ...workspace,
+        leftText: snapshot.text,
+        leftSegments: snapshot.segments.map((segment) => ({ ...segment })),
+        leftActiveFile: snapshot.activeFile,
+        leftCursor: snapshot.cursor ? { ...snapshot.cursor } : null,
+        leftScrollTop: snapshot.scrollTop,
+      };
+    }
+    return {
+      ...workspace,
+      rightText: snapshot.text,
+      rightSegments: snapshot.segments.map((segment) => ({ ...segment })),
+      rightActiveFile: snapshot.activeFile,
+      rightCursor: snapshot.cursor ? { ...snapshot.cursor } : null,
+      rightScrollTop: snapshot.scrollTop,
+    };
+  });
   const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
   saveWorkspaces(storage, nextState);
   return { ok: true, state: nextState };

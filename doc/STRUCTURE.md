@@ -151,6 +151,8 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/workspaceContent.test.ts` ワークスペース切替のテキスト保存/復元とフック順序のテスト。
 - `src/ui/workspaceSwitchFlow.ts` ワークスペース切替の一連フロー（保存→復元→フック）をまとめる。export: `runWorkspaceSwitch`。
 - `src/ui/workspaceSwitchFlow.test.ts` 切替フローの順序とアンカー分離のテスト。
+- `src/ui/workspacePaneState.ts` ワークスペース用のペインスナップショット収集/適用（テキスト/segments/選択/カーソル/スクロール）。exports: `collectPaneSnapshot`, `applyPaneSnapshot`。
+- `src/ui/workspacePaneState.test.ts` ペインスナップショットの収集/復元テスト。
 - `src/ui/workspaceTitle.ts` ワークスペース名からタイトル表示文字列を決定する。export: `getWorkspaceTitle`。
 - `src/ui/workspaceTitle.test.ts` タイトル表示のテスト。
 - `src/ui/workspaces.ts` ワークスペース一覧の描画と操作抽出（クリック/ドラッグ）。永続化は担当しない。exports: `renderWorkspaces`, `getWorkspaceAction`, `bindWorkspaceDragHandlers`。
@@ -188,7 +190,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 - `src/storage/favoritePaths.ts` パス登録の永続化（左右別 + ワークスペース別キー・上限10件・ロード時補正・旧キー移行）。exports: `loadFavoritePaths`, `addFavoritePath`, `removeFavoritePath`, `moveFavoritePath` ほか。
 - `src/storage/favoritePaths.test.ts` パス登録保存のテスト。
-- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト・アンカー状態）。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`, `setWorkspaceTexts`, `setWorkspaceAnchors`。
+- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト/segments/選択/カーソル/スクロール・アンカー状態）。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`, `setWorkspaceTexts`, `setWorkspacePaneState`, `setWorkspaceAnchors`。
 - `src/storage/workspaces.test.ts` ワークスペース保存のテスト。
 - `src/storage/persistedState.ts` LocalStorage 保存/復元とスケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。

@@ -74,11 +74,13 @@ import {
   reorderWorkspaces,
   saveWorkspaces,
   setWorkspaceAnchors,
+  setWorkspacePaneState,
   setWorkspaceTexts,
   WORKSPACE_LIMIT,
   WORKSPACE_NAME_LIMIT,
   type Workspace,
   type WorkspaceAnchorState,
+  type WorkspacePaneState,
   type WorkspacesState,
 } from "./storage/workspaces";
 import {
@@ -106,6 +108,11 @@ import { removeWorkspaceWithConfirm } from "./ui/workspaceRemoval";
 import { getWorkspaceTitle } from "./ui/workspaceTitle";
 import { handleWorkspaceNavigation } from "./ui/workspaceNavigation";
 import { runWorkspaceSwitch } from "./ui/workspaceSwitchFlow";
+import {
+  applyPaneSnapshot,
+  collectPaneSnapshot,
+  cloneSegments,
+} from "./ui/workspacePaneState";
 import { createToastManager } from "./ui/toast";
 import {
   clearPersistedState,
@@ -182,12 +189,22 @@ function scheduleWorkspacePersist() {
   }
   workspacePersistTimer = setTimeout(() => {
     workspacePersistTimer = null;
-    let result = setWorkspaceTexts(
+    let result = setWorkspacePaneState(
       storage,
       workspaceState,
       workspaceState.selectedId,
-      leftEditor.getValue(),
-      rightEditor.getValue(),
+      "left",
+      collectWorkspacePaneSnapshot("left"),
+    );
+    if (result.ok) {
+      workspaceState = result.state;
+    }
+    result = setWorkspacePaneState(
+      storage,
+      workspaceState,
+      workspaceState.selectedId,
+      "right",
+      collectWorkspacePaneSnapshot("right"),
     );
     if (result.ok) {
       workspaceState = result.state;
@@ -549,12 +566,22 @@ function loadFavoriteListsForWorkspace(workspaceId: string) {
 }
 
 function persistCurrentWorkspaceState() {
-  let result = setWorkspaceTexts(
+  let result = setWorkspacePaneState(
     storage,
     workspaceState,
     workspaceState.selectedId,
-    leftEditor.getValue(),
-    rightEditor.getValue(),
+    "left",
+    collectWorkspacePaneSnapshot("left"),
+  );
+  if (result.ok) {
+    workspaceState = result.state;
+  }
+  result = setWorkspacePaneState(
+    storage,
+    workspaceState,
+    workspaceState.selectedId,
+    "right",
+    collectWorkspacePaneSnapshot("right"),
   );
   if (result.ok) {
     workspaceState = result.state;
@@ -568,31 +595,6 @@ function persistCurrentWorkspaceState() {
   if (result.ok) {
     workspaceState = result.state;
   }
-}
-
-function resetWorkspaceAfterContentChange() {
-  leftSegments.length = 0;
-  rightSegments.length = 0;
-  leftFileBytes.length = 0;
-  rightFileBytes.length = 0;
-  updateLineNumbers(leftEditor, leftSegments);
-  updateLineNumbers(rightEditor, rightSegments);
-  updateFileCards("left", []);
-  updateFileCards("right", []);
-  clearPaneMessage(leftMessage);
-  clearPaneMessage(rightMessage);
-  clearPaneSummary(storage, "left");
-  clearPaneSummary(storage, "right");
-  refreshSyntaxHighlight();
-}
-
-function applyWorkspaceContent(workspace: Workspace) {
-  withProgrammaticEdit("left", () => {
-    leftEditor.setValue(workspace.leftText);
-  });
-  withProgrammaticEdit("right", () => {
-    rightEditor.setValue(workspace.rightText);
-  });
 }
 
 function applyWorkspaceAnchors(anchors: WorkspaceAnchorState) {
@@ -617,12 +619,24 @@ function applyWorkspaceState(
     loadFavoriteListsForWorkspace(nextState.selectedId);
     const selected = getSelectedWorkspace(workspaceState);
     if (selected) {
-      applyWorkspaceContent(selected);
-      resetWorkspaceAfterContentChange();
+      applyWorkspacePaneSnapshot("left", getWorkspacePaneSnapshot(selected, "left"), {
+        applyText: true,
+      });
+      applyWorkspacePaneSnapshot("right", getWorkspacePaneSnapshot(selected, "right"), {
+        applyText: true,
+      });
+      refreshSyntaxHighlight();
+      leftFileBytes.length = 0;
+      rightFileBytes.length = 0;
+      clearPaneMessage(leftMessage);
+      clearPaneMessage(rightMessage);
+      clearPaneSummary(storage, "left");
+      clearPaneSummary(storage, "right");
       applyWorkspaceAnchors(selected.anchors);
       anchorUndoState = null;
       recalcScheduler.runNow();
       schedulePersist();
+      scheduleWorkspacePersist();
     }
   }
 }
@@ -636,6 +650,26 @@ function switchWorkspaceById(
   }
   if (options?.focusItem) {
     focusedWorkspaceId = id;
+  }
+  let result = setWorkspacePaneState(
+    storage,
+    workspaceState,
+    workspaceState.selectedId,
+    "left",
+    collectWorkspacePaneSnapshot("left"),
+  );
+  if (result.ok) {
+    workspaceState = result.state;
+  }
+  result = setWorkspacePaneState(
+    storage,
+    workspaceState,
+    workspaceState.selectedId,
+    "right",
+    collectWorkspacePaneSnapshot("right"),
+  );
+  if (result.ok) {
+    workspaceState = result.state;
   }
   const currentAnchors = getCurrentAnchorState();
   const nextState = runWorkspaceSwitch(
@@ -660,10 +694,22 @@ function switchWorkspaceById(
     currentAnchors,
     {
       onAfterRestore: (_stateAfter, target) => {
+        applyWorkspacePaneSnapshot("left", getWorkspacePaneSnapshot(target, "left"), {
+          applyText: false,
+        });
+        applyWorkspacePaneSnapshot("right", getWorkspacePaneSnapshot(target, "right"), {
+          applyText: false,
+        });
+        refreshSyntaxHighlight();
+        leftFileBytes.length = 0;
+        rightFileBytes.length = 0;
+        clearPaneMessage(leftMessage);
+        clearPaneMessage(rightMessage);
+        clearPaneSummary(storage, "left");
+        clearPaneSummary(storage, "right");
         applyWorkspaceAnchors(target.anchors);
       },
       onAfterSwitch: () => {
-        resetWorkspaceAfterContentChange();
         anchorUndoState = null;
         recalcScheduler.runNow();
         schedulePersist();
@@ -679,6 +725,7 @@ function switchWorkspaceById(
     focusItemId: options?.focusItem ? id : null,
   });
   loadFavoriteListsForWorkspace(workspaceState.selectedId);
+  scheduleWorkspacePersist();
 }
 
 function handleWorkspaceRename(id: string, rawName: string) {
@@ -995,6 +1042,17 @@ const seedLeft = persistedState?.leftText || leftSample;
 const seedRight = persistedState?.rightText || rightSample;
 let leftInitial = selectedWorkspace?.leftText ?? "";
 let rightInitial = selectedWorkspace?.rightText ?? "";
+let leftInitialSegments = cloneSegments(selectedWorkspace?.leftSegments ?? []);
+let rightInitialSegments = cloneSegments(selectedWorkspace?.rightSegments ?? []);
+const leftSegmentsValid = isSegmentLayoutValid(leftInitialSegments, leftInitial);
+const rightSegmentsValid = isSegmentLayoutValid(rightInitialSegments, rightInitial);
+
+if (!leftSegmentsValid) {
+  leftInitialSegments = [];
+}
+if (!rightSegmentsValid) {
+  rightInitialSegments = [];
+}
 
 if (!hasWorkspaceText && selectedWorkspace) {
   if (!leftInitial) {
@@ -1006,19 +1064,66 @@ if (!hasWorkspaceText && selectedWorkspace) {
 }
 
 if (
-  selectedWorkspace &&
-  (selectedWorkspace.leftText !== leftInitial ||
-    selectedWorkspace.rightText !== rightInitial)
+  leftInitialSegments.length === 0 &&
+  persistedState?.leftSegments?.length &&
+  isSegmentLayoutValid(persistedState.leftSegments, leftInitial)
 ) {
-  const result = setWorkspaceTexts(
-    storage,
-    workspaceState,
-    selectedWorkspace.id,
-    leftInitial,
-    rightInitial,
-  );
-  if (result.ok) {
-    workspaceState = result.state;
+  leftInitialSegments = cloneSegments(persistedState.leftSegments);
+}
+if (
+  rightInitialSegments.length === 0 &&
+  persistedState?.rightSegments?.length &&
+  isSegmentLayoutValid(persistedState.rightSegments, rightInitial)
+) {
+  rightInitialSegments = cloneSegments(persistedState.rightSegments);
+}
+
+if (selectedWorkspace) {
+  const shouldUpdateLeft =
+    selectedWorkspace.leftText !== leftInitial ||
+    !leftSegmentsValid ||
+    ((selectedWorkspace.leftSegments ?? []).length === 0 &&
+      leftInitialSegments.length > 0);
+  if (shouldUpdateLeft) {
+    const result = setWorkspacePaneState(
+      storage,
+      workspaceState,
+      selectedWorkspace.id,
+      "left",
+      {
+        text: leftInitial,
+        segments: leftInitialSegments,
+        activeFile: selectedWorkspace.leftActiveFile ?? null,
+        cursor: selectedWorkspace.leftCursor ?? null,
+        scrollTop: selectedWorkspace.leftScrollTop ?? null,
+      },
+    );
+    if (result.ok) {
+      workspaceState = result.state;
+    }
+  }
+  const shouldUpdateRight =
+    selectedWorkspace.rightText !== rightInitial ||
+    !rightSegmentsValid ||
+    ((selectedWorkspace.rightSegments ?? []).length === 0 &&
+      rightInitialSegments.length > 0);
+  if (shouldUpdateRight) {
+    const result = setWorkspacePaneState(
+      storage,
+      workspaceState,
+      selectedWorkspace.id,
+      "right",
+      {
+        text: rightInitial,
+        segments: rightInitialSegments,
+        activeFile: selectedWorkspace.rightActiveFile ?? null,
+        cursor: selectedWorkspace.rightCursor ?? null,
+        scrollTop: selectedWorkspace.rightScrollTop ?? null,
+      },
+    );
+    if (result.ok) {
+      workspaceState = result.state;
+    }
   }
 }
 
@@ -1173,6 +1278,90 @@ function getPaneEditor(side: "left" | "right"): monaco.editor.IStandaloneCodeEdi
   return side === "left" ? leftEditor : rightEditor;
 }
 
+function applyWorkspacePaneSnapshot(
+  side: "left" | "right",
+  snapshot: WorkspacePaneState,
+  options?: { applyText?: boolean },
+): void {
+  const editor = getPaneEditor(side);
+  const segments = getPaneSegments(side);
+  const baseText = options?.applyText === false ? editor.getValue() : snapshot.text;
+  const safeSnapshot = {
+    ...snapshot,
+    segments: isSegmentLayoutValid(snapshot.segments, baseText)
+      ? snapshot.segments
+      : [],
+  };
+  applyPaneSnapshot(
+    {
+      getValue: () => editor.getValue(),
+      setValue: (value) =>
+        withProgrammaticEdit(side, () => {
+          editor.setValue(value);
+        }),
+      getPosition: () => editor.getPosition(),
+      setPosition: (position) => editor.setPosition(position),
+      getScrollTop: () => editor.getScrollTop(),
+      setScrollTop: (value) => editor.setScrollTop(value),
+      getLineCount: () => editor.getModel()?.getLineCount() ?? 1,
+    },
+    segments,
+    safeSnapshot,
+    options,
+  );
+  updateLineNumbers(editor, segments);
+  const fileNames = listLoadedFileNames(segments);
+  updateFileCards(side, fileNames);
+  let activeFile = safeSnapshot.activeFile;
+  if (activeFile && !fileNames.includes(activeFile)) {
+    activeFile = fileNames[0] ?? null;
+  }
+  setGoToLineSelection(side, activeFile, { persist: false });
+}
+
+function collectWorkspacePaneSnapshot(side: "left" | "right"): WorkspacePaneState {
+  const editor = getPaneEditor(side);
+  const segments = getPaneSegments(side);
+  return collectPaneSnapshot(
+    {
+      getValue: () => editor.getValue(),
+      setValue: (value) =>
+        withProgrammaticEdit(side, () => {
+          editor.setValue(value);
+        }),
+      getPosition: () => editor.getPosition(),
+      setPosition: (position) => editor.setPosition(position),
+      getScrollTop: () => editor.getScrollTop(),
+      setScrollTop: (value) => editor.setScrollTop(value),
+      getLineCount: () => editor.getModel()?.getLineCount() ?? 1,
+    },
+    segments,
+    goToLineSelection[side],
+  );
+}
+
+function getWorkspacePaneSnapshot(
+  workspace: Workspace,
+  side: "left" | "right",
+): WorkspacePaneState {
+  if (side === "left") {
+    return {
+      text: workspace.leftText,
+      segments: cloneSegments(workspace.leftSegments ?? []),
+      activeFile: workspace.leftActiveFile ?? null,
+      cursor: workspace.leftCursor ?? null,
+      scrollTop: workspace.leftScrollTop ?? null,
+    };
+  }
+  return {
+    text: workspace.rightText,
+    segments: cloneSegments(workspace.rightSegments ?? []),
+    activeFile: workspace.rightActiveFile ?? null,
+    cursor: workspace.rightCursor ?? null,
+    scrollTop: workspace.rightScrollTop ?? null,
+  };
+}
+
 function getEditorAlternativeVersionId(
   editor: monaco.editor.IStandaloneCodeEditor,
 ): number | null {
@@ -1301,7 +1490,11 @@ function updateGoToLineHint(side: "left" | "right", fileName: string | null): vo
   }
 }
 
-function setGoToLineSelection(side: "left" | "right", fileName: string | null): void {
+function setGoToLineSelection(
+  side: "left" | "right",
+  fileName: string | null,
+  options?: { persist?: boolean },
+): void {
   goToLineSelection[side] = fileName;
   const pane = goToLinePanes[side];
   const buttons = Array.from(
@@ -1313,6 +1506,9 @@ function setGoToLineSelection(side: "left" | "right", fileName: string | null): 
     button.setAttribute("aria-pressed", String(isSelected));
   }
   updateGoToLineHint(side, fileName);
+  if (options?.persist !== false) {
+    scheduleWorkspacePersist();
+  }
 }
 
 function moveGoToLineSelection(side: "left" | "right", delta: number): void {
@@ -1374,8 +1570,12 @@ function resolveDefaultGoToLine(
   const position = editor.getPosition();
   const lineNumber = position?.lineNumber ?? 1;
   const info = getLineSegmentInfo(segments, lineNumber);
-  const fileName = info?.fileName ?? files[0] ?? null;
-  const localLine = info?.localLine ?? 1;
+  const savedFile = goToLineSelection[side];
+  const preferred =
+    savedFile && files.includes(savedFile) ? savedFile : info?.fileName ?? files[0] ?? null;
+  const localLine =
+    preferred && preferred === info?.fileName ? info?.localLine ?? 1 : 1;
+  const fileName = preferred;
   return { fileName, localLine };
 }
 
@@ -1541,10 +1741,15 @@ function applyDecodedFiles(
   segments.length = 0;
   segments.push(...nextSegments);
   updateLineNumbers(editor, segments);
-  updateFileCards(side, listLoadedFileNames(segments));
+  const fileNames = listLoadedFileNames(segments);
+  updateFileCards(side, fileNames);
+  if (!goToLineSelection[side] || !fileNames.includes(goToLineSelection[side] ?? "")) {
+    setGoToLineSelection(side, fileNames[0] ?? null);
+  }
   refreshSyntaxHighlight();
   recalcDiff();
   schedulePersist();
+  scheduleWorkspacePersist();
 }
 
 function isSegmentLayoutValid(segments: LineSegment[], text: string): boolean {
@@ -1640,7 +1845,10 @@ async function appendFilesToEditor(
   clearPaneMessage(messageTarget);
   clearPaneSummary(storage, side);
   updateFileCards(side, loadedNames);
-  runPostLoadTasks([recalcDiff, schedulePersist]);
+  if (!goToLineSelection[side] || !loadedNames.includes(goToLineSelection[side] ?? "")) {
+    setGoToLineSelection(side, loadedNames[0] ?? null);
+  }
+  runPostLoadTasks([recalcDiff, schedulePersist, scheduleWorkspacePersist]);
 }
 
 function bindDropZone(
@@ -1707,19 +1915,16 @@ function bindDropZone(
 const leftSegments: LineSegment[] = [];
 const rightSegments: LineSegment[] = [];
 
-const storedLeftSegments = persistedState?.leftSegments ?? [];
-const storedRightSegments = persistedState?.rightSegments ?? [];
-if (isSegmentLayoutValid(storedLeftSegments, leftEditor.getValue())) {
-  leftSegments.push(...storedLeftSegments);
+const initialWorkspace = getSelectedWorkspace(workspaceState);
+if (initialWorkspace) {
+  applyWorkspacePaneSnapshot("left", getWorkspacePaneSnapshot(initialWorkspace, "left"), {
+    applyText: false,
+  });
+  applyWorkspacePaneSnapshot("right", getWorkspacePaneSnapshot(initialWorkspace, "right"), {
+    applyText: false,
+  });
 }
-if (isSegmentLayoutValid(storedRightSegments, rightEditor.getValue())) {
-  rightSegments.push(...storedRightSegments);
-}
-updateLineNumbers(leftEditor, leftSegments);
-updateLineNumbers(rightEditor, rightSegments);
 refreshSyntaxHighlight();
-updateFileCards("left", listLoadedFileNames(leftSegments));
-updateFileCards("right", listLoadedFileNames(rightSegments));
 renderFavoriteList("left");
 renderFavoriteList("right");
 renderWorkspacePanel();
