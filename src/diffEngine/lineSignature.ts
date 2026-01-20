@@ -52,6 +52,14 @@ function stripDollarIdentifiers(line: string): string {
   return line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, "$1");
 }
 
+function stripRazorLinePrefix(line: string): string {
+  const match = line.match(/^(\s*)@:\s*/);
+  if (!match) {
+    return line;
+  }
+  return match[1] + line.slice(match[0].length);
+}
+
 function extractBraceToken(line: string): "brace_open" | "brace_close" | null {
   const trimmed = line.trim();
   if (trimmed === "{") {
@@ -73,11 +81,12 @@ function extractBraceToken(line: string): "brace_open" | "brace_close" | null {
 }
 
 export function extractLineKey(line: string): string | null {
-  const braceToken = extractBraceToken(line);
+  const normalizedLine = stripRazorLinePrefix(line);
+  const braceToken = extractBraceToken(normalizedLine);
   if (braceToken) {
     return braceToken;
   }
-  const normalized = stripDollarIdentifiers(line.trimStart());
+  const normalized = stripDollarIdentifiers(normalizedLine.trimStart());
   const funcMatch = normalized.match(/([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
   if (funcMatch) {
     const candidate = funcMatch[1].toLowerCase();

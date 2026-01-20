@@ -79,6 +79,14 @@ function stripStringLiterals(source: string): string {
   return source.replace(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g, "");
 }
 
+function stripRazorLinePrefix(line: string): string {
+  const match = line.match(/^(\s*)@:\s*/);
+  if (!match) {
+    return line;
+  }
+  return match[1] + line.slice(match[0].length);
+}
+
 function isElseLine(line: string): boolean {
   const stripped = stripStringLiterals(line);
   return /\belse\b/i.test(stripped);
@@ -541,23 +549,24 @@ function pickPrimaryId(
 }
 
 export function buildLineFeatures(line: string): LineFeatures {
-  const identifiers = extractIdentifiers(line);
-  const literals = extractLiterals(line);
-  const numbers = extractNumbers(line);
-  const appendLike = detectAppendLike(line);
-  const templateSignature = normalizeTemplateLine(line);
+  const normalizedLine = stripRazorLinePrefix(line);
+  const identifiers = extractIdentifiers(normalizedLine);
+  const literals = extractLiterals(normalizedLine);
+  const numbers = extractNumbers(normalizedLine);
+  const appendLike = detectAppendLike(normalizedLine);
+  const templateSignature = normalizeTemplateLine(normalizedLine);
   if (templateSignature) {
     identifiers.push(`template:${templateSignature}`);
-    const signature = detectAppendLike(line)
-      ? extractAppendLiteral(line) ?? extractLiterals(line)[0] ?? ""
-      : line;
+    const signature = detectAppendLike(normalizedLine)
+      ? extractAppendLiteral(normalizedLine) ?? extractLiterals(normalizedLine)[0] ?? ""
+      : normalizedLine;
     const htmlSignature = extractHtmlSignature(signature);
     if (htmlSignature.tag) {
       identifiers.push(`htmltag:${htmlSignature.tag}`);
     }
     htmlSignature.attrs.forEach((attr) => identifiers.push(`htmlattr:${attr}`));
   }
-  const structuredFragment = extractStructuredFragment(line);
+  const structuredFragment = extractStructuredFragment(normalizedLine);
   if (structuredFragment) {
     identifiers.push(`codefrag:${structuredFragment}`);
     if (structuredFragment === "{") {
@@ -566,16 +575,16 @@ export function buildLineFeatures(line: string): LineFeatures {
       identifiers.push("brace_close");
     }
   }
-  if (isElseLine(line)) {
+  if (isElseLine(normalizedLine)) {
     identifiers.push("else_line");
   }
-  const braceToken = extractBraceToken(line);
+  const braceToken = extractBraceToken(normalizedLine);
   if (braceToken) {
     identifiers.push(braceToken);
   }
-  const category = detectCategory(line);
-  const primaryId = pickPrimaryId(identifiers, literals, line);
-  extractEmbeddedHintTokens(line).forEach((token) => identifiers.push(token));
+  const category = detectCategory(normalizedLine);
+  const primaryId = pickPrimaryId(identifiers, literals, normalizedLine);
+  extractEmbeddedHintTokens(normalizedLine).forEach((token) => identifiers.push(token));
   if (appendLike) {
     literals.forEach((literal) => {
       extractEmbeddedHintTokens(literal).forEach((token) => identifiers.push(token));
@@ -584,12 +593,12 @@ export function buildLineFeatures(line: string): LineFeatures {
   if (appendLike && !identifiers.includes("append")) {
     identifiers.push("append");
   }
-  const initVar = extractInitVariable(line);
+  const initVar = extractInitVariable(normalizedLine);
   if (initVar) {
     identifiers.push("init");
     identifiers.push(`init:${initVar}`);
   }
-  const dateFormat = extractDateFormatInfo(line);
+  const dateFormat = extractDateFormatInfo(normalizedLine);
   if (dateFormat) {
     identifiers.push("dateformat");
     identifiers.push(`dateformat:${dateFormat.format}`);

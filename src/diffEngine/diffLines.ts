@@ -8,7 +8,7 @@ function splitLines(text: string): string[] {
 }
 
 function normalizeForMatch(line: string): string {
-  const trimmed = line.replace(/^\s+/, "");
+  const trimmed = stripRazorLinePrefix(line).replace(/^\s+/, "");
   const initVar = extractInitVariable(trimmed);
   if (initVar) {
     return `init:${initVar}`;
@@ -18,6 +18,14 @@ function normalizeForMatch(line: string): string {
     return `append:${literal}`;
   }
   return trimmed;
+}
+
+function stripRazorLinePrefix(line: string): string {
+  const match = line.match(/^(\s*)@:\s*/);
+  if (!match) {
+    return line;
+  }
+  return match[1] + line.slice(match[0].length);
 }
 
 function buildCompareLines(lines: string[]): string[] {

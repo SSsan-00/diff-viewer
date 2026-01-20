@@ -160,6 +160,23 @@ describe("semantic alignment across languages", () => {
     expect(findBlankDelete(ops)).toBe(true);
   });
 
+  it("aligns Razor @: prefixed return lines", () => {
+    const left = ["console.log('foo');", "return;"];
+    const right = ["@:console.log('foo');", "@:return;"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "console.log('foo');", "@:console.log('foo');")).toBe(true);
+    expect(findReplace(ops, "return;", "@:return;")).toBe(true);
+  });
+
+  it("does not strip non @: Razor constructs", () => {
+    const left = ["return;"];
+    const right = ["@{ var x = 1; }"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "return;", "@{ var x = 1; }")).toBe(false);
+  });
+
   it("aligns property references to variable declarations", () => {
     const left = ["this.foo = 1;"];
     const right = ["$foo = 1;"];
