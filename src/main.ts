@@ -100,6 +100,8 @@ import { createFavoritePanelController } from "./ui/favoritePanel";
 import { handleFavoritePanelShortcut } from "./ui/favoritePanelShortcut";
 import { handleFileOpenShortcut } from "./ui/fileOpenShortcut";
 import { handlePaneClearShortcut } from "./ui/paneClearShortcut";
+import { handleThemeShortcut } from "./ui/themeShortcut";
+import { handleHighlightShortcut } from "./ui/highlightShortcut";
 import {
   clampFavoriteFocusIndex,
   handleFavoriteListKeydown,
@@ -313,6 +315,7 @@ const rightFileInput = getRequiredElement<HTMLInputElement>("#right-file");
 const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button");
 const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
 const highlightToggle = getRequiredElement<HTMLInputElement>("#highlight-toggle");
+const themeToggle = document.querySelector<HTMLInputElement>("#theme-toggle");
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
@@ -1197,6 +1200,30 @@ const syntaxHighlightController = bindSyntaxHighlightToggle({
 const refreshSyntaxHighlight = () => {
   syntaxHighlightController?.applyHighlight(highlightToggle.checked);
 };
+
+function toggleTheme(): void {
+  if (!themeToggle) {
+    return;
+  }
+  themeToggle.checked = !themeToggle.checked;
+  const view = themeToggle.ownerDocument?.defaultView;
+  const changeEvent = view
+    ? new view.Event("change", { bubbles: true })
+    : new Event("change");
+  themeToggle.dispatchEvent(changeEvent);
+}
+
+function toggleHighlight(): void {
+  if (!highlightToggle) {
+    return;
+  }
+  highlightToggle.checked = !highlightToggle.checked;
+  const view = highlightToggle.ownerDocument?.defaultView;
+  const changeEvent = view
+    ? new view.Event("change", { bubbles: true })
+    : new Event("change");
+  highlightToggle.dispatchEvent(changeEvent);
+}
 
 const recalcScheduler = createRecalcScheduler(() => recalcDiff(), 200);
 const scheduleRecalc = () => {
@@ -2526,6 +2553,22 @@ window.addEventListener(
       clearAll: clearAllPanes,
     });
     if (clearHandled) {
+      event.stopPropagation();
+      return;
+    }
+
+    const themeHandled = handleThemeShortcut(event, {
+      toggle: toggleTheme,
+    });
+    if (themeHandled) {
+      event.stopPropagation();
+      return;
+    }
+
+    const highlightHandled = handleHighlightShortcut(event, {
+      toggle: toggleHighlight,
+    });
+    if (highlightHandled) {
       event.stopPropagation();
       return;
     }
