@@ -2862,10 +2862,7 @@ rightEditor.onMouseDown((event) => {
   handleRightAnchorAction(lineNumber - 1);
 });
 
-function applyAnchorResult(
-  result: ReturnType<typeof handleLeftAnchorClick | typeof handleRightAnchorClick>,
-  side: "left" | "right",
-) {
+function applyAnchorResult(result: AnchorClickResult, side: "left" | "right") {
   anchorUndoState = null;
   manualAnchors = result.manualAnchors;
   pendingLeftLineNo = result.pendingLeftLineNo;
@@ -2873,23 +2870,14 @@ function applyAnchorResult(
   autoAnchor = result.autoAnchor;
   suppressedAutoAnchorKey = result.suppressedAutoAnchorKey;
 
-  if (result.action === "removed" && result.removedAnchor) {
-    setAnchorMessage(`Anchor removed: ${formatAnchor(result.removedAnchor)}`);
-  } else if (result.action === "auto-removed") {
+  if (result.action === "auto-removed") {
     if (selectedAnchorKey === suppressedAutoAnchorKey) {
       selectedAnchorKey = null;
     }
-    setAnchorMessage("Auto anchor removed.");
-  } else if (result.action === "added" && result.addedAnchor) {
-    setAnchorMessage(`Anchor added: ${formatAnchor(result.addedAnchor)}`);
-  } else if (result.action === "pending-cleared") {
-    setAnchorMessage(side === "left" ? "左行の選択を解除しました。" : "右行の選択を解除しました。");
-  } else if (result.action === "pending-set") {
-    setAnchorMessage(
-      side === "left"
-        ? "左行を選択しました。右行を選んでください。"
-        : "右行を選択しました。左行を選んでください。",
-    );
+  }
+  const message = getAnchorActionMessage(result, side);
+  if (message) {
+    setAnchorMessage(message);
   }
 
   if (
@@ -2909,6 +2897,32 @@ function applyAnchorResult(
   renderAnchors(validation.invalid, validation.valid);
   schedulePersist();
   scheduleWorkspacePersist();
+}
+
+function getAnchorActionMessage(
+  result: AnchorClickResult,
+  side: "left" | "right",
+): string | null {
+  if (result.action === "removed" && result.removedAnchor) {
+    return `Anchor removed: ${formatAnchor(result.removedAnchor)}`;
+  }
+  if (result.action === "auto-removed") {
+    return "Auto anchor removed.";
+  }
+  if (result.action === "added" && result.addedAnchor) {
+    return `Anchor added: ${formatAnchor(result.addedAnchor)}`;
+  }
+  if (result.action === "pending-cleared") {
+    return side === "left"
+      ? "左行の選択を解除しました。"
+      : "右行の選択を解除しました。";
+  }
+  if (result.action === "pending-set") {
+    return side === "left"
+      ? "左行を選択しました。右行を選んでください。"
+      : "右行を選択しました。左行を選んでください。";
+  }
+  return null;
 }
 
 function handleLeftAnchorAction(lineNo: number) {
