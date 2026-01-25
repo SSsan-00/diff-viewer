@@ -96,6 +96,34 @@ function isElseLine(line: string): boolean {
   return /\belse\b/i.test(stripped);
 }
 
+export function normalizeCommentText(line: string): string | null {
+  const trimmed = line.trim();
+  if (trimmed.length === 0) {
+    return null;
+  }
+
+  let raw: string | null = null;
+  if (trimmed.startsWith("///")) {
+    raw = trimmed.slice(3);
+  } else if (trimmed.startsWith("//")) {
+    raw = trimmed.slice(2);
+  } else if (trimmed.startsWith("/*") && trimmed.endsWith("*/")) {
+    raw = trimmed.slice(2, -2);
+  } else if (trimmed.startsWith("<!--") && trimmed.endsWith("-->")) {
+    raw = trimmed.slice(4, -3);
+  } else if (trimmed.startsWith("#")) {
+    raw = trimmed.slice(1);
+  }
+
+  if (raw === null) {
+    return null;
+  }
+
+  const withoutTags = raw.replace(/<\/?[^>]+>/g, " ");
+  const normalized = withoutTags.replace(/\s+/g, " ").trim().toLowerCase();
+  return normalized.length > 0 ? normalized : null;
+}
+
 export type LineFeatures = {
   identifiers: string[];
   literals: string[];
@@ -567,6 +595,14 @@ export function buildLineFeatures(line: string): LineFeatures {
   const identifiers = extractIdentifiers(featureLine);
   const literals = extractLiterals(featureLine);
   const numbers = extractNumbers(featureLine);
+  const commentText = normalizeCommentText(featureLine);
+  if (commentText) {
+    identifiers.push("comment");
+    identifiers.push(`comment:${commentText}`);
+    if (!literals.includes(commentText)) {
+      literals.push(commentText);
+    }
+  }
   const templateSignature = normalizeTemplateLine(featureLine);
   if (templateSignature) {
     identifiers.push(`template:${templateSignature}`);
@@ -677,6 +713,9 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   );
   const literalOverlap = intersectCount(left.literals, right.literals);
   const numberOverlap = intersectCount(left.numbers, right.numbers);
+  const commentOverlap = left.identifiers.some(
+    (token) => token.startsWith("comment:") && right.identifiers.includes(token),
+  );
   const initOverlap = left.identifiers.some(
     (token) => token.startsWith("init:") && right.identifiers.includes(token),
   );
@@ -707,7 +746,8 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
     braceOverlap ||
     elseOverlap ||
     initOverlap ||
-    dateFormatArgOverlap;
+    dateFormatArgOverlap ||
+    commentOverlap;
 
   if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
     if (!hasBaseOverlap) {
@@ -749,6 +789,9 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   }
   if (dateFormatOverlap) {
     score += dateFormatArgOverlap ? 5 : 1;
+  }
+  if (commentOverlap) {
+    score += 5;
   }
 
   if (left.category === right.category) {

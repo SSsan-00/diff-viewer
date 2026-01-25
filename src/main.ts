@@ -1479,13 +1479,50 @@ function restoreClearUndoState(): void {
   if (!clearUndoState) {
     return;
   }
-  applyWorkspacePaneSnapshot("left", clearUndoState.left.pane, { applyText: false });
-  applyWorkspacePaneSnapshot("right", clearUndoState.right.pane, { applyText: false });
+  if (clearUndoState.mode === "pane" && clearUndoState.targetSide) {
+    const targetPane =
+      clearUndoState.targetSide === "left"
+        ? clearUndoState.left.pane
+        : clearUndoState.right.pane;
+    applyWorkspacePaneSnapshot(clearUndoState.targetSide, targetPane, {
+      applyText: false,
+    });
+  } else {
+    applyWorkspacePaneSnapshot("left", clearUndoState.left.pane, { applyText: false });
+    applyWorkspacePaneSnapshot("right", clearUndoState.right.pane, { applyText: false });
+  }
   restoreAnchorsFromSnapshot(clearUndoState.snapshot);
   clearUndoState.status = "restored";
 }
 
+function clearAfterRedoPane(side: "left" | "right"): void {
+  const segments = getPaneSegments(side);
+  const editor = getPaneEditor(side);
+  segments.length = 0;
+  updateLineNumbers(editor, segments);
+  updateFileCards(side, []);
+  setGoToLineSelection(side, null, { persist: false });
+  if (side === "left") {
+    clearPaneMessage(leftMessage);
+    clearPaneSummary(storage, "left");
+  } else {
+    clearPaneMessage(rightMessage);
+    clearPaneSummary(storage, "right");
+  }
+  resetAllAnchorsAndDecorations();
+  recalcDiff();
+  schedulePersist();
+  scheduleWorkspacePersist();
+}
+
 function clearAfterRedo(): void {
+  if (!clearUndoState) {
+    return;
+  }
+  if (clearUndoState.mode === "pane" && clearUndoState.targetSide) {
+    clearAfterRedoPane(clearUndoState.targetSide);
+    return;
+  }
   leftSegments.length = 0;
   rightSegments.length = 0;
   updateLineNumbers(leftEditor, leftSegments);
@@ -1508,11 +1545,14 @@ function handleClearUndoRedo(
   if (!clearUndoState) {
     return false;
   }
+  if (clearUndoState.mode === "pane" && clearUndoState.targetSide && side !== clearUndoState.targetSide) {
+    return false;
+  }
   const meta = clearUndoMetaForSide(side);
   if (!meta) {
     return false;
   }
-  const otherMeta = clearUndoMetaForOther(side);
+  const otherMeta = clearUndoState.mode === "pane" ? null : clearUndoMetaForOther(side);
   const otherEditor = side === "left" ? rightEditor : leftEditor;
   const versionId = getEditorAlternativeVersionId(editor);
   if (event.isUndoing && clearUndoState.status === "armed") {
@@ -2771,6 +2811,8 @@ type ClearUndoState = {
   left: ClearUndoPaneState;
   right: ClearUndoPaneState;
   status: "armed" | "restored";
+  mode: "all" | "pane";
+  targetSide?: "left" | "right";
 };
 
 let clearUndoState: ClearUndoState | null = null;
@@ -3629,18 +3671,27 @@ const leftClearOptions = {
   segments: leftSegments,
   updateLineNumbers,
   onBeforeClear: () => {
-    clearUndoState = null;
-    anchorUndoState = {
+    anchorUndoState = null;
+    clearUndoState = {
       snapshot: captureAnchorSnapshot(),
-      editor: "left",
-      beforeVersionId: getEditorAlternativeVersionId(leftEditor),
-      afterVersionId: null,
+      left: {
+        beforeVersionId: getEditorAlternativeVersionId(leftEditor),
+        afterVersionId: null,
+        pane: collectWorkspacePaneSnapshot("left"),
+      },
+      right: {
+        beforeVersionId: getEditorAlternativeVersionId(rightEditor),
+        afterVersionId: null,
+        pane: collectWorkspacePaneSnapshot("right"),
+      },
       status: "armed",
+      mode: "pane",
+      targetSide: "left",
     };
   },
   onAfterClear: () => {
-    if (anchorUndoState?.editor === "left") {
-      anchorUndoState.afterVersionId = getEditorAlternativeVersionId(leftEditor);
+    if (clearUndoState?.mode === "pane" && clearUndoState.targetSide === "left") {
+      clearUndoState.left.afterVersionId = getEditorAlternativeVersionId(leftEditor);
     }
     resetAllAnchorsAndDecorations();
     updateFileCards("left", []);
@@ -3658,18 +3709,27 @@ const rightClearOptions = {
   segments: rightSegments,
   updateLineNumbers,
   onBeforeClear: () => {
-    clearUndoState = null;
-    anchorUndoState = {
+    anchorUndoState = null;
+    clearUndoState = {
       snapshot: captureAnchorSnapshot(),
-      editor: "right",
-      beforeVersionId: getEditorAlternativeVersionId(rightEditor),
-      afterVersionId: null,
+      left: {
+        beforeVersionId: getEditorAlternativeVersionId(leftEditor),
+        afterVersionId: null,
+        pane: collectWorkspacePaneSnapshot("left"),
+      },
+      right: {
+        beforeVersionId: getEditorAlternativeVersionId(rightEditor),
+        afterVersionId: null,
+        pane: collectWorkspacePaneSnapshot("right"),
+      },
       status: "armed",
+      mode: "pane",
+      targetSide: "right",
     };
   },
   onAfterClear: () => {
-    if (anchorUndoState?.editor === "right") {
-      anchorUndoState.afterVersionId = getEditorAlternativeVersionId(rightEditor);
+    if (clearUndoState?.mode === "pane" && clearUndoState.targetSide === "right") {
+      clearUndoState.right.afterVersionId = getEditorAlternativeVersionId(rightEditor);
     }
     resetAllAnchorsAndDecorations();
     updateFileCards("right", []);
@@ -3714,6 +3774,7 @@ function clearAllPanes(): void {
       pane: collectWorkspacePaneSnapshot("right"),
     },
     status: "armed",
+    mode: "all",
   };
   cancelPersist();
   clearPersistedState(storage);

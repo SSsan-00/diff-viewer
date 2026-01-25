@@ -160,6 +160,14 @@ describe("semantic alignment across languages", () => {
     expect(findBlankDelete(ops)).toBe(true);
   });
 
+  it("aligns line comments with xml doc comments", () => {
+    const left = ["// comment"];
+    const right = ["/// <summary>comment</summary>"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "// comment", "<summary>comment</summary>")).toBe(true);
+  });
+
   it("aligns SQL concatenation with large blank gaps", () => {
     const left = [
       "$sql = \"select name\";",

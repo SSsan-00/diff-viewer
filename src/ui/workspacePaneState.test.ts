@@ -59,7 +59,9 @@ describe("workspace pane snapshots", () => {
   it("can skip applying text", () => {
     const snapshot = {
       text: "next",
-      segments: [],
+      segments: [
+        { startLine: 1, lineCount: 2, fileIndex: 1, fileName: "gamma.txt" },
+      ],
       activeFile: null,
       cursor: null,
       scrollTop: null,
@@ -68,10 +70,13 @@ describe("workspace pane snapshots", () => {
       getValue: () => "current",
       setValue: vi.fn(),
     };
-    const targetSegments: typeof snapshot.segments = [];
+    const targetSegments: typeof snapshot.segments = [
+      { startLine: 5, lineCount: 1, fileIndex: 2, fileName: "old.txt" },
+    ];
 
     applyPaneSnapshot(adapter, targetSegments, snapshot, { applyText: false });
 
     expect(adapter.setValue).not.toHaveBeenCalled();
+    expect(targetSegments).toEqual(snapshot.segments);
   });
 });

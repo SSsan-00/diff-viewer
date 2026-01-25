@@ -35,7 +35,7 @@
 | 配布物に `http` / `github` 系文字列が残る | build | 3.2 配布物に「特定文字列」を残さない / 13.3 リリース手順 | `dist/index.html` / `dist/index.min.html` に禁止文字列が含まれない。monaco の該当文字列をパッチで削除し、コメント除去を有効化した上で `build:single` → `verify:dist` が Green。 |
 | 左右ペイン別クリア | request | 4.2 操作 | 左のみ/右のみのクリアができ、他方は保持される。 |
 | クリア時に全アンカーを消す（両ペイン） | request | 4.2 操作 / 8. アンカー行仕様 | 左/右どちらのクリアでも全アンカー（manual/auto/pending/selected/decoration）が消える。差分再計算が破綻しない（左右クリアで確認）。 |
-| クリア操作の Undo 対応（Ctrl/Cmd+Z） | request | 4.2 操作 | 全体クリア/左右クリアの直後に Undo でテキストとアンカーが復元される。復元後は差分再計算が走る。 |
+| クリア操作の Undo 対応（Ctrl/Cmd+Z） | request | 4.2 操作 | 全体クリア/左右クリアの直後に Undo でテキスト/アンカー/ファイル情報（一覧・segments）が復元される。復元後は差分再計算が走る。 |
 | 編集時の自動再計算（デバウンス） | request | 7. 再計算仕様 | 編集中はデバウンス（目安: 200ms）で差分が自動更新される。実行中の重複計算は抑制され、`差分再計算` ボタンは即時再計算する。 |
 | 拡張子 .inc を PHP として扱う | request | 10.1 UI仕様 / 10.3 複数ファイル読み込み | `foo.inc` が `php` として推定され、`foo.inc + bar.html` の混在でも `php` が選ばれる。 |
 | 対応行検出のブラッシュアップ（PHPタグの `{}` 対応） | request | 5.2 行レベル差分 | `{` ↔ `<? { ?>`、`}` ↔ `<? } ?>` が replace で揃い、`<? ?>` とインデント差が行内差分として見える。 |
@@ -68,6 +68,7 @@
 | 対応行判定のブラッシュアップ（SQL日付整形の意図一致） | request | 5.2 行レベル差分 | `$sql .= ", to_char(date, 'yyyy/mm/dd')";` と `sql += ", FORMAT(date, 'yyyy/MM/dd')";` が replace として揃い、行内差分が出る（引数が違う場合は揃わない）。 |
 | 空行が挟まっても対応行が揃う | bug | 5.2 行レベル差分 | 片側だけの空行（空白のみ行含む）は insert/delete になり、前後の本体行が replace で揃う。 |
 | SQL 連結行が空行大量でも揃う | bug | 5.2 行レベル差分 | `$sql .= ",  age";` と `sql += ", age";`、`$sql .= " from          users";` と `sql += " from users";` が空行大量でも replace で揃う（行内差分も表示）。 |
+| コメント行の対応付け（// ↔ XML doc comment） | bug | 5.2 行レベル差分 | `// comment` と `/// <summary>comment</summary>` が replace で揃い、タグ部分が行内差分として見える。 |
 | Razor `@:` 行の対応付け | bug | 5.2 行レベル差分 | `return;` と `@:return;` が replace で揃い、`@{ ... }` などは対象外。 |
 | StringBuilder AppendLine と生コードの対応付け強化 | request | 5.2 行レベル差分 | `AppendLine("return;")` と `return;` のような生成コードが replace で揃い、ラッパ差分が行内差分で見える。 |
 | ノートPC幅でヘッダーのラベルが改行される | bug | 4.1 レイアウト | 狭幅ではラベルを省略し、操作エリアが1行で崩れない。 |
