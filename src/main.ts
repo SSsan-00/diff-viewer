@@ -2124,6 +2124,30 @@ function bindDropZone(
 
 const leftSegments: LineSegment[] = [];
 const rightSegments: LineSegment[] = [];
+const paneBindings = {
+  left: {
+    pane: leftPane,
+    editor: leftEditor,
+    message: leftMessage,
+    encodingSelect: leftEncodingSelect,
+    segments: leftSegments,
+    rawFiles: leftFileBytes,
+    fileCards: leftFileCards,
+    fileInput: leftFileInput,
+    fileButton: leftFileButton,
+  },
+  right: {
+    pane: rightPane,
+    editor: rightEditor,
+    message: rightMessage,
+    encodingSelect: rightEncodingSelect,
+    segments: rightSegments,
+    rawFiles: rightFileBytes,
+    fileCards: rightFileCards,
+    fileInput: rightFileInput,
+    fileButton: rightFileButton,
+  },
+} as const;
 
 const initialWorkspace = getSelectedWorkspace(workspaceState);
 if (initialWorkspace) {
@@ -2326,29 +2350,24 @@ bindWorkspaceDragHandlers(workspaceList, (move) => {
   renderWorkspacePanel();
 });
 
-bindDropZone(
-  leftPane,
-  leftEditor,
-  leftMessage,
-  leftEncodingSelect,
-  leftSegments,
-  leftFileBytes,
-  "left",
-);
-bindDropZone(
-  rightPane,
-  rightEditor,
-  rightMessage,
-  rightEncodingSelect,
-  rightSegments,
-  rightFileBytes,
-  "right",
-);
-bindFileCardJump(leftFileCards, (fileName) => {
-  jumpToFileStart(leftEditor, leftSegments, fileName);
-});
-bindFileCardJump(rightFileCards, (fileName) => {
-  jumpToFileStart(rightEditor, rightSegments, fileName);
+(
+  Object.entries(paneBindings) as [
+    "left" | "right",
+    (typeof paneBindings)["left"],
+  ][]
+).forEach(([side, config]) => {
+  bindDropZone(
+    config.pane,
+    config.editor,
+    config.message,
+    config.encodingSelect,
+    config.segments,
+    config.rawFiles,
+    side,
+  );
+  bindFileCardJump(config.fileCards, (fileName) => {
+    jumpToFileStart(config.editor, config.segments, fileName);
+  });
 });
 
 bindFavoritePane("left", {
@@ -2442,26 +2461,23 @@ function bindFilePicker(
   });
 }
 
-bindFilePicker(
-  leftFileInput,
-  leftFileButton,
-  leftEditor,
-  leftMessage,
-  leftEncodingSelect,
-  leftSegments,
-  leftFileBytes,
-  "left",
-);
-bindFilePicker(
-  rightFileInput,
-  rightFileButton,
-  rightEditor,
-  rightMessage,
-  rightEncodingSelect,
-  rightSegments,
-  rightFileBytes,
-  "right",
-);
+(
+  Object.entries(paneBindings) as [
+    "left" | "right",
+    (typeof paneBindings)["left"],
+  ][]
+).forEach(([side, config]) => {
+  bindFilePicker(
+    config.fileInput,
+    config.fileButton,
+    config.editor,
+    config.message,
+    config.encodingSelect,
+    config.segments,
+    config.rawFiles,
+    side,
+  );
+});
 
 leftEncodingSelect.addEventListener("change", () => {
   const encoding = leftEncodingSelect.value as FileEncoding;
