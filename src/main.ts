@@ -47,6 +47,7 @@ import { handleAnchorShortcut } from "./ui/anchorShortcut";
 import {
   handleLeftAnchorClick,
   handleRightAnchorClick,
+  type AnchorClickResult,
 } from "./ui/anchorClick";
 import { resetAllAnchors } from "./ui/anchorReset";
 import { getNextAnchorKey, resolveAnchorMoveDelta } from "./ui/anchorNavigation";
@@ -2909,27 +2910,31 @@ function applyAnchorResult(
 }
 
 function handleLeftAnchorAction(lineNo: number) {
-  const result = handleLeftAnchorClick({
-    manualAnchors,
-    pendingLeftLineNo,
-    pendingRightLineNo,
-    autoAnchor,
-    suppressedAutoAnchorKey,
-    lineNo,
-  });
-  applyAnchorResult(result, "left");
+  runAnchorAction(lineNo, "left", handleLeftAnchorClick);
 }
 
 function handleRightAnchorAction(lineNo: number) {
-  const result = handleRightAnchorClick({
+  runAnchorAction(lineNo, "right", handleRightAnchorClick);
+}
+
+function buildAnchorClickState(lineNo: number) {
+  return {
     manualAnchors,
     pendingLeftLineNo,
     pendingRightLineNo,
     autoAnchor,
     suppressedAutoAnchorKey,
     lineNo,
-  });
-  applyAnchorResult(result, "right");
+  };
+}
+
+function runAnchorAction(
+  lineNo: number,
+  side: "left" | "right",
+  handler: (state: ReturnType<typeof buildAnchorClickState>) => AnchorClickResult,
+) {
+  const result = handler(buildAnchorClickState(lineNo));
+  applyAnchorResult(result, side);
 }
 
 type ZoneSide = "insert" | "delete";
