@@ -97,7 +97,10 @@ import {
   applyFavoritePathFocus,
   renderFavoritePaths,
 } from "./ui/favoritePaths";
-import { createFavoritePanelController } from "./ui/favoritePanel";
+import {
+  createFavoritePanelController,
+  type FavoritePanelController,
+} from "./ui/favoritePanel";
 import { handleFavoritePanelShortcut } from "./ui/favoritePanelShortcut";
 import { handleFileOpenShortcut } from "./ui/fileOpenShortcut";
 import { handlePaneClearShortcut } from "./ui/paneClearShortcut";
@@ -422,6 +425,14 @@ function getFavoritePaths(side: FavoritePane): string[] {
   return side === "left" ? leftFavoriteList : rightFavoriteList;
 }
 
+function setFavoritePaths(side: FavoritePane, paths: string[]) {
+  if (side === "left") {
+    leftFavoriteList = paths;
+  } else {
+    rightFavoriteList = paths;
+  }
+}
+
 function getFavoriteList(side: FavoritePane): HTMLDivElement {
   return side === "left" ? leftFavoritePaths : rightFavoritePaths;
 }
@@ -570,8 +581,8 @@ function renderWorkspacePanel(options?: {
 }
 
 function loadFavoriteListsForWorkspace(workspaceId: string) {
-  leftFavoriteList = loadFavoritePaths(storage, "left", workspaceId);
-  rightFavoriteList = loadFavoritePaths(storage, "right", workspaceId);
+  setFavoritePaths("left", loadFavoritePaths(storage, "left", workspaceId));
+  setFavoritePaths("right", loadFavoritePaths(storage, "right", workspaceId));
   favoriteFocusIndex.left = null;
   favoriteFocusIndex.right = null;
   renderFavoriteList("left");
@@ -774,11 +785,7 @@ function handleFavoriteAddResult(
     toast.show(message, "error");
     return false;
   }
-  if (side === "left") {
-    leftFavoriteList = result.paths;
-  } else {
-    rightFavoriteList = result.paths;
-  }
+  setFavoritePaths(side, result.paths);
   renderFavoriteList(side);
   toast.show("パスを追加しました");
   return true;
@@ -796,14 +803,8 @@ function bindFavoritePane(
   const { input, saveButton, error, list } = options;
 
   const getWorkspaceId = () => workspaceState.selectedId;
-  const getPaths = () => (side === "left" ? leftFavoriteList : rightFavoriteList);
-  const setPaths = (paths: string[]) => {
-    if (side === "left") {
-      leftFavoriteList = paths;
-    } else {
-      rightFavoriteList = paths;
-    }
-  };
+  const getPaths = () => getFavoritePaths(side);
+  const setPaths = (paths: string[]) => setFavoritePaths(side, paths);
 
   const handleAdd = () => {
     const current = getPaths();
@@ -2182,19 +2183,29 @@ const rightFavoriteController = createFavoritePanelController({
   },
 });
 
-leftFavoriteAdd.addEventListener("click", () => {
-  if (rightFavoriteController.isOpen()) {
-    rightFavoriteController.close();
-  }
-  leftFavoriteController.toggle();
-});
+function bindFavoriteToggleButton(
+  toggleButton: HTMLButtonElement,
+  controller: FavoritePanelController,
+  otherController: FavoritePanelController,
+) {
+  toggleButton.addEventListener("click", () => {
+    if (otherController.isOpen()) {
+      otherController.close();
+    }
+    controller.toggle();
+  });
+}
 
-rightFavoriteAdd.addEventListener("click", () => {
-  if (leftFavoriteController.isOpen()) {
-    leftFavoriteController.close();
-  }
-  rightFavoriteController.toggle();
-});
+bindFavoriteToggleButton(
+  leftFavoriteAdd,
+  leftFavoriteController,
+  rightFavoriteController,
+);
+bindFavoriteToggleButton(
+  rightFavoriteAdd,
+  rightFavoriteController,
+  leftFavoriteController,
+);
 
 workspaceCreate.addEventListener("click", () => {
   persistCurrentWorkspaceState();
@@ -2658,11 +2669,7 @@ window.addEventListener(
             if (next === current) {
               return;
             }
-            if (favoriteOpenSide === "left") {
-              leftFavoriteList = next;
-            } else {
-              rightFavoriteList = next;
-            }
+            setFavoritePaths(favoriteOpenSide, next);
             favoriteFocusIndex[favoriteOpenSide] =
               adjustFavoriteFocusAfterRemove(
                 favoriteFocusIndex[favoriteOpenSide],
