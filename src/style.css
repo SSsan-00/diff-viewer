@@ -1540,6 +1540,111 @@ body {
   }
 }
 
+@media (max-width: 768px) {
+  #app {
+    height: 100dvh;
+  }
+
+  .toolbar {
+    padding: 12px 16px;
+  }
+
+  .toolbar-right {
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .anchor-panel {
+    padding: 10px 16px;
+  }
+
+  .anchor-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .anchor-header-right {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .editors {
+    gap: 12px;
+    padding: 12px 12px 18px;
+  }
+
+  .editor-pane {
+    min-height: 40vh;
+  }
+
+  .pane-title {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+  }
+
+  .pane-title-left,
+  .pane-actions,
+  .file-picker {
+    flex-wrap: wrap;
+    row-gap: 6px;
+  }
+
+  .file-picker .button {
+    max-width: 160px;
+  }
+
+  .workspace-panel {
+    left: 8px;
+    right: auto;
+    width: min(92vw, 320px);
+    max-width: 92vw;
+  }
+
+  .favorite-panel {
+    left: 8px;
+    right: 8px;
+    max-height: min(70vh, 520px);
+  }
+
+  .goto-line-panel {
+    left: 8px;
+    right: 8px;
+    max-width: 92vw;
+  }
+
+  .button,
+  .toggle,
+  .workspace-item,
+  .favorite-path,
+  .favorite-path__copy,
+  .favorite-path__action,
+  .goto-line-file,
+  .anchor-remove {
+    min-height: 36px;
+  }
+}
+
+@media (max-width: 480px) {
+  .toolbar-right {
+    gap: 8px;
+  }
+
+  .button {
+    padding: 8px 14px;
+    font-size: 0.9rem;
+  }
+
+  .toggle {
+    padding: 6px 10px;
+    font-size: 0.82rem;
+  }
+
+  .pane-select {
+    font-size: 0.7rem;
+  }
+}
+
 /* Dark theme overrides */
 [data-theme="dark"] {
   color: #e6e2d8;
