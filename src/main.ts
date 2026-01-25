@@ -2134,19 +2134,18 @@ const paneEntries = Object.entries(paneBindings) as [
   "left" | "right",
   (typeof paneBindings)["left"],
 ][];
+const paneSides = paneEntries.map(([side]) => side);
 
 const initialWorkspace = getSelectedWorkspace(workspaceState);
 if (initialWorkspace) {
-  applyWorkspacePaneSnapshot("left", getWorkspacePaneSnapshot(initialWorkspace, "left"), {
-    applyText: false,
-  });
-  applyWorkspacePaneSnapshot("right", getWorkspacePaneSnapshot(initialWorkspace, "right"), {
-    applyText: false,
+  paneSides.forEach((side) => {
+    applyWorkspacePaneSnapshot(side, getWorkspacePaneSnapshot(initialWorkspace, side), {
+      applyText: false,
+    });
   });
 }
 refreshSyntaxHighlight();
-renderFavoriteList("left");
-renderFavoriteList("right");
+paneSides.forEach((side) => renderFavoriteList(side));
 renderWorkspacePanel();
 
 const workspaceController = createWorkspacePanelController({
@@ -2351,18 +2350,22 @@ paneEntries.forEach(([side, config]) => {
   });
 });
 
-bindFavoritePane("left", {
-  input: leftFavoriteInput,
-  saveButton: leftFavoriteSave,
-  error: leftFavoriteError,
-  list: leftFavoritePaths,
-});
-
-bindFavoritePane("right", {
-  input: rightFavoriteInput,
-  saveButton: rightFavoriteSave,
-  error: rightFavoriteError,
-  list: rightFavoritePaths,
+const favoriteBindings = {
+  left: {
+    input: leftFavoriteInput,
+    saveButton: leftFavoriteSave,
+    error: leftFavoriteError,
+    list: leftFavoritePaths,
+  },
+  right: {
+    input: rightFavoriteInput,
+    saveButton: rightFavoriteSave,
+    error: rightFavoriteError,
+    list: rightFavoritePaths,
+  },
+} as const;
+paneSides.forEach((side) => {
+  bindFavoritePane(side, favoriteBindings[side]);
 });
 
 function bindGoToLinePanel(side: "left" | "right") {
@@ -2406,8 +2409,9 @@ function bindGoToLinePanel(side: "left" | "right") {
   });
 }
 
-bindGoToLinePanel("left");
-bindGoToLinePanel("right");
+paneSides.forEach((side) => {
+  bindGoToLinePanel(side);
+});
 
 function bindFilePicker(
   input: HTMLInputElement,
@@ -2455,13 +2459,11 @@ paneEntries.forEach(([side, config]) => {
   );
 });
 
-leftEncodingSelect.addEventListener("change", () => {
-  const encoding = leftEncodingSelect.value as FileEncoding;
-  applyDecodedFiles("left", leftEditor, leftSegments, leftFileBytes, encoding);
-});
-rightEncodingSelect.addEventListener("change", () => {
-  const encoding = rightEncodingSelect.value as FileEncoding;
-  applyDecodedFiles("right", rightEditor, rightSegments, rightFileBytes, encoding);
+paneEntries.forEach(([side, config]) => {
+  config.encodingSelect.addEventListener("change", () => {
+    const encoding = config.encodingSelect.value as FileEncoding;
+    applyDecodedFiles(side, config.editor, config.segments, config.rawFiles, encoding);
+  });
 });
 
 function getPersistedStateSnapshot(): PersistedState {
