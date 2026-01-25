@@ -3700,81 +3700,67 @@ recalcButton?.addEventListener("click", () => {
   recalcScheduler.runNow();
 });
 
-const leftClearOptions = {
+function buildPaneClearOptions(
+  side: "left" | "right",
+  config: {
+    editor: monaco.editor.IStandaloneCodeEditor;
+    segments: LineSegment[];
+    message: HTMLDivElement;
+  },
+) {
+  return {
+    editor: config.editor,
+    segments: config.segments,
+    updateLineNumbers,
+    onBeforeClear: () => {
+      anchorUndoState = null;
+      clearUndoState = {
+        snapshot: captureAnchorSnapshot(),
+        left: {
+          beforeVersionId: getEditorAlternativeVersionId(leftEditor),
+          afterVersionId: null,
+          pane: collectWorkspacePaneSnapshot("left"),
+        },
+        right: {
+          beforeVersionId: getEditorAlternativeVersionId(rightEditor),
+          afterVersionId: null,
+          pane: collectWorkspacePaneSnapshot("right"),
+        },
+        status: "armed",
+        mode: "pane",
+        targetSide: side,
+      };
+    },
+    onAfterClear: () => {
+      if (clearUndoState?.mode === "pane" && clearUndoState.targetSide === side) {
+        if (side === "left") {
+          clearUndoState.left.afterVersionId = getEditorAlternativeVersionId(leftEditor);
+        } else {
+          clearUndoState.right.afterVersionId = getEditorAlternativeVersionId(rightEditor);
+        }
+      }
+      resetAllAnchorsAndDecorations();
+      updateFileCards(side, []);
+      clearPaneMessage(config.message);
+      clearPaneSummary(storage, side);
+      refreshSyntaxHighlight();
+      recalcDiff();
+      schedulePersist();
+      scheduleWorkspacePersist();
+    },
+  };
+}
+
+const leftClearOptions = buildPaneClearOptions("left", {
   editor: leftEditor,
   segments: leftSegments,
-  updateLineNumbers,
-  onBeforeClear: () => {
-    anchorUndoState = null;
-    clearUndoState = {
-      snapshot: captureAnchorSnapshot(),
-      left: {
-        beforeVersionId: getEditorAlternativeVersionId(leftEditor),
-        afterVersionId: null,
-        pane: collectWorkspacePaneSnapshot("left"),
-      },
-      right: {
-        beforeVersionId: getEditorAlternativeVersionId(rightEditor),
-        afterVersionId: null,
-        pane: collectWorkspacePaneSnapshot("right"),
-      },
-      status: "armed",
-      mode: "pane",
-      targetSide: "left",
-    };
-  },
-  onAfterClear: () => {
-    if (clearUndoState?.mode === "pane" && clearUndoState.targetSide === "left") {
-      clearUndoState.left.afterVersionId = getEditorAlternativeVersionId(leftEditor);
-    }
-    resetAllAnchorsAndDecorations();
-    updateFileCards("left", []);
-    clearPaneMessage(leftMessage);
-    clearPaneSummary(storage, "left");
-    refreshSyntaxHighlight();
-    recalcDiff();
-    schedulePersist();
-    scheduleWorkspacePersist();
-  },
-};
-
-const rightClearOptions = {
+  message: leftMessage,
+});
+const rightClearOptions = buildPaneClearOptions("right", {
   editor: rightEditor,
   segments: rightSegments,
-  updateLineNumbers,
-  onBeforeClear: () => {
-    anchorUndoState = null;
-    clearUndoState = {
-      snapshot: captureAnchorSnapshot(),
-      left: {
-        beforeVersionId: getEditorAlternativeVersionId(leftEditor),
-        afterVersionId: null,
-        pane: collectWorkspacePaneSnapshot("left"),
-      },
-      right: {
-        beforeVersionId: getEditorAlternativeVersionId(rightEditor),
-        afterVersionId: null,
-        pane: collectWorkspacePaneSnapshot("right"),
-      },
-      status: "armed",
-      mode: "pane",
-      targetSide: "right",
-    };
-  },
-  onAfterClear: () => {
-    if (clearUndoState?.mode === "pane" && clearUndoState.targetSide === "right") {
-      clearUndoState.right.afterVersionId = getEditorAlternativeVersionId(rightEditor);
-    }
-    resetAllAnchorsAndDecorations();
-    updateFileCards("right", []);
-    clearPaneMessage(rightMessage);
-    clearPaneSummary(storage, "right");
-    refreshSyntaxHighlight();
-    recalcDiff();
-    schedulePersist();
-    scheduleWorkspacePersist();
-  },
-};
+  message: rightMessage,
+});
 
 bindPaneClearButton(leftClearButton, leftClearOptions);
 bindPaneClearButton(rightClearButton, rightClearOptions);
