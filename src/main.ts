@@ -2164,27 +2164,45 @@ if (pendingWorkspaceToggle) {
   requestWorkspaceToggle();
 }
 
-const leftFavoriteController = createFavoritePanelController({
+function createFavoriteController(
+  side: "left" | "right",
+  elements: {
+    panel: HTMLElement;
+    overlay: HTMLElement;
+    addButton: HTMLButtonElement;
+    cancelButton: HTMLButtonElement;
+    input: HTMLInputElement;
+    error: HTMLDivElement;
+  },
+) {
+  return createFavoritePanelController({
+    panel: elements.panel,
+    overlay: elements.overlay,
+    addButton: elements.addButton,
+    cancelButton: elements.cancelButton,
+    input: elements.input,
+    onReset: () => {
+      setFavoriteError(elements.error, "");
+      setFavoriteFocus(side, null);
+    },
+  });
+}
+
+const leftFavoriteController = createFavoriteController("left", {
   panel: leftFavoritePanel,
   overlay: leftFavoriteOverlay,
   addButton: leftFavoriteAdd,
   cancelButton: leftFavoriteCancel,
   input: leftFavoriteInput,
-  onReset: () => {
-    setFavoriteError(leftFavoriteError, "");
-    setFavoriteFocus("left", null);
-  },
+  error: leftFavoriteError,
 });
-const rightFavoriteController = createFavoritePanelController({
+const rightFavoriteController = createFavoriteController("right", {
   panel: rightFavoritePanel,
   overlay: rightFavoriteOverlay,
   addButton: rightFavoriteAdd,
   cancelButton: rightFavoriteCancel,
   input: rightFavoriteInput,
-  onReset: () => {
-    setFavoriteError(rightFavoriteError, "");
-    setFavoriteFocus("right", null);
-  },
+  error: rightFavoriteError,
 });
 
 function bindFavoriteToggleButton(
