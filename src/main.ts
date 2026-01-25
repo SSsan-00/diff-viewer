@@ -2130,6 +2130,10 @@ const paneBindings = {
     fileButton: rightFileButton,
   },
 } as const;
+const paneEntries = Object.entries(paneBindings) as [
+  "left" | "right",
+  (typeof paneBindings)["left"],
+][];
 
 const initialWorkspace = getSelectedWorkspace(workspaceState);
 if (initialWorkspace) {
@@ -2332,12 +2336,7 @@ bindWorkspaceDragHandlers(workspaceList, (move) => {
   renderWorkspacePanel();
 });
 
-(
-  Object.entries(paneBindings) as [
-    "left" | "right",
-    (typeof paneBindings)["left"],
-  ][]
-).forEach(([side, config]) => {
+paneEntries.forEach(([side, config]) => {
   bindDropZone(
     config.pane,
     config.editor,
@@ -2443,12 +2442,7 @@ function bindFilePicker(
   });
 }
 
-(
-  Object.entries(paneBindings) as [
-    "left" | "right",
-    (typeof paneBindings)["left"],
-  ][]
-).forEach(([side, config]) => {
+paneEntries.forEach(([side, config]) => {
   bindFilePicker(
     config.fileInput,
     config.fileButton,
