@@ -87,6 +87,10 @@ function stripRazorLinePrefix(line: string): string {
   return match[1] + line.slice(match[0].length);
 }
 
+function hasStringLiteral(line: string): boolean {
+  return /'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/.test(line);
+}
+
 function isElseLine(line: string): boolean {
   const stripped = stripStringLiterals(line);
   return /\belse\b/i.test(stripped);
@@ -103,7 +107,8 @@ export type LineFeatures = {
 function detectAppendLike(line: string): boolean {
   return (
     /\.(?:append|appendline|appendformat)\s*\(/i.test(line) ||
-    /\.\=/.test(line)
+    /\.\=/.test(line) ||
+    (/\+=/.test(line) && hasStringLiteral(line))
   );
 }
 
@@ -148,6 +153,10 @@ function normalizeFragment(fragment: string): string {
     .replace(/['"]/g, "\"")
     .trim()
     .toLowerCase();
+}
+
+function normalizeLiteralToken(value: string): string {
+  return normalizeFragment(value);
 }
 
 function normalizeTemplateExpression(expression: string): string {
@@ -362,8 +371,10 @@ function extractLiterals(line: string): string[] {
   const literals: string[] = [];
   matches.forEach((value) => {
     const unescaped = unescapeLiteral(value.slice(1, -1)).replace(/[¥￥]/g, "\\");
-    const normalized = unescaped.toLowerCase();
-    literals.push(normalized);
+    const normalized = normalizeLiteralToken(unescaped);
+    if (normalized.length > 0) {
+      literals.push(normalized);
+    }
     if (normalized.endsWith(".php")) {
       const base = normalized.slice(0, -4);
       if (base.length > 0) {
@@ -592,6 +603,12 @@ export function buildLineFeatures(line: string): LineFeatures {
   }
   if (appendLike && !identifiers.includes("append")) {
     identifiers.push("append");
+  }
+  if (appendLiteral) {
+    const normalizedLiteral = normalizeLiteralToken(appendLiteral);
+    if (normalizedLiteral.length > 0 && !literals.includes(normalizedLiteral)) {
+      literals.push(normalizedLiteral);
+    }
   }
   const initVar = extractInitVariable(featureLine);
   if (initVar) {

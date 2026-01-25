@@ -160,6 +160,44 @@ describe("semantic alignment across languages", () => {
     expect(findBlankDelete(ops)).toBe(true);
   });
 
+  it("aligns SQL concatenation with large blank gaps", () => {
+    const left = [
+      "$sql = \"select name\";",
+      "$sql .= \",  age\";",
+      "$sql .= \" from          users\";",
+    ];
+    const right = [
+      "sql = \"select name\";",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "sql += \", age\";",
+      "sql += \" from users\";",
+    ];
+
+    const ops = toPairedOps(left, right);
+    // eslint-disable-next-line no-console
+    expect(findReplace(ops, "$sql .= \",  age\";", "sql += \", age\";")).toBe(true);
+    expect(findReplace(ops, "$sql .= \" from          users\";", "sql += \" from users\";")).toBe(true);
+    expect(findBlankInsert(ops)).toBe(true);
+  });
+
   it("aligns Razor @: prefixed return lines", () => {
     const left = ["console.log('foo');", "return;"];
     const right = ["@:console.log('foo');", "@:return;"];

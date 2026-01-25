@@ -57,7 +57,7 @@
 - `src/diffEngine/normalize.test.ts` `normalizeText` のユニットテスト。
 - `src/diffEngine/lineSignature.ts` 行の識別キー抽出（ユニーク行・対応付け補助）。Razor `@:` の比較用正規化を含む。export: `extractLineKey`。
 - `src/diffEngine/lineSignature.test.ts` 識別キー抽出のテスト。
-- `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル/埋め込みCSS/JS/HTMLの補助トークン）。Razor `@:` を比較時に除去し、AppendLine の文字列中身を比較に活用する。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`。
+- `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル/埋め込みCSS/JS/HTMLの補助トークン）。Razor `@:` を比較時に除去し、AppendLine や `+=`/`.=` の文字列中身（空白正規化）を比較に活用する。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`。
 - `src/diffEngine/diffLines.ts` 行レベル差分（Myers + ユニーク行優先）。exports: `diffLinesFromLines`, `diffLines`。
 - `src/diffEngine/diffLines.test.ts` 行差分の基本ケーステスト。
 - `src/diffEngine/diffLinesAlignment.test.ts` 行対応の安定性テスト。

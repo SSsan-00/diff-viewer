@@ -37,11 +37,19 @@ function extractFirstLiteral(line: string): string | null {
   if (!match) {
     return null;
   }
-  return match[0].slice(1, -1).toLowerCase();
+  return match[0].slice(1, -1).replace(/\s+/g, " ").toLowerCase();
+}
+
+function hasStringLiteral(line: string): boolean {
+  return /'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/.test(line);
 }
 
 function isAppendLike(line: string): boolean {
-  return /\.(?:append|appendline|appendformat)\s*\(/i.test(line) || /\.\=/.test(line);
+  return (
+    /\.(?:append|appendline|appendformat)\s*\(/i.test(line) ||
+    /\.\=/.test(line) ||
+    (/\+=/.test(line) && hasStringLiteral(line))
+  );
 }
 
 function extractInitVariable(line: string): string | null {
