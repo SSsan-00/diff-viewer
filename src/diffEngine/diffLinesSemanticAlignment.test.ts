@@ -499,6 +499,84 @@ describe("semantic alignment across languages", () => {
     expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
   });
 
+  it("aligns HTML lines against AppendLine outputs (5+ cases)", () => {
+    const left = [
+      "<div id=\"app\"></div>",
+      "<option value=\"<?= $foo ?>\">$bar</option>",
+      "<link rel=\"icon\" type=\"image/svg+xml\" href=\"data:image/svg+xml,...\">",
+      "<script type=\"module\" src=\"/src/main.ts\"></script>",
+      "</body>",
+    ];
+    const right = [
+      "sb.AppendLine(\"<div id=\\\"app\\\"></div>\");",
+      "sb.AppendLine($\"<option value=\\\"{foo}\\\">{bar}</option>\");",
+      "sb.AppendLine(\"<link rel=\\\"icon\\\" type=\\\"image/svg+xml\\\" href=\\\"data:image/svg+xml,...\\\">\");",
+      "sb.AppendLine(\"<script type=\\\"module\\\" src=\\\"/src/main.ts\\\"></script>\");",
+      "sb.AppendLine(\"</body>\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<div id", "<div id")).toBe(true);
+    expect(findReplace(ops, "<option value", "<option value")).toBe(true);
+    expect(findReplace(ops, "<link rel", "<link rel")).toBe(true);
+    expect(findReplace(ops, "<script type", "<script type")).toBe(true);
+    expect(findReplace(ops, "</body>", "</body>")).toBe(true);
+    const inline = diffInline(left[0], right[0]);
+    expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
+  });
+
+  it("aligns CSS lines against AppendLine outputs (5+ cases)", () => {
+    const left = [
+      "body {",
+      "  width: 100%;",
+      "div#foo div#bar {",
+      "  background-image: url(\"a.png\");",
+      "}",
+    ];
+    const right = [
+      "sb.AppendLine(\"body {\");",
+      "sb.AppendLine(\"  width: 100%;\");",
+      "sb.AppendLine(\"div#foo div#bar {\");",
+      "sb.AppendLine(\"  background-image: url(\\\"a.png\\\");\");",
+      "sb.AppendLine(\"}\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "body {", "body {")).toBe(true);
+    expect(findReplace(ops, "width: 100%", "width: 100%")).toBe(true);
+    expect(findReplace(ops, "div#foo div#bar {", "div#foo div#bar {")).toBe(true);
+    expect(findReplace(ops, "background-image", "background-image")).toBe(true);
+    expect(findReplace(ops, "}", "}")).toBe(true);
+    const inline = diffInline(left[3], right[3]);
+    expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
+  });
+
+  it("aligns JS lines against AppendLine outputs (5+ cases)", () => {
+    const left = [
+      "const foo = 'foo';",
+      "console.log(foo);",
+      "return;",
+      "fetch('/api');",
+      "if (a) {",
+    ];
+    const right = [
+      "js.AppendLine(\"const foo = \\\"foo\\\";\");",
+      "js.AppendLine(\"console.log(foo);\");",
+      "js.AppendLine(\"return;\");",
+      "js.AppendLine(\"fetch(\\\"/api\\\");\");",
+      "js.AppendLine(\"if (a) {\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "const foo", "const foo")).toBe(true);
+    expect(findReplace(ops, "console.log", "console.log")).toBe(true);
+    expect(findReplace(ops, "return;", "return;")).toBe(true);
+    expect(findReplace(ops, "fetch", "fetch")).toBe(true);
+    expect(findReplace(ops, "if (a)", "if (a)")).toBe(true);
+    const inline = diffInline(left[0], right[0]);
+    expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
+  });
+
   it("does not align mismatched append literal statements", () => {
     const left = ["return;"];
     const right = ["js.AppendLine(\"break;\");"];
