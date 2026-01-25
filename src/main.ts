@@ -218,6 +218,11 @@ function scheduleWorkspacePersist() {
   }, 220);
 }
 
+function schedulePersistAll() {
+  schedulePersist();
+  scheduleWorkspacePersist();
+}
+
 function cancelWorkspacePersist() {
   if (workspacePersistTimer) {
     clearTimeout(workspacePersistTimer);
@@ -636,8 +641,7 @@ function applyWorkspaceState(
       applyWorkspaceAnchors(selected.anchors);
       anchorUndoState = null;
       recalcScheduler.runNow();
-      schedulePersist();
-      scheduleWorkspacePersist();
+      schedulePersistAll();
     }
   }
 }
@@ -1414,8 +1418,7 @@ function restoreAnchorsFromSnapshot(snapshot: AnchorSnapshot) {
   pendingRightLineNo = snapshot.pendingRightLineNo;
   selectedAnchorKey = snapshot.selectedAnchorKey;
   recalcDiff();
-  schedulePersist();
-  scheduleWorkspacePersist();
+  schedulePersistAll();
 }
 
 function clearUndoMetaForSide(side: "left" | "right"): ClearUndoPaneState | null {
@@ -1490,8 +1493,7 @@ function clearAfterRedoPane(side: "left" | "right"): void {
   }
   resetAllAnchorsAndDecorations();
   recalcDiff();
-  schedulePersist();
-  scheduleWorkspacePersist();
+  schedulePersistAll();
 }
 
 function clearAfterRedo(): void {
@@ -1512,8 +1514,7 @@ function clearAfterRedo(): void {
   setGoToLineSelection("right", null, { persist: false });
   resetAllAnchorsAndDecorations();
   recalcDiff();
-  schedulePersist();
-  scheduleWorkspacePersist();
+  schedulePersistAll();
 }
 
 function handleClearUndoRedo(
@@ -1581,8 +1582,7 @@ function handleClearUndoRedo(
 function clearAnchorsForRedo() {
   resetAllAnchorsAndDecorations();
   recalcDiff();
-  schedulePersist();
-  scheduleWorkspacePersist();
+  schedulePersistAll();
 }
 
 function bindAnchorUndoHandler(
@@ -1890,8 +1890,7 @@ leftEditor.onDidChangeModelContent((event) => {
   updateSegmentsForChanges(leftSegments, event.changes);
   updateLineNumbers(leftEditor, leftSegments);
   leftFileBytes.length = 0;
-  schedulePersist();
-  scheduleWorkspacePersist();
+  schedulePersistAll();
   scheduleRecalc();
 });
 rightEditor.onDidChangeModelContent((event) => {
@@ -1901,8 +1900,7 @@ rightEditor.onDidChangeModelContent((event) => {
   updateSegmentsForChanges(rightSegments, event.changes);
   updateLineNumbers(rightEditor, rightSegments);
   rightFileBytes.length = 0;
-  schedulePersist();
-  scheduleWorkspacePersist();
+  schedulePersistAll();
   scheduleRecalc();
 });
 
@@ -1940,8 +1938,7 @@ function applyDecodedFiles(
   }
   refreshSyntaxHighlight();
   recalcDiff();
-  schedulePersist();
-  scheduleWorkspacePersist();
+  schedulePersistAll();
 }
 
 function isSegmentLayoutValid(segments: LineSegment[], text: string): boolean {
@@ -2913,8 +2910,7 @@ function applyAnchorResult(result: AnchorClickResult, side: "left" | "right") {
   );
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
-  schedulePersist();
-  scheduleWorkspacePersist();
+  schedulePersistAll();
 }
 
 function getAnchorActionMessage(
@@ -3290,8 +3286,7 @@ function renderAnchors(
       );
       updateAnchorWarning(validation.invalid);
       renderAnchors(validation.invalid, validation.valid);
-      schedulePersist();
-      scheduleWorkspacePersist();
+      schedulePersistAll();
     });
 
     item.appendChild(label);
@@ -3751,8 +3746,7 @@ function buildPaneClearOptions(
       clearPaneSummary(storage, side);
       refreshSyntaxHighlight();
       recalcDiff();
-      schedulePersist();
-      scheduleWorkspacePersist();
+      schedulePersistAll();
     },
   };
 }
