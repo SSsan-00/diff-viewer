@@ -24,6 +24,7 @@
 │   ├── storage/
 │   ├── types/
 │   └── ui/
+├── text/
 ├── patches/
 ├── index.html
 ├── package.json
@@ -126,6 +127,19 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `doc/MANUAL.md` テキスト版の利用マニュアル（Windows前提の操作一覧）。
 - `doc/MANUAL.html` 画像付きの操作マニュアル（単一HTML）。
 - `doc/manual-assets/` MANUAL.html 生成用のスクリーンショット素材。
+
+## text/
+
+- `text/README.md` コードリーディング教材の入口（読み順）。
+- `text/01_overview.md` 全体像の解説。
+- `text/02_entry_and_boot.md` 起動〜初期化の流れ。
+- `text/03_ui_architecture.md` UI構造とイベントの解説。
+- `text/04_diff_pipeline.md` 差分計算パイプラインの解説。
+- `text/05_monaco_integration.md` Monaco連携の解説。
+- `text/06_state_and_storage.md` 状態管理と永続化の解説。
+- `text/07_testing_strategy.md` テスト戦略の解説。
+- `text/08_typical_changes.md` よくある変更の当たり。
+- `text/glossary.md` 用語集。
 
 ## scripts/
 

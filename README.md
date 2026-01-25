@@ -110,6 +110,7 @@ pnpm run verify:dist
 ## Project Structure
 
 - 構成の概要は `doc/STRUCTURE.md` を参照してください。
+- TypeScript 初心者向けのコードリーディング教材は `text/README.md` を参照してください。
 
 ---
 
