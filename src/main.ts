@@ -3429,36 +3429,39 @@ function applyViewZones(
   currentZoneIds: string[],
   zones: ViewZoneSpec[],
 ): string[] {
-  const nextZoneIds: string[] = [];
-
-  editor.changeViewZones((accessor: monaco.editor.IViewZoneChangeAccessor) => {
-    for (const zoneId of currentZoneIds) {
-      accessor.removeZone(zoneId);
+  return applyZones(editor, currentZoneIds, zones, (zone) => {
+    const domNode = document.createElement("div");
+    domNode.className = zone.className;
+    if (zone.label) {
+      domNode.textContent = zone.label;
     }
-
-    for (const zone of zones) {
-      const domNode = document.createElement("div");
-      domNode.className = zone.className;
-      if (zone.label) {
-        domNode.textContent = zone.label;
-      }
-      const zoneId = accessor.addZone({
-        afterLineNumber: zone.afterLineNumber,
-        heightInLines: zone.heightInLines,
-        heightInPx: zone.heightInPx,
-        domNode,
-      });
-      nextZoneIds.push(zoneId);
-    }
+    return domNode;
   });
-
-  return nextZoneIds;
 }
 
 function applyFoldZones(
   editor: monaco.editor.IStandaloneCodeEditor,
   currentZoneIds: string[],
   zones: FoldZoneSpec[],
+): string[] {
+  return applyZones(editor, currentZoneIds, zones, (zone) => {
+    const domNode = document.createElement("div");
+    domNode.className = zone.className;
+    domNode.textContent = zone.label;
+    domNode.addEventListener("click", zone.onClick);
+    return domNode;
+  });
+}
+
+function applyZones<T extends {
+  afterLineNumber: number;
+  heightInLines?: number;
+  heightInPx?: number;
+}>(
+  editor: monaco.editor.IStandaloneCodeEditor,
+  currentZoneIds: string[],
+  zones: T[],
+  buildDomNode: (zone: T) => HTMLElement,
 ): string[] {
   const nextZoneIds: string[] = [];
 
@@ -3468,13 +3471,11 @@ function applyFoldZones(
     }
 
     for (const zone of zones) {
-      const domNode = document.createElement("div");
-      domNode.className = zone.className;
-      domNode.textContent = zone.label;
-      domNode.addEventListener("click", zone.onClick);
+      const domNode = buildDomNode(zone);
       const zoneId = accessor.addZone({
         afterLineNumber: zone.afterLineNumber,
         heightInLines: zone.heightInLines,
+        heightInPx: zone.heightInPx,
         domNode,
       });
       nextZoneIds.push(zoneId);
