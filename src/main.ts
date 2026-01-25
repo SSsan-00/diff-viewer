@@ -2204,6 +2204,14 @@ const rightFavoriteController = createFavoriteController("right", {
   input: rightFavoriteInput,
   error: rightFavoriteError,
 });
+const favoriteControllers = {
+  left: leftFavoriteController,
+  right: rightFavoriteController,
+} as const;
+const favoriteAddButtons = {
+  left: leftFavoriteAdd,
+  right: rightFavoriteAdd,
+} as const;
 
 function bindFavoriteToggleButton(
   toggleButton: HTMLButtonElement,
@@ -2218,16 +2226,14 @@ function bindFavoriteToggleButton(
   });
 }
 
-bindFavoriteToggleButton(
-  leftFavoriteAdd,
-  leftFavoriteController,
-  rightFavoriteController,
-);
-bindFavoriteToggleButton(
-  rightFavoriteAdd,
-  rightFavoriteController,
-  leftFavoriteController,
-);
+paneSides.forEach((side) => {
+  const otherSide = side === "left" ? "right" : "left";
+  bindFavoriteToggleButton(
+    favoriteAddButtons[side],
+    favoriteControllers[side],
+    favoriteControllers[otherSide],
+  );
+});
 
 workspaceCreate.addEventListener("click", () => {
   persistCurrentWorkspaceState();
