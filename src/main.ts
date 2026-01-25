@@ -204,27 +204,9 @@ function scheduleWorkspacePersist() {
   }
   workspacePersistTimer = setTimeout(() => {
     workspacePersistTimer = null;
-    let result = setWorkspacePaneState(
-      storage,
-      workspaceState,
-      workspaceState.selectedId,
-      "left",
-      collectWorkspacePaneSnapshot("left"),
-    );
-    if (result.ok) {
-      workspaceState = result.state;
-    }
-    result = setWorkspacePaneState(
-      storage,
-      workspaceState,
-      workspaceState.selectedId,
-      "right",
-      collectWorkspacePaneSnapshot("right"),
-    );
-    if (result.ok) {
-      workspaceState = result.state;
-    }
-    result = setWorkspaceAnchors(
+    persistWorkspacePaneState("left");
+    persistWorkspacePaneState("right");
+    const result = setWorkspaceAnchors(
       storage,
       workspaceState,
       workspaceState.selectedId,
