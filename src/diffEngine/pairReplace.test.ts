@@ -103,6 +103,70 @@ describe("pairReplace", () => {
     ]);
   });
 
+  it("keeps leading inserts before matched replaces", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "L1", leftLineNo: 0 },
+      { type: "delete", leftLine: "L2", leftLineNo: 1 },
+      { type: "insert", rightLine: "// comment", rightLineNo: 0 },
+      { type: "insert", rightLine: "L1", rightLineNo: 1 },
+      { type: "insert", rightLine: "L2", rightLineNo: 2 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "insert",
+        rightLine: "// comment",
+        rightLineNo: 0,
+      },
+      {
+        type: "replace",
+        leftLine: "L1",
+        rightLine: "L1",
+        leftLineNo: 0,
+        rightLineNo: 1,
+      },
+      {
+        type: "replace",
+        leftLine: "L2",
+        rightLine: "L2",
+        leftLineNo: 1,
+        rightLineNo: 2,
+      },
+    ]);
+  });
+
+  it("keeps inserts between matched replaces", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "L1", leftLineNo: 0 },
+      { type: "delete", leftLine: "L2", leftLineNo: 1 },
+      { type: "insert", rightLine: "L1", rightLineNo: 0 },
+      { type: "insert", rightLine: "// mid", rightLineNo: 1 },
+      { type: "insert", rightLine: "L2", rightLineNo: 2 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "replace",
+        leftLine: "L1",
+        rightLine: "L1",
+        leftLineNo: 0,
+        rightLineNo: 0,
+      },
+      {
+        type: "insert",
+        rightLine: "// mid",
+        rightLineNo: 1,
+      },
+      {
+        type: "replace",
+        leftLine: "L2",
+        rightLine: "L2",
+        leftLineNo: 1,
+        rightLineNo: 2,
+      },
+    ]);
+  });
+
   it("prioritizes indent similarity when pairing", () => {
     const input: LineOp[] = [
       { type: "delete", leftLine: "  $foo = 1;", leftLineNo: 0 },

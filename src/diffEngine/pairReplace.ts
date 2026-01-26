@@ -168,6 +168,7 @@ function toPairedOp(op: LineOp): PairedOp {
 
 function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
   const usedInserts = new Set<number>();
+  const emittedInserts = new Set<number>();
   const matches = new Array<number | undefined>(deletes.length).fill(undefined);
   const candidates = buildCandidates(deletes, inserts).sort(sortCandidates);
 
@@ -180,11 +181,29 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
   }
 
   const result: PairedOp[] = [];
+  let insertCursor = 0;
+
+  const emitUnmatchedInsertsBefore = (stopRightLineNo?: number) => {
+    while (insertCursor < inserts.length) {
+      const insert = inserts[insertCursor];
+      const insertLineNo = insert.rightLineNo ?? Number.MAX_SAFE_INTEGER;
+      if (stopRightLineNo !== undefined && insertLineNo >= stopRightLineNo) {
+        break;
+      }
+      if (!usedInserts.has(insertCursor) && !emittedInserts.has(insertCursor)) {
+        result.push(toPairedOp(insert));
+        emittedInserts.add(insertCursor);
+      }
+      insertCursor += 1;
+    }
+  };
+
   for (let i = 0; i < deletes.length; i += 1) {
     const insertIndex = matches[i];
     if (insertIndex !== undefined) {
       const leftOp = deletes[i];
       const rightOp = inserts[insertIndex];
+      emitUnmatchedInsertsBefore(rightOp.rightLineNo);
       result.push({
         type: "replace",
         leftLine: leftOp.leftLine,
@@ -192,14 +211,19 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
         leftLineNo: leftOp.leftLineNo,
         rightLineNo: rightOp.rightLineNo,
       });
+      while (insertCursor <= insertIndex && insertCursor < inserts.length) {
+        insertCursor += 1;
+      }
       continue;
     }
     result.push(toPairedOp(deletes[i]));
   }
 
+  emitUnmatchedInsertsBefore(undefined);
   for (let i = 0; i < inserts.length; i += 1) {
-    if (!usedInserts.has(i)) {
+    if (!usedInserts.has(i) && !emittedInserts.has(i)) {
       result.push(toPairedOp(inserts[i]));
+      emittedInserts.add(i);
     }
   }
 
