@@ -246,6 +246,10 @@ function extractStructuredFragment(line: string): string | null {
   if (trimmed.length === 0) {
     return null;
   }
+  const switchLabel = normalizeSwitchLabel(trimmed);
+  if (switchLabel) {
+    return switchLabel;
+  }
   if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
     return normalizeFragment(trimmed);
   }
@@ -259,12 +263,16 @@ function extractStructuredFragment(line: string): string | null {
   if (detectAppendLike(line)) {
     const literal = extractAppendLiteral(line) ?? extractLiterals(line)[0];
     if (literal) {
-      return normalizeFragment(literal);
+      return normalizeSwitchLabel(literal) ?? normalizeFragment(literal);
     }
     return null;
   }
 
-  if (/^(function|console\.|return|if|for|while|switch|case)\b/i.test(trimmed)) {
+  if (
+    /^(function|console\.|return|if|for|while|switch|case|default|break|continue)\b/i.test(
+      trimmed,
+    )
+  ) {
     return normalizeFragment(trimmed);
   }
 
@@ -288,6 +296,17 @@ function extractStructuredFragment(line: string): string | null {
     return normalizeFragment(trimmed);
   }
 
+  return null;
+}
+
+function normalizeSwitchLabel(line: string): string | null {
+  const trimmed = line.trim();
+  if (/^case\b/i.test(trimmed)) {
+    return "case:";
+  }
+  if (/^default\s*:/i.test(trimmed)) {
+    return "default:";
+  }
   return null;
 }
 
@@ -489,6 +508,21 @@ function extractJsHintTokens(source: string): string[] {
   }
   if (/\breturn\b/.test(source)) {
     tokens.push("hint:js:return");
+  }
+  if (/\bswitch\b/.test(source)) {
+    tokens.push("hint:js:switch");
+  }
+  if (/\bcase\b/.test(source)) {
+    tokens.push("hint:js:case");
+  }
+  if (/\bdefault\b/.test(source)) {
+    tokens.push("hint:js:default");
+  }
+  if (/\bbreak\b/.test(source)) {
+    tokens.push("hint:js:break");
+  }
+  if (/\bcontinue\b/.test(source)) {
+    tokens.push("hint:js:continue");
   }
   if (/\bif\b/.test(source)) {
     tokens.push("hint:js:if");

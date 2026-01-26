@@ -577,6 +577,80 @@ describe("semantic alignment across languages", () => {
     expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
   });
 
+  it("aligns additional HTML AppendLine variants (5+ cases)", () => {
+    const left = [
+      "<section>",
+      "<div class=\"a  b\"></div>",
+      "<!-- note -->",
+      "<input name=\"user\" value=\"taro\">",
+      "# Repository Guidelines (AGENTS.md)",
+    ];
+    const right = [
+      "sb.AppendLine(@\"<section>\");",
+      "sb.AppendLine(\"<div class=\\\"a b\\\"></div>\");",
+      "sb.AppendLine(\"<!-- note -->\");",
+      "sb.AppendLine($\"<input name=\\\"{name}\\\" value=\\\"{value}\\\">\");",
+      "sb.AppendLine(\"# Repository Guidelines (AGENTS.md)\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<section>", "<section>")).toBe(true);
+    expect(findReplace(ops, "class=\"a  b\"", "class=\\\"a b\\\"")).toBe(true);
+    expect(findReplace(ops, "<!-- note -->", "<!-- note -->")).toBe(true);
+    expect(findReplace(ops, "<input name", "<input name")).toBe(true);
+    expect(findReplace(ops, "# Repository Guidelines", "# Repository Guidelines")).toBe(true);
+  });
+
+  it("aligns additional CSS AppendLine variants (5+ cases)", () => {
+    const left = [
+      "@media (max-width: 768px) {",
+      "  color: red;",
+      "  background: url(\"a.png\");",
+      "  padding: 0 8px;",
+      "}",
+    ];
+    const right = [
+      "sb.AppendLine($\"@media (max-width: {width}px) {{\");",
+      "sb.AppendLine(@\"  color: red;\");",
+      "sb.AppendLine(\"  background: url(\\\"a.png\\\");\");",
+      "sb.AppendLine(\"  padding: 0 8px;\");",
+      "sb.AppendLine(\"}\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "@media", "@media")).toBe(true);
+    expect(findReplace(ops, "color: red", "color: red")).toBe(true);
+    expect(findReplace(ops, "background: url", "background: url")).toBe(true);
+    expect(findReplace(ops, "padding: 0 8px", "padding: 0 8px")).toBe(true);
+    expect(findReplace(ops, "}", "}")).toBe(true);
+  });
+
+  it("aligns additional JS AppendLine variants with switch/case/default (5+ cases)", () => {
+    const left = [
+      "switch (value) {",
+      "case 1:",
+      "  return;",
+      "default:",
+      "  break;",
+      "}",
+    ];
+    const right = [
+      "js.AppendLine(\"switch (value) {\");",
+      "js.AppendLine($\"case {value}:\");",
+      "js.AppendLine(\"  return;\");",
+      "js.AppendLine(\"default:\");",
+      "js.AppendLine(\"  break;\");",
+      "js.AppendLine(\"}\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "switch", "switch")).toBe(true);
+    expect(findReplace(ops, "case 1:", "case")).toBe(true);
+    expect(findReplace(ops, "return;", "return;")).toBe(true);
+    expect(findReplace(ops, "default:", "default:")).toBe(true);
+    expect(findReplace(ops, "break;", "break;")).toBe(true);
+  });
+
   it("does not align mismatched append literal statements", () => {
     const left = ["return;"];
     const right = ["js.AppendLine(\"break;\");"];
