@@ -1470,6 +1470,22 @@ body {
   background: rgba(210, 90, 70, 0.08);
 }
 
+.monaco-editor .inline-space-diff {
+  background-color: rgba(255, 190, 20, 0.98);
+  box-shadow:
+    inset 0 0 0 1px rgba(130, 50, 0, 0.98),
+    0 0 0 2px rgba(255, 140, 0, 0.75);
+  border-radius: 3px;
+}
+
+[data-theme="dark"] .monaco-editor .inline-space-diff {
+  background-color: rgba(255, 200, 60, 0.85);
+  box-shadow:
+    inset 0 0 0 3px rgba(255, 210, 140, 0.98),
+    0 0 0 2px rgba(120, 220, 255, 0.95);
+  text-decoration-color: rgba(255, 220, 160, 0.98);
+}
+
 .find-widget-offset {
   pointer-events: none;
 }

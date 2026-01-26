@@ -65,6 +65,7 @@ import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
 import { createEditorOptions } from "./ui/editorOptions";
 import { renderFileCards } from "./ui/fileCards";
 import { bindFileCardJump } from "./ui/fileCardJump";
+import { extractHtmlAttributeSpaceDiffRangesPair } from "./diffEngine/htmlAttributeSpaceDiff";
 import { copyText } from "./ui/clipboard";
 import { copyFavoritePath } from "./ui/favoriteCopy";
 import {
@@ -3387,6 +3388,14 @@ function buildDecorations(ops: PairedOp[]): {
       const inline = diffInline(op.leftLine ?? "", op.rightLine ?? "");
       addInlineDecorations(left, op.leftLineNo, inline.leftRanges, "inline-delete");
       addInlineDecorations(right, op.rightLineNo, inline.rightRanges, "inline-insert");
+      const spaceRanges = extractHtmlAttributeSpaceDiffRangesPair(
+        op.leftLine ?? "",
+        op.rightLine ?? "",
+        inline.leftRanges,
+        inline.rightRanges,
+      );
+      addInlineDecorations(left, op.leftLineNo, spaceRanges.left, "inline-space-diff");
+      addInlineDecorations(right, op.rightLineNo, spaceRanges.right, "inline-space-diff");
     }
   }
 
