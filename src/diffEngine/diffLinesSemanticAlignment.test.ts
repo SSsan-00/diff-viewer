@@ -577,6 +577,81 @@ describe("semantic alignment across languages", () => {
     expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
   });
 
+  it("aligns HTML AppendLine outputs with escaped quotes (5+ cases)", () => {
+    const left = [
+      "<div class=\"name\">",
+      "<input id=\"user\" name=\"user\" value=\"taro\">",
+      "<span data-label=\"A\">",
+      "<a href=\"/path\">",
+      "</div>",
+    ];
+    const right = [
+      "sb.AppendLine(\"<div class=\\\"name\\\">\");",
+      "sb.AppendLine(\"<input id=\\\"user\\\" name=\\\"user\\\" value=\\\"taro\\\">\");",
+      "sb.AppendLine(\"<span data-label=\\\"A\\\">\");",
+      "sb.AppendLine(\"<a href=\\\"/path\\\">\");",
+      "sb.AppendLine(\"</div>\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<div class", "<div class")).toBe(true);
+    expect(findReplace(ops, "<input id", "<input id")).toBe(true);
+    expect(findReplace(ops, "<span data-label", "<span data-label")).toBe(true);
+    expect(findReplace(ops, "<a href", "<a href")).toBe(true);
+    expect(findReplace(ops, "</div>", "</div>")).toBe(true);
+  });
+
+  it("aligns CSS AppendLine outputs with quotes and comments (5+ cases)", () => {
+    const left = [
+      ".card {",
+      "  font-family: \"Inter\";",
+      "  content: \"hello\";",
+      "  /* comment */",
+      "}",
+    ];
+    const right = [
+      "css.AppendLine(\".card {\");",
+      "css.AppendLine(\"  font-family: \\\"Inter\\\";\");",
+      "css.AppendLine(\"  content: \\\"hello\\\";\");",
+      "css.AppendLine(\"  /* comment */\");",
+      "css.AppendLine(\"}\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, ".card", ".card")).toBe(true);
+    expect(findReplace(ops, "font-family", "font-family")).toBe(true);
+    expect(findReplace(ops, "content", "content")).toBe(true);
+    expect(findReplace(ops, "comment", "comment")).toBe(true);
+    expect(findReplace(ops, "}", "}")).toBe(true);
+  });
+
+  it("aligns JS AppendLine outputs with comments and escaped quotes (5+ cases)", () => {
+    const left = [
+      "const foo = 1; // comment",
+      "let bar = 2; /* note */",
+      "const msg = \"hello\";",
+      "switch (value) {",
+      "case 1:",
+      "default:",
+    ];
+    const right = [
+      "js.AppendLine(\"const foo = 1; // comment\");",
+      "js.AppendLine(\"let bar = 2; /* note */\");",
+      "js.AppendLine(\"const msg = \\\"hello\\\";\");",
+      "js.AppendLine(\"switch (value) {\");",
+      "js.AppendLine(\"case 1:\");",
+      "js.AppendLine(\"default:\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "const foo", "const foo")).toBe(true);
+    expect(findReplace(ops, "let bar", "let bar")).toBe(true);
+    expect(findReplace(ops, "const msg", "const msg")).toBe(true);
+    expect(findReplace(ops, "switch", "switch")).toBe(true);
+    expect(findReplace(ops, "case 1:", "case 1:")).toBe(true);
+    expect(findReplace(ops, "default:", "default:")).toBe(true);
+  });
+
   it("aligns additional HTML AppendLine variants (5+ cases)", () => {
     const left = [
       "<section>",
