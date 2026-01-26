@@ -9,6 +9,9 @@ function splitLines(text: string): string[] {
 
 function normalizeForMatch(line: string): string {
   const trimmed = stripRazorLinePrefix(line).replace(/^\s+/, "");
+  if (isBlankLine(trimmed)) {
+    return "";
+  }
   const initVar = extractInitVariable(trimmed);
   if (initVar) {
     return `init:${initVar}`;
@@ -26,6 +29,10 @@ function stripRazorLinePrefix(line: string): string {
     return line;
   }
   return match[1] + line.slice(match[0].length);
+}
+
+function isBlankLine(line: string): boolean {
+  return line.trim().length === 0;
 }
 
 function buildCompareLines(lines: string[]): string[] {
@@ -150,6 +157,18 @@ function backtrackOps(
       const leftKey = leftCompare[x - 1];
       const rightKey = rightCompare[y - 1];
       if (leftLine === rightLine) {
+        ops.push({
+          type: "equal",
+          leftLine,
+          rightLine,
+          leftLineNo: x - 1,
+          rightLineNo: y - 1,
+        });
+      } else if (
+        leftKey === rightKey &&
+        isBlankLine(leftLine) &&
+        isBlankLine(rightLine)
+      ) {
         ops.push({
           type: "equal",
           leftLine,
@@ -383,6 +402,18 @@ function diffLinesPatience(
     const leftKey = leftCompare[anchor.leftIndex] ?? "";
     const rightKey = rightCompare[anchor.rightIndex] ?? "";
     if (leftLine === rightLine) {
+      result.push({
+        type: "equal",
+        leftLine,
+        rightLine,
+        leftLineNo: leftOffset + anchor.leftIndex,
+        rightLineNo: rightOffset + anchor.rightIndex,
+      });
+    } else if (
+      leftKey === rightKey &&
+      isBlankLine(leftLine) &&
+      isBlankLine(rightLine)
+    ) {
       result.push({
         type: "equal",
         leftLine,

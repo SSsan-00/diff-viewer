@@ -1135,6 +1135,26 @@ const rightEditor = monaco.editor.create(
   createEditorOptions(rightInitial),
 );
 
+const INDENT_OPTIONS: monaco.editor.ITextModelUpdateOptions &
+  monaco.editor.IEditorOptions = {
+  tabSize: 4,
+  insertSpaces: true,
+  detectIndentation: false,
+};
+
+function applyIndentOptions(
+  editor: monaco.editor.IStandaloneCodeEditor,
+): void {
+  editor.updateOptions(INDENT_OPTIONS);
+  const model = editor.getModel();
+  if (model) {
+    model.updateOptions(INDENT_OPTIONS);
+  }
+}
+
+applyIndentOptions(leftEditor);
+applyIndentOptions(rightEditor);
+
 bindAnchorUndoHandler(leftEditor, "left");
 bindAnchorUndoHandler(rightEditor, "right");
 
@@ -1340,6 +1360,7 @@ function applyWorkspacePaneSnapshot(
     options,
   );
   updateLineNumbers(editor, segments);
+  applyIndentOptions(editor);
   const fileNames = listLoadedFileNames(segments);
   updateFileCards(side, fileNames);
   let activeFile = safeSnapshot.activeFile;
@@ -1932,6 +1953,7 @@ function applyDecodedFiles(
   segments.length = 0;
   segments.push(...nextSegments);
   updateLineNumbers(editor, segments);
+  applyIndentOptions(editor);
   const fileNames = listLoadedFileNames(segments);
   updateFileCards(side, fileNames);
   if (!goToLineSelection[side] || !fileNames.includes(goToLineSelection[side] ?? "")) {

@@ -118,4 +118,32 @@ describe("diffLines", () => {
       },
     ]);
   });
+
+  it("treats whitespace-only lines as equal", () => {
+    const result = compactOps(diffLines("a\n \nb", "a\n\t\nb"));
+
+    expect(result).toEqual([
+      {
+        type: "equal",
+        leftLine: "a",
+        rightLine: "a",
+        leftLineNo: 0,
+        rightLineNo: 0,
+      },
+      {
+        type: "equal",
+        leftLine: " ",
+        rightLine: "\t",
+        leftLineNo: 1,
+        rightLineNo: 1,
+      },
+      {
+        type: "equal",
+        leftLine: "b",
+        rightLine: "b",
+        leftLineNo: 2,
+        rightLineNo: 2,
+      },
+    ]);
+  });
 });

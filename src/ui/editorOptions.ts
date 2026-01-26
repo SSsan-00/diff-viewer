@@ -15,5 +15,8 @@ export function createEditorOptions(
     minimap: { enabled: false },
     lineNumbers: "on",
     stickyScroll: { enabled: false },
+    tabSize: 4,
+    insertSpaces: true,
+    detectIndentation: false,
   };
 }
