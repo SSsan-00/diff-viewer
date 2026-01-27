@@ -102,4 +102,74 @@ describe("extractHtmlAttributeSpaceDiffRanges", () => {
 
     expect(ranges.right).toHaveLength(0);
   });
+
+  it("detects trailing spaces in class values inside AppendLine strings", () => {
+    const left = "<div class=\"foo\">foo</div>";
+    const right = "sb.AppendLine(\"<div class=\\\"foo          \\\">foo</div>\");";
+    const inline = diffInline(left, right);
+    const ranges = extractHtmlAttributeSpaceDiffRangesPair(
+      left,
+      right,
+      inline.leftRanges,
+      inline.rightRanges,
+    );
+
+    expect(ranges.right.length).toBeGreaterThan(0);
+  });
+
+  it("detects trailing spaces in id values inside AppendLine strings", () => {
+    const left = "<input id=\"a\" />";
+    const right = "sb.AppendLine(\"<input id=\\\"a   \\\" />\");";
+    const inline = diffInline(left, right);
+    const ranges = extractHtmlAttributeSpaceDiffRangesPair(
+      left,
+      right,
+      inline.leftRanges,
+      inline.rightRanges,
+    );
+
+    expect(ranges.right.length).toBeGreaterThan(0);
+  });
+
+  it("detects trailing spaces in name values inside AppendLine strings", () => {
+    const left = "<input name=\"user\" />";
+    const right = "sb.AppendLine(\"<input name=\\\"user \\\" />\");";
+    const inline = diffInline(left, right);
+    const ranges = extractHtmlAttributeSpaceDiffRangesPair(
+      left,
+      right,
+      inline.leftRanges,
+      inline.rightRanges,
+    );
+
+    expect(ranges.right.length).toBeGreaterThan(0);
+  });
+
+  it("detects extra spaces in value attributes inside AppendLine strings", () => {
+    const left = "<input value=\"a b\" />";
+    const right = "sb.AppendLine(\"<input value=\\\"a  b\\\" />\");";
+    const inline = diffInline(left, right);
+    const ranges = extractHtmlAttributeSpaceDiffRangesPair(
+      left,
+      right,
+      inline.leftRanges,
+      inline.rightRanges,
+    );
+
+    expect(ranges.right.length).toBeGreaterThan(0);
+  });
+
+  it("detects leading spaces in class values inside AppendLine strings", () => {
+    const left = "<div class=\" foo\"></div>";
+    const right = "sb.AppendLine(\"<div class=\\\"foo\\\"></div>\");";
+    const inline = diffInline(left, right);
+    const ranges = extractHtmlAttributeSpaceDiffRangesPair(
+      left,
+      right,
+      inline.leftRanges,
+      inline.rightRanges,
+    );
+
+    expect(ranges.left.length).toBeGreaterThan(0);
+  });
 });
