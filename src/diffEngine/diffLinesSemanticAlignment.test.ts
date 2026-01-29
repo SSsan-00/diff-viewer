@@ -745,6 +745,131 @@ describe("semantic alignment across languages", () => {
     expect(inline.leftRanges.length + inline.rightRanges.length).toBe(0);
   });
 
+  it("keeps AppendLine prefix inserts before the Mini Sample body alignment", () => {
+    const left = [
+      "<head>",
+      "  <meta charset=\"utf-8\" />",
+      "  <title>Mini Sample</title>",
+      "  <style>",
+      "    body {",
+      "      font-family: sans-serif;",
+      "    }",
+      "    .box {",
+      "      padding: 12px;",
+      "      border: 1px solid #333;",
+      "    }",
+      "  </style>",
+      "</head>",
+      "<body>",
+      "  <div class=\"box\" id=\"box\">",
+      "    <button id=\"btn\">Click</button>",
+      "    <p id=\"msg\">まだクリックされていません</p>",
+      "  </div>",
+      "",
+      "  <script>",
+      "    const btn = document.querySelector(\"#btn\");",
+      "    const msg = document.querySelector(\"#msg\");",
+      "",
+      "    btn.addEventListener(\"click\", () => {",
+      "      msg.textContent = \"クリックされた！\";",
+      "    });",
+      "  </script>",
+      "</body>",
+    ];
+
+    const right = [
+      "        var sb = new StringBuilder();",
+      "",
+      "",
+      "        sb.AppendLine(\"<head>\");",
+      "        sb.AppendLine(\"  <meta charset=\\\"utf-8\\\" />\");",
+      "        sb.AppendLine(\"  <title>Mini Sample</title>\");",
+      "        sb.AppendLine(\"  <style>\");",
+      "        sb.AppendLine(\"    body {\");",
+      "        sb.AppendLine(\"      font-family: sans-serif;\");",
+      "        sb.AppendLine(\"    }\");",
+      "        sb.AppendLine(\"    .box {\");",
+      "        sb.AppendLine(\"      padding: 12px;\");",
+      "        sb.AppendLine(\"      border: 1px solid #333;\");",
+      "        sb.AppendLine(\"    }\");",
+      "        sb.AppendLine(\"  </style>\");",
+      "        sb.AppendLine(\"</head>\");",
+      "        sb.AppendLine(\"<body>\");",
+      "        sb.AppendLine(\"  <div class=\\\"box\\\" id=\\\"box\\\">\");",
+      "        sb.AppendLine(\"    <button id=\\\"btn\\\">Click</button>\");",
+      "        sb.AppendLine(\"    <p id=\\\"msg\\\">まだクリックされていません</p>\");",
+      "        sb.AppendLine(\"  </div>\");",
+      "        sb.AppendLine(\"  <script>\");",
+      "        sb.AppendLine(\"    const btn = document.querySelector(\\\"#btn\\\");\");",
+      "        sb.AppendLine(\"    const msg = document.querySelector(\\\"#msg\\\");\");",
+      "        sb.AppendLine(\"    btn.addEventListener(\\\"click\\\", () => {\");",
+      "        sb.AppendLine(\"      msg.textContent = \\\"クリックされた！\\\";\");",
+      "        sb.AppendLine(\"    });\");",
+      "        sb.AppendLine(\"  </script>\");",
+      "        sb.AppendLine(\"</body>\");",
+      "",
+      "        return sb.ToString();",
+    ];
+
+    const ops = toPairedOps(left, right);
+    const headIndex = ops.findIndex(
+      (op) => op.type === "replace" && (op.leftLine ?? "").includes("<head>") &&
+        (op.rightLine ?? "").includes("AppendLine(\"<head>\")"),
+    );
+    const sbIndex = ops.findIndex(
+      (op) => op.type === "insert" && (op.rightLine ?? "").includes("StringBuilder"),
+    );
+    const blankInsert = ops.findIndex(
+      (op) => op.type === "insert" && (op.rightLine ?? "").trim() === "" && op.rightLine !== undefined,
+    );
+
+    expect(sbIndex).toBeGreaterThanOrEqual(0);
+    expect(blankInsert).toBeGreaterThanOrEqual(0);
+    expect(headIndex).toBeGreaterThanOrEqual(0);
+    expect(sbIndex).toBeLessThan(headIndex);
+    expect(blankInsert).toBeLessThan(headIndex);
+
+    expect(findReplace(ops, "<meta charset=\"utf-8\"", "AppendLine(\"  <meta charset")).toBe(true);
+    expect(findReplace(ops, "<title>Mini Sample", "AppendLine(\"  <title>Mini Sample")).toBe(true);
+    expect(findReplace(ops, "<style>", "AppendLine(\"  <style>\")")).toBe(true);
+    expect(findReplace(ops, "font-family: sans-serif;", "AppendLine(\"      font-family")).toBe(true);
+    expect(findReplace(ops, "padding: 12px;", "AppendLine(\"      padding: 12px")).toBe(true);
+    expect(findReplace(ops, "border: 1px solid #333;", "AppendLine(\"      border: 1px solid #333")).toBe(true);
+    expect(findReplace(ops, "<div class=\"box\" id=\"box\">", "AppendLine(\"  <div class")).toBe(true);
+    expect(findReplace(ops, "<button id=\"btn\">Click</button>", "AppendLine(\"    <button id")).toBe(true);
+    expect(findReplace(ops, "<p id=\"msg\">まだクリックされていません</p>", "AppendLine(\"    <p id")).toBe(true);
+    expect(findReplace(ops, "const btn = document.querySelector", "AppendLine(\"    const btn")).toBe(true);
+    expect(findReplace(ops, "const msg = document.querySelector", "AppendLine(\"    const msg")).toBe(true);
+    expect(findReplace(ops, "btn.addEventListener", "AppendLine(\"    btn.addEventListener")).toBe(true);
+    expect(findReplace(ops, "msg.textContent = \"クリックされた！\";", "AppendLine(\"      msg.textContent")).toBe(true);
+    expect(findReplace(ops, "</script>", "AppendLine(\"  </script>\")")).toBe(true);
+    expect(findReplace(ops, "</body>", "AppendLine(\"</body>\")")).toBe(true);
+  });
+
+  it("aligns AppendLine script block lines including closing });", () => {
+    const left = [
+      "  <script>",
+      "    btn.addEventListener(\"click\", () => {",
+      "      msg.textContent = \"クリックされた！\";",
+      "    });",
+      "  </script>",
+    ];
+    const right = [
+      "        sb.AppendLine(\"  <script>\");",
+      "        sb.AppendLine(\"    btn.addEventListener(\\\"click\\\", () => {\");",
+      "        sb.AppendLine(\"      msg.textContent = \\\"クリックされた！\\\";\");",
+      "        sb.AppendLine(\"    });\");",
+      "        sb.AppendLine(\"  </script>\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<script>", "AppendLine(\"  <script>\"")).toBe(true);
+    expect(findReplace(ops, "btn.addEventListener", "AppendLine(\"    btn.addEventListener")).toBe(true);
+    expect(findReplace(ops, "msg.textContent", "AppendLine(\"      msg.textContent")).toBe(true);
+    expect(findReplace(ops, "});", "AppendLine(\"    });")).toBe(true);
+    expect(findReplace(ops, "</script>", "AppendLine(\"  </script>\"")).toBe(true);
+  });
+
   it("aligns additional HTML AppendLine variants (5+ cases)", () => {
     const left = [
       "<section>",
