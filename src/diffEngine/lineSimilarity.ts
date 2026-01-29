@@ -294,6 +294,14 @@ function extractStructuredFragment(line: string): string | null {
     return normalizeFragment(trimmed);
   }
 
+  if (/^}\s*\)\s*;?\s*$/.test(trimmed)) {
+    return normalizeFragment(trimmed);
+  }
+
+  if (/^\)\s*;?\s*$/.test(trimmed)) {
+    return normalizeFragment(trimmed);
+  }
+
   if (/^[A-Za-z-]+\s*:\s*[^;]+;?\s*$/.test(trimmed)) {
     return normalizeFragment(trimmed);
   }
@@ -318,6 +326,12 @@ function extractBraceToken(line: string): "brace_open" | "brace_close" | null {
     return "brace_open";
   }
   if (trimmed === "}") {
+    return "brace_close";
+  }
+  if (/^}\s*\)\s*;?\s*$/.test(trimmed)) {
+    return "brace_close";
+  }
+  if (/^\)\s*;?\s*$/.test(trimmed)) {
     return "brace_close";
   }
   const phpMatch = trimmed.match(

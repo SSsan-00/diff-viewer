@@ -1,6 +1,7 @@
 import { normalizeText } from "./normalize";
 import type { LineOp } from "./types";
 import { extractLineKey } from "./lineSignature";
+import { toAppendLiteralOrLine } from "./appendLiteral";
 import { extractAppendLiteral } from "./appendLiteral";
 
 function splitLines(text: string): string[] {
@@ -247,8 +248,9 @@ function buildKeyMap(lines: string[]): Map<string, LineKey & { count: number }> 
   const map = new Map<string, LineKey & { count: number }>();
 
   lines.forEach((line, index) => {
-    const rawKey = extractLineKey(line);
-    const key = rawKey ?? line.trimStart();
+    const compareLine = toAppendLiteralOrLine(line);
+    const rawKey = extractLineKey(compareLine);
+    const key = rawKey ?? compareLine.trimStart();
     const entry = map.get(key);
     if (entry) {
       entry.count += 1;
