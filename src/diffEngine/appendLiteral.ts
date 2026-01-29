@@ -1,4 +1,13 @@
+export type AppendLiteralMap = {
+  payload: string;
+  indices: number[];
+};
+
 export function extractAppendLiteral(line: string): string | null {
+  return extractAppendLiteralWithMap(line)?.payload ?? null;
+}
+
+export function extractAppendLiteralWithMap(line: string): AppendLiteralMap | null {
   const callMatch = line.match(/\.(?:append|appendline|appendformat)\s*\(/i);
   if (!callMatch || callMatch.index === undefined) {
     return null;
@@ -12,16 +21,35 @@ export function extractAppendLiteral(line: string): string | null {
   const isInterpolated = prefix.includes("$");
   const isVerbatim = prefix.includes("@");
   let result = "";
+  const indices: number[] = [];
+  const pushWithIndex = (value: string, index: number) => {
+    if (value.length === 0) {
+      return;
+    }
+    result += value;
+    for (let j = 0; j < value.length; j += 1) {
+      indices.push(index);
+    }
+  };
   let i = quoteIndex + 1;
   while (i < line.length) {
     const ch = line[i];
     if (!isVerbatim && ch === "\\" && i + 1 < line.length) {
-      result += line[i + 1];
+      const next = line[i + 1];
+      if (next === "t") {
+        pushWithIndex("\t", i);
+      } else if (next === "n") {
+        pushWithIndex("\n", i);
+      } else if (next === "r") {
+        pushWithIndex("\r", i);
+      } else {
+        pushWithIndex(next, i);
+      }
       i += 2;
       continue;
     }
     if (isVerbatim && ch === "\"" && line[i + 1] === "\"") {
-      result += "\"";
+      pushWithIndex("\"", i);
       i += 2;
       continue;
     }
@@ -30,11 +58,11 @@ export function extractAppendLiteral(line: string): string | null {
     }
     if (isInterpolated && ch === "{") {
       if (line[i + 1] === "{") {
-        result += "{";
+        pushWithIndex("{", i);
         i += 2;
         continue;
       }
-      result += "{expr}";
+      pushWithIndex("{expr}", i);
       i += 1;
       let depth = 1;
       while (i < line.length && depth > 0) {
@@ -64,14 +92,17 @@ export function extractAppendLiteral(line: string): string | null {
       continue;
     }
     if (isInterpolated && ch === "}" && line[i + 1] === "}") {
-      result += "}";
+      pushWithIndex("}", i);
       i += 2;
       continue;
     }
-    result += ch;
+    pushWithIndex(ch, i);
     i += 1;
   }
-  return result.trim().length > 0 ? result : null;
+  if (result.trim().length === 0) {
+    return null;
+  }
+  return { payload: result, indices };
 }
 
 export function toAppendLiteralOrLine(line: string): string {

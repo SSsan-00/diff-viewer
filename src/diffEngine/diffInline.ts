@@ -1,4 +1,5 @@
 import type { InlineDiff, Range } from "./types";
+import { extractAppendLiteralWithMap } from "./appendLiteral";
 
 type MatchPair = { leftIndex: number; rightIndex: number };
 
@@ -116,4 +117,62 @@ export function diffInline(leftLine: string, rightLine: string): InlineDiff {
   const rightRanges = mergeRanges(buildRangesFromFlags(rightFlags), 1);
 
   return { leftRanges, rightRanges };
+}
+
+type RangeMap = {
+  payload: string;
+  indices: number[] | null;
+};
+
+function buildRangeMap(line: string): RangeMap {
+  const parsed = extractAppendLiteralWithMap(line);
+  if (!parsed) {
+    return { payload: line, indices: null };
+  }
+  return { payload: parsed.payload, indices: parsed.indices };
+}
+
+function mapRanges(ranges: Range[], map: RangeMap): Range[] {
+  if (!map.indices) {
+    return ranges;
+  }
+  if (ranges.length === 0) {
+    return [];
+  }
+  const mapped: Range[] = [];
+  const indices = map.indices;
+  for (const range of ranges) {
+    if (range.start >= indices.length) {
+      continue;
+    }
+    const endIndex = Math.max(range.start, range.end - 1);
+    if (endIndex >= indices.length) {
+      continue;
+    }
+    const mappedStart = indices[range.start];
+    const mappedEnd = indices[endIndex] + 1;
+    if (mappedEnd <= mappedStart) {
+      continue;
+    }
+    const last = mapped[mapped.length - 1];
+    if (last && last.end === mappedStart) {
+      last.end = mappedEnd;
+      continue;
+    }
+    mapped.push({ start: mappedStart, end: mappedEnd });
+  }
+  return mapped;
+}
+
+export function diffInlineWithAppendLiteral(
+  leftLine: string,
+  rightLine: string,
+): InlineDiff {
+  const leftMap = buildRangeMap(leftLine);
+  const rightMap = buildRangeMap(rightLine);
+  const inline = diffInline(leftMap.payload, rightMap.payload);
+  return {
+    leftRanges: mapRanges(inline.leftRanges, leftMap),
+    rightRanges: mapRanges(inline.rightRanges, rightMap),
+  };
 }

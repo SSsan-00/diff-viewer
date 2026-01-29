@@ -5,7 +5,7 @@ import { setupMonacoWorkers } from "./monaco/monacoWorkers";
 import { registerBasicLanguages } from "./monaco/basicLanguages";
 import { diffLines } from "./diffEngine/diffLines";
 import { pairReplace } from "./diffEngine/pairReplace";
-import { diffInline } from "./diffEngine/diffInline";
+import { diffInlineWithAppendLiteral } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
@@ -3407,7 +3407,7 @@ function buildDecorations(ops: PairedOp[]): {
       addLineDecoration(left, op.leftLineNo, "line-replace");
       addLineDecoration(right, op.rightLineNo, "line-replace");
 
-      const inline = diffInline(op.leftLine ?? "", op.rightLine ?? "");
+      const inline = diffInlineWithAppendLiteral(op.leftLine ?? "", op.rightLine ?? "");
       addInlineDecorations(left, op.leftLineNo, inline.leftRanges, "inline-delete");
       addInlineDecorations(right, op.rightLineNo, inline.rightRanges, "inline-insert");
       const spaceRanges = extractHtmlAttributeSpaceDiffRangesPair(

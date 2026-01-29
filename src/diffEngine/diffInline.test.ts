@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diffInline } from "./diffInline";
+import { diffInline, diffInlineWithAppendLiteral } from "./diffInline";
 
 describe("diffInline", () => {
   it("returns empty ranges for identical lines", () => {
@@ -11,6 +11,25 @@ describe("diffInline", () => {
 
     expect(result.leftRanges).toEqual([{ start: 6, end: 7 }]);
     expect(result.rightRanges).toEqual([{ start: 6, end: 7 }]);
+  });
+
+  it("treats AppendLine payload as the inline diff input", () => {
+    const left = "<head>";
+    const right = "sb.AppendLine(\"<head>\");";
+    const result = diffInlineWithAppendLiteral(left, right);
+    expect(result.leftRanges).toHaveLength(0);
+    expect(result.rightRanges).toHaveLength(0);
+  });
+
+  it("maps inline ranges into AppendLine payload only", () => {
+    const left = "<head>";
+    const right = "sb.AppendLine(\"<headx>\");";
+    const result = diffInlineWithAppendLiteral(left, right);
+    expect(result.rightRanges.length).toBeGreaterThan(0);
+    const quoteIndex = right.indexOf("\"") + 1;
+    for (const range of result.rightRanges) {
+      expect(range.start).toBeGreaterThanOrEqual(quoteIndex);
+    }
   });
 
   it("highlights leading whitespace differences", () => {
