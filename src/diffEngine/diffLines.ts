@@ -1,6 +1,7 @@
 import { normalizeText } from "./normalize";
 import type { LineOp } from "./types";
 import { extractLineKey } from "./lineSignature";
+import { extractAppendLiteral } from "./appendLiteral";
 
 function splitLines(text: string): string[] {
   // Keep trailing empty line if the text ends with "\n".
@@ -15,6 +16,10 @@ function normalizeForMatch(line: string): string {
   const initVar = extractInitVariable(trimmed);
   if (initVar) {
     return `init:${initVar}`;
+  }
+  const appendLiteral = isAppendLike(trimmed) ? extractAppendLiteral(trimmed) : null;
+  if (appendLiteral) {
+    return `append:${appendLiteral.toLowerCase()}`;
   }
   const literal = extractFirstLiteral(trimmed);
   if (literal && isAppendLike(trimmed)) {
