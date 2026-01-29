@@ -1685,8 +1685,14 @@ function updateGoToLineHint(side: "left" | "right", fileName: string | null): vo
   const pane = goToLinePanes[side];
   const segment = fileName ? getFileSegment(getPaneSegments(side), fileName) : null;
   if (!segment) {
-    pane.hint.textContent = "ファイルなし";
-    pane.input.removeAttribute("max");
+    const editor = getPaneEditor(side);
+    const lineCount = editor.getModel()?.getLineCount() ?? 1;
+    pane.hint.textContent = `Type a line number to go to (from 1 to ${lineCount}).`;
+    pane.input.setAttribute("min", "1");
+    pane.input.setAttribute("max", String(lineCount));
+    if (!pane.input.value.trim()) {
+      pane.input.value = "1";
+    }
     return;
   }
   pane.hint.textContent = `Type a line number to go to (from 1 to ${segment.lineCount}).`;
@@ -1811,7 +1817,7 @@ function openGoToLinePanel(side: "left" | "right"): void {
   renderGoToLineFiles(side, files, fileName);
   setGoToLineSelection(side, fileName);
   pane.input.value = String(localLine);
-  pane.input.disabled = fileName === null;
+  pane.input.disabled = false;
   positionGoToLinePanel(side);
   setGoToLineOpen(side, true);
   pane.input.focus();
@@ -1838,27 +1844,30 @@ function jumpToGlobalLine(
 function submitGoToLine(side: "left" | "right"): void {
   const pane = goToLinePanes[side];
   const fileName = goToLineSelection[side];
-  if (!fileName) {
-    return;
-  }
   const segments = getPaneSegments(side);
-  const segment = getFileSegment(segments, fileName);
-  if (!segment) {
-    return;
-  }
   const rawValue = pane.input.value.trim();
   const parsed = Number.parseInt(rawValue, 10);
   if (!Number.isFinite(parsed)) {
     return;
   }
-  const localLine = Math.min(Math.max(parsed, 1), segment.lineCount);
-  const targetLine = getGlobalLineFromLocal(segments, fileName, localLine);
-  if (!targetLine) {
-    return;
-  }
   const editor = getPaneEditor(side);
   const model = editor.getModel();
   if (!model) {
+    return;
+  }
+  if (!fileName) {
+    const clamped = Math.min(Math.max(parsed, 1), model.getLineCount());
+    jumpToGlobalLine(editor, clamped);
+    closeGoToLinePanel(side);
+    return;
+  }
+  const segment = getFileSegment(segments, fileName);
+  if (!segment) {
+    return;
+  }
+  const localLine = Math.min(Math.max(parsed, 1), segment.lineCount);
+  const targetLine = getGlobalLineFromLocal(segments, fileName, localLine);
+  if (!targetLine) {
     return;
   }
   const clamped = Math.min(Math.max(targetLine, 1), model.getLineCount());
