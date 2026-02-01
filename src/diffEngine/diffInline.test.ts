@@ -18,7 +18,10 @@ describe("diffInline", () => {
     const right = "sb.AppendLine(\"<head>\");";
     const result = diffInlineWithAppendLiteral(left, right);
     expect(result.leftRanges).toHaveLength(0);
-    expect(result.rightRanges).toHaveLength(0);
+    const prefixEnd = right.indexOf("\"") + 1;
+    const suffixStart = right.lastIndexOf("\"");
+    expect(result.rightRanges).toContainEqual({ start: 0, end: prefixEnd });
+    expect(result.rightRanges).toContainEqual({ start: suffixStart, end: right.length });
   });
 
   it("maps inline ranges into AppendLine payload only", () => {
@@ -27,9 +30,42 @@ describe("diffInline", () => {
     const result = diffInlineWithAppendLiteral(left, right);
     expect(result.rightRanges.length).toBeGreaterThan(0);
     const quoteIndex = right.indexOf("\"") + 1;
+    const closingQuote = right.lastIndexOf("\"");
     for (const range of result.rightRanges) {
+      if (range.end <= quoteIndex || range.start >= closingQuote) {
+        continue;
+      }
       expect(range.start).toBeGreaterThanOrEqual(quoteIndex);
+      expect(range.end).toBeLessThanOrEqual(closingQuote);
     }
+  });
+
+  it("highlights AppendLine wrapper and escape backslashes without flooding the payload", () => {
+    const left = "sb.AppendLine(\"    console.log(\\\"test\\\");\");";
+    const right = "    console.log(\"test\");";
+    const result = diffInlineWithAppendLiteral(left, right);
+
+    const prefixEnd = left.indexOf("\"") + 1;
+    const suffixStart = left.lastIndexOf("\"");
+    const backslashIndex = left.indexOf("\\\"test");
+    const payloadStart = prefixEnd;
+    const payloadEnd = suffixStart;
+    const testStart = left.indexOf("test");
+    const testEnd = testStart + 4;
+
+    expect(result.leftRanges).toContainEqual({ start: 0, end: prefixEnd });
+    expect(result.leftRanges).toContainEqual({ start: suffixStart, end: left.length });
+    expect(backslashIndex).toBeGreaterThan(-1);
+    expect(result.leftRanges).toContainEqual({ start: backslashIndex, end: backslashIndex + 1 });
+
+    for (const range of result.leftRanges) {
+      expect(range.end <= testStart || range.start >= testEnd).toBe(true);
+      expect(range.start < payloadStart && range.end > payloadStart).toBe(false);
+      expect(range.start < payloadEnd && range.end > payloadEnd).toBe(false);
+      expect(range.start === 0 && range.end === left.length).toBe(false);
+    }
+
+    expect(result.rightRanges).toHaveLength(0);
   });
 
   it("highlights leading whitespace differences", () => {

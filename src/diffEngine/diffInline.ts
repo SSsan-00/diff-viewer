@@ -1,5 +1,5 @@
 import type { InlineDiff, Range } from "./types";
-import { extractAppendLiteralWithMap } from "./appendLiteral";
+import { extractAppendLiteralInlineMap } from "./appendLiteral";
 
 type MatchPair = { leftIndex: number; rightIndex: number };
 
@@ -120,16 +120,23 @@ export function diffInline(leftLine: string, rightLine: string): InlineDiff {
 }
 
 type RangeMap = {
-  payload: string;
+  compareText: string;
   indices: number[] | null;
+  wrapperRanges: Range[];
+  payloadRange: Range | null;
 };
 
 function buildRangeMap(line: string): RangeMap {
-  const parsed = extractAppendLiteralWithMap(line);
+  const parsed = extractAppendLiteralInlineMap(line);
   if (!parsed) {
-    return { payload: line, indices: null };
+    return { compareText: line, indices: null, wrapperRanges: [], payloadRange: null };
   }
-  return { payload: parsed.payload, indices: parsed.indices };
+  return {
+    compareText: parsed.payload,
+    indices: parsed.indices,
+    wrapperRanges: parsed.wrapperRanges,
+    payloadRange: parsed.payloadRange,
+  };
 }
 
 function mapRanges(ranges: Range[], map: RangeMap): Range[] {
@@ -149,8 +156,17 @@ function mapRanges(ranges: Range[], map: RangeMap): Range[] {
     if (endIndex >= indices.length) {
       continue;
     }
-    const mappedStart = indices[range.start];
-    const mappedEnd = indices[endIndex] + 1;
+    let mappedStart = indices[range.start];
+    let mappedEnd = indices[endIndex] + 1;
+    if (map.payloadRange) {
+      const payloadStart = map.payloadRange.start;
+      const payloadEnd = map.payloadRange.end;
+      if (mappedEnd <= payloadStart || mappedStart >= payloadEnd) {
+        continue;
+      }
+      mappedStart = Math.max(mappedStart, payloadStart);
+      mappedEnd = Math.min(mappedEnd, payloadEnd);
+    }
     if (mappedEnd <= mappedStart) {
       continue;
     }
@@ -164,15 +180,37 @@ function mapRanges(ranges: Range[], map: RangeMap): Range[] {
   return mapped;
 }
 
+function combineRanges(base: Range[], extra: Range[]): Range[] {
+  if (extra.length === 0) {
+    return base;
+  }
+  if (base.length === 0) {
+    return [...extra];
+  }
+  const combined = [...base, ...extra].sort((a, b) =>
+    a.start === b.start ? a.end - b.end : a.start - b.start,
+  );
+  const merged: Range[] = [];
+  for (const range of combined) {
+    const last = merged[merged.length - 1];
+    if (last && range.start < last.end) {
+      last.end = Math.max(last.end, range.end);
+      continue;
+    }
+    merged.push({ ...range });
+  }
+  return merged;
+}
+
 export function diffInlineWithAppendLiteral(
   leftLine: string,
   rightLine: string,
 ): InlineDiff {
   const leftMap = buildRangeMap(leftLine);
   const rightMap = buildRangeMap(rightLine);
-  const inline = diffInline(leftMap.payload, rightMap.payload);
+  const inline = diffInline(leftMap.compareText, rightMap.compareText);
   return {
-    leftRanges: mapRanges(inline.leftRanges, leftMap),
-    rightRanges: mapRanges(inline.rightRanges, rightMap),
+    leftRanges: combineRanges(mapRanges(inline.leftRanges, leftMap), leftMap.wrapperRanges),
+    rightRanges: combineRanges(mapRanges(inline.rightRanges, rightMap), rightMap.wrapperRanges),
   };
 }
