@@ -1872,18 +1872,18 @@ body {
   }
 
   .file-picker .button {
-    max-width: 104px;
+    max-width: none;
+    overflow: visible;
+    text-overflow: clip;
+    white-space: nowrap;
   }
 
   .pane-select {
-    gap: 3px;
-    font-size: 0.62rem;
+    display: none;
   }
 
   .pane-select select {
-    padding: 1px 6px;
-    font-size: 0.62rem;
-    max-width: 124px;
+    display: none;
   }
 
   .pane-message {
@@ -1964,7 +1964,7 @@ body {
   }
 
   .file-picker .button {
-    max-width: 92px;
+    max-width: none;
   }
 
   .toolbar-right .toggle span {
