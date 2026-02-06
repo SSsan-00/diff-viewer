@@ -1712,6 +1712,11 @@ body {
 }
 
 @media (max-width: 720px) {
+  :root {
+    --anchor-item-height: 24px;
+    --anchor-list-gap: 4px;
+  }
+
   body {
     min-height: 100svh;
   }
@@ -1727,28 +1732,41 @@ body {
   }
 
   .toolbar {
-    padding: 8px 10px;
-    gap: 8px;
+    padding: 6px 8px;
+    gap: 6px;
   }
 
   .app-title {
-    padding: 4px 10px;
-    font-size: 0.92rem;
-    letter-spacing: 0.12em;
+    padding: 3px 8px;
+    font-size: 0.84rem;
+    letter-spacing: 0.1em;
   }
 
   .toolbar-right {
     width: 100%;
-    gap: 6px;
-    row-gap: 6px;
+    gap: 4px;
     align-items: center;
     justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    padding-bottom: 1px;
+  }
+
+  .toolbar-right::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .toolbar-right::-webkit-scrollbar-thumb {
+    background-color: rgba(80, 70, 55, 0.25);
+    border-radius: 999px;
   }
 
   .toolbar-right .theme-switch {
-    transform: scale(0.84);
+    transform: scale(0.76);
     transform-origin: left center;
-    margin-right: -8px;
+    margin-right: -14px;
   }
 
   .button,
@@ -1763,133 +1781,155 @@ body {
   }
 
   .button {
-    padding: 5px 11px;
-    font-size: 0.8rem;
-  }
-
-  .button-subtle {
     padding: 4px 9px;
-    font-size: 0.76rem;
-  }
-
-  .toggle {
-    gap: 6px;
-    padding: 3px 8px;
     font-size: 0.74rem;
   }
 
+  .button-subtle {
+    padding: 3px 8px;
+    font-size: 0.72rem;
+  }
+
+  .toggle {
+    gap: 5px;
+    padding: 2px 7px;
+    font-size: 0.7rem;
+    white-space: nowrap;
+  }
+
   .toggle input {
-    width: 28px;
-    height: 16px;
+    width: 26px;
+    height: 15px;
   }
 
   .toggle input::after {
-    width: 10px;
-    height: 10px;
+    width: 9px;
+    height: 9px;
   }
 
   .toggle input:checked::after {
-    transform: translateX(12px);
+    transform: translateX(11px);
   }
 
   .anchor-panel {
-    padding: 6px 10px;
+    padding: 4px 8px;
   }
 
   .anchor-header {
-    gap: 6px;
+    gap: 4px;
   }
 
   .anchor-header-right {
-    gap: 6px;
+    gap: 4px;
   }
 
   .anchor-panel-body {
-    max-height: min(24dvh, 180px);
+    max-height: min(16dvh, 116px);
     overflow-y: auto;
     overflow-x: hidden;
   }
 
   .anchor-list {
-    padding-top: 4px;
+    padding-top: 2px;
   }
 
   .editors {
-    gap: 8px;
-    padding: 8px 8px 10px;
+    gap: 6px;
+    padding: 6px 6px 8px;
   }
 
   .editor-pane {
-    min-height: 34svh;
+    min-height: 35svh;
   }
 
   .pane-title {
-    padding: 6px 8px;
-    gap: 6px;
-    font-size: 0.74rem;
+    padding: 4px 6px;
+    gap: 4px;
+    font-size: 0.68rem;
     letter-spacing: 0.04em;
+    flex-wrap: nowrap;
+    align-items: center;
   }
 
   .pane-title-left,
   .pane-actions,
   .file-picker {
-    gap: 6px;
-    row-gap: 3px;
+    gap: 4px;
+    row-gap: 2px;
+    flex-wrap: nowrap;
+    min-width: 0;
   }
 
   .pane-actions {
-    overflow: visible;
+    overflow-x: auto;
+    overflow-y: hidden;
+    max-width: 100%;
+    scrollbar-width: thin;
+    white-space: nowrap;
+    justify-content: flex-end;
+    flex: 1;
   }
 
   .file-picker .button {
-    max-width: 132px;
+    max-width: 104px;
   }
 
   .pane-select {
-    gap: 4px;
-    font-size: 0.66rem;
+    gap: 3px;
+    font-size: 0.62rem;
   }
 
   .pane-select select {
-    padding: 2px 6px;
-    font-size: 0.66rem;
+    padding: 1px 6px;
+    font-size: 0.62rem;
+    max-width: 124px;
   }
 
   .pane-message {
-    min-height: 16px;
-    margin: 4px 8px 0;
-    font-size: 0.66rem;
+    min-height: 0;
+    margin: 2px 6px 0;
+    font-size: 0.62rem;
+    line-height: 1.2;
+  }
+
+  .pane-message:empty {
+    display: none;
   }
 
   .file-cards-bar {
-    margin: 4px 8px 0;
-    gap: 6px;
-    padding-bottom: 2px;
+    margin: 2px 6px 0;
+    gap: 4px;
+    padding: 1px 1px 2px;
+  }
+
+  .file-card {
+    font-size: 0.64rem;
+    padding: 2px 7px;
   }
 
   .editor {
-    margin-top: 4px;
+    margin-top: 2px;
   }
 
   .workspace-panel {
-    top: 40px;
+    top: 32px;
     left: 0;
     width: min(94vw, 320px);
     max-width: 94vw;
-    padding: 8px 10px;
-    max-height: min(58dvh, 420px);
+    padding: 7px 8px;
+    max-height: min(46dvh, 340px);
   }
 
   .workspace-list {
-    max-height: min(48dvh, 340px);
+    max-height: min(40dvh, 280px);
     overflow-y: auto;
   }
 
   .favorite-panel {
-    top: 46px;
+    top: 38px;
     left: 8px;
     right: 8px;
-    max-height: min(56dvh, 420px);
+    max-height: min(48dvh, 340px);
   }
 
   .favorite-panel__row {
@@ -1901,32 +1941,38 @@ body {
   }
 
   .goto-line-panel {
-    top: 76px;
+    top: 62px;
     left: 8px;
     right: 8px;
     min-width: 0;
     max-width: 94vw;
-    max-height: min(42dvh, 320px);
+    max-height: min(34dvh, 260px);
     overflow-y: auto;
   }
 }
 
 @media (max-width: 600px) {
-  .toolbar-right .toggle span {
-    font-size: 0.72rem;
-  }
-
   .app-title {
-    font-size: 0.86rem;
-    letter-spacing: 0.1em;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
   }
 
   .pane-title-left > span {
-    letter-spacing: 0.03em;
+    letter-spacing: 0.02em;
+    font-size: 0.62rem;
   }
 
   .file-picker .button {
-    max-width: 116px;
+    max-width: 92px;
+  }
+
+  .toolbar-right .toggle span {
+    font-size: 0.66rem;
+  }
+
+  .toolbar-right .button,
+  .toolbar-right .toggle {
+    flex: 0 0 auto;
   }
 }
 
