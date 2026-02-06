@@ -1764,9 +1764,10 @@ body {
   }
 
   .toolbar-right .theme-switch {
+    flex: 0 0 auto;
     transform: scale(0.76);
     transform-origin: left center;
-    margin-right: -14px;
+    margin-right: -8px;
   }
 
   .button,
