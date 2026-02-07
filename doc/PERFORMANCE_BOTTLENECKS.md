@@ -193,3 +193,24 @@ ON/OFF 案:
 2. `recalcDiff` 内部を段階計測して、diff計算 vs decorations適用の比率を定量化
 3. 代表データセットを 3 段階（1k/5k/10k 行）で固定し、回帰ベンチを追加
 4. workspace 切替時に「差分再計算が本当に必要なケース」の条件計測を先に実施
+
+## 再現可能な比較手順（baseline vs after）
+### 1. baseline 側で採取
+```sh
+pnpm run perf:capture -- --label baseline --runs 3
+```
+
+### 2. after 側で採取
+```sh
+pnpm run perf:capture -- --label after --runs 3
+```
+
+### 3. 比較
+```sh
+pnpm run perf:compare -- perf-results/baseline-<timestamp>.json perf-results/after-<timestamp>.json
+```
+
+### 4. 補足
+- `perf:capture` は `--auto-dev` を使って dev server を自動起動する。
+- 出力は `perf-results/` に JSON で保存される。
+- 比較指標は `recalc` / `workspace-switch` の median wall time。

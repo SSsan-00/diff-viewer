@@ -14,7 +14,9 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
-    "verify:dist": "node scripts/verify-dist.mjs"
+    "verify:dist": "node scripts/verify-dist.mjs",
+    "perf:capture": "node scripts/perf-compare.mjs capture --auto-dev",
+    "perf:compare": "node scripts/perf-compare.mjs compare"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",
