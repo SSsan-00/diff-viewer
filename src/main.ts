@@ -2783,6 +2783,12 @@ let leftDecorationIds: string[] = [];
 let rightDecorationIds: string[] = [];
 let leftZoneIds: string[] = [];
 let rightZoneIds: string[] = [];
+let leftDecorationSignatures: string[] = [];
+let rightDecorationSignatures: string[] = [];
+let leftAnchorDecorationSignatures: string[] = [];
+let rightAnchorDecorationSignatures: string[] = [];
+let leftZoneSignatures: string[] = [];
+let rightZoneSignatures: string[] = [];
 let pairedOps: PairedOp[] = [];
 let diffBlockStarts: number[] = [];
 let currentBlockIndex = 0;
@@ -3394,6 +3400,59 @@ function addInlineDecorations(
   }
 }
 
+function signatureArraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) {
+    return false;
+  }
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildDecorationSignatures(
+  decorations: readonly monaco.editor.IModelDeltaDecoration[],
+): string[] {
+  return decorations.map((decoration) => {
+    const { range, options } = decoration;
+    const rangeSignature = [
+      range.startLineNumber,
+      range.startColumn,
+      range.endLineNumber,
+      range.endColumn,
+    ].join(":");
+    const optionSignature = JSON.stringify(options);
+    return `${rangeSignature}|${optionSignature}`;
+  });
+}
+
+function buildZoneSignatures(
+  zones: readonly ViewZoneSpec[],
+): string[] {
+  return zones.map((zone) =>
+    [
+      zone.afterLineNumber,
+      zone.heightInLines ?? "",
+      zone.heightInPx ?? "",
+      zone.className,
+      zone.label ?? "",
+    ].join("|"),
+  );
+}
+
+function shouldApplyBySignature(
+  currentSignatures: readonly string[],
+  nextSignatures: readonly string[],
+  currentIds: readonly string[],
+): boolean {
+  if (!signatureArraysEqual(currentSignatures, nextSignatures)) {
+    return true;
+  }
+  return currentIds.length === 0 && nextSignatures.length > 0;
+}
+
 function buildDecorations(ops: PairedOp[]): {
   left: monaco.editor.IModelDeltaDecoration[];
   right: monaco.editor.IModelDeltaDecoration[];
@@ -3717,20 +3776,67 @@ function recalcDiff() {
   const findOffsets = buildFindWidgetOffsetZones(leftEditor, rightEditor);
   const leftZones = findOffsets.left.concat(zones.left, fileZones.left);
   const rightZones = findOffsets.right.concat(zones.right, fileZones.right);
-
-  leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
-  rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
-  leftAnchorDecorationIds = leftEditor.deltaDecorations(
-    leftAnchorDecorationIds,
-    anchorDecorations.left,
-  );
-  rightAnchorDecorationIds = rightEditor.deltaDecorations(
-    rightAnchorDecorationIds,
-    anchorDecorations.right,
-  );
+  const nextLeftDecorationSignatures = buildDecorationSignatures(left);
+  if (
+    shouldApplyBySignature(
+      leftDecorationSignatures,
+      nextLeftDecorationSignatures,
+      leftDecorationIds,
+    )
+  ) {
+    leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
+    leftDecorationSignatures = nextLeftDecorationSignatures;
+  }
+  const nextRightDecorationSignatures = buildDecorationSignatures(right);
+  if (
+    shouldApplyBySignature(
+      rightDecorationSignatures,
+      nextRightDecorationSignatures,
+      rightDecorationIds,
+    )
+  ) {
+    rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
+    rightDecorationSignatures = nextRightDecorationSignatures;
+  }
+  const nextLeftAnchorSignatures = buildDecorationSignatures(anchorDecorations.left);
+  if (
+    shouldApplyBySignature(
+      leftAnchorDecorationSignatures,
+      nextLeftAnchorSignatures,
+      leftAnchorDecorationIds,
+    )
+  ) {
+    leftAnchorDecorationIds = leftEditor.deltaDecorations(
+      leftAnchorDecorationIds,
+      anchorDecorations.left,
+    );
+    leftAnchorDecorationSignatures = nextLeftAnchorSignatures;
+  }
+  const nextRightAnchorSignatures = buildDecorationSignatures(anchorDecorations.right);
+  if (
+    shouldApplyBySignature(
+      rightAnchorDecorationSignatures,
+      nextRightAnchorSignatures,
+      rightAnchorDecorationIds,
+    )
+  ) {
+    rightAnchorDecorationIds = rightEditor.deltaDecorations(
+      rightAnchorDecorationIds,
+      anchorDecorations.right,
+    );
+    rightAnchorDecorationSignatures = nextRightAnchorSignatures;
+  }
   updatePendingAnchorDecoration();
-  leftZoneIds = applyViewZones(leftEditor, leftZoneIds, leftZones);
-  rightZoneIds = applyViewZones(rightEditor, rightZoneIds, rightZones);
+  const nextLeftZoneSignatures = buildZoneSignatures(leftZones);
+  if (shouldApplyBySignature(leftZoneSignatures, nextLeftZoneSignatures, leftZoneIds)) {
+    leftZoneIds = applyViewZones(leftEditor, leftZoneIds, leftZones);
+    leftZoneSignatures = nextLeftZoneSignatures;
+  }
+  const nextRightZoneSignatures = buildZoneSignatures(rightZones);
+  if (shouldApplyBySignature(rightZoneSignatures, nextRightZoneSignatures, rightZoneIds)) {
+    rightZoneIds = applyViewZones(rightEditor, rightZoneIds, rightZones);
+    rightZoneSignatures = nextRightZoneSignatures;
+  }
   updateDiffJumpButtons(prevButton, nextButton, diffBlockStarts.length > 0);
   applyFolding();
   focusDiffLines(null, null);
