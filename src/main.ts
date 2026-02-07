@@ -3023,11 +3023,30 @@ type FoldZoneSpec = {
   onClick: () => void;
 };
 
+type DerivedDiffCache = {
+  opsSignature: string;
+  segmentSignature: string;
+  foldRanges: FoldRange[];
+  decorations: {
+    left: monaco.editor.IModelDeltaDecoration[];
+    right: monaco.editor.IModelDeltaDecoration[];
+  };
+  viewZones: {
+    left: ViewZoneSpec[];
+    right: ViewZoneSpec[];
+  };
+  fileZones: {
+    left: ViewZoneSpec[];
+    right: ViewZoneSpec[];
+  };
+};
+
 const foldOptions = {
   threshold: 8,
   keepHead: 3,
   keepTail: 3,
 };
+let derivedDiffCache: DerivedDiffCache | null = null;
 
 function setAnchorMessage(message: string) {
   anchorMessage.textContent = message;
@@ -3492,6 +3511,31 @@ function buildDecorations(ops: PairedOp[]): {
   return { left, right };
 }
 
+function buildPairedOpSignature(op: PairedOp): string {
+  const leftLineNo = op.leftLineNo ?? "";
+  const rightLineNo = op.rightLineNo ?? "";
+  const leftLine = op.leftLine ?? "";
+  const rightLine = op.rightLine ?? "";
+  return `${op.type}|${leftLineNo}|${rightLineNo}|${leftLine}|${rightLine}`;
+}
+
+function buildPairedOpsSignature(ops: readonly PairedOp[]): string {
+  return ops.map((op) => buildPairedOpSignature(op)).join("\n");
+}
+
+function buildSegmentsSignature(segments: readonly LineSegment[]): string {
+  return segments
+    .map((segment) =>
+      [
+        segment.fileIndex,
+        segment.fileName ?? "",
+        segment.startLine,
+        segment.lineCount,
+      ].join("|"),
+    )
+    .join("\n");
+}
+
 function buildViewZones(ops: PairedOp[]): {
   left: ViewZoneSpec[];
   right: ViewZoneSpec[];
@@ -3761,18 +3805,38 @@ function recalcDiff() {
     pairedOps = pairReplace(diffLines(leftText, rightText));
   }
 
+  const opsSignature = buildPairedOpsSignature(pairedOps);
+  const segmentSignature = `${buildSegmentsSignature(leftSegments)}\n---\n${buildSegmentsSignature(rightSegments)}`;
+  const useCachedDerived =
+    derivedDiffCache !== null &&
+    derivedDiffCache.opsSignature === opsSignature &&
+    derivedDiffCache.segmentSignature === segmentSignature;
+  const nextDerived = useCachedDerived
+    ? derivedDiffCache
+    : {
+        opsSignature,
+        segmentSignature,
+        foldRanges: buildFoldRanges(pairedOps, foldOptions),
+        decorations: buildDecorations(pairedOps),
+        viewZones: buildViewZones(pairedOps),
+        fileZones: buildAlignedFileBoundaryZones(pairedOps, leftSegments, rightSegments),
+      };
+  if (!useCachedDerived) {
+    derivedDiffCache = nextDerived;
+  }
+
   diffBlockStarts = getDiffBlockStarts(pairedOps);
   currentBlockIndex = 0;
-  foldRanges = buildFoldRanges(pairedOps, foldOptions);
+  foldRanges = nextDerived.foldRanges;
   expandedFoldStarts.clear();
-  const { left, right } = buildDecorations(pairedOps);
+  const { left, right } = nextDerived.decorations;
   const anchorDecorations = buildAnchorDecorations(
     validation.valid,
     autoAnchor,
     (line, startColumn, endColumn) => new monaco.Range(line, startColumn, line, endColumn),
   );
-  const zones = buildViewZones(pairedOps);
-  const fileZones = buildAlignedFileBoundaryZones(pairedOps, leftSegments, rightSegments);
+  const zones = nextDerived.viewZones;
+  const fileZones = nextDerived.fileZones;
   const findOffsets = buildFindWidgetOffsetZones(leftEditor, rightEditor);
   const leftZones = findOffsets.left.concat(zones.left, fileZones.left);
   const rightZones = findOffsets.right.concat(zones.right, fileZones.right);
