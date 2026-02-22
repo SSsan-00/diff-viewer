@@ -51,7 +51,7 @@ export const APP_TEMPLATE = `
         </div>
       </div>
       <div class="toolbar-right">
-        <button id="recalc" class="button" type="button">差分再計算</button>
+        <button id="recalc" class="button" type="button">再計算</button>
         <button id="diff-prev" class="button" type="button">前の差分</button>
         <button id="diff-next" class="button" type="button">次の差分</button>
         <label class="toggle">
@@ -59,8 +59,8 @@ export const APP_TEMPLATE = `
           <span>スクロール連動</span>
         </label>
         <label class="toggle">
-          <input id="fold-toggle" type="checkbox" aria-label="差分のみ表示" />
-          <span>差分のみ表示</span>
+          <input id="fold-toggle" type="checkbox" aria-label="差分のみ" />
+          <span>差分のみ</span>
         </label>
         <div class="highlight-toggle-control">
           <button

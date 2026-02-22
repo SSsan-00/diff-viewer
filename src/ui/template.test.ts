@@ -65,7 +65,7 @@ describe("pane action layout", () => {
 
     expect(doc.body.textContent).not.toContain("折り返し");
     expect(doc.body.textContent).not.toContain("差分なしの箇所を折りたたみ");
-    expect(doc.body.textContent).toContain("差分のみ表示");
+    expect(doc.body.textContent).toContain("差分のみ");
     expect(doc.querySelector("#fold-toggle")).toBeTruthy();
   });
 
