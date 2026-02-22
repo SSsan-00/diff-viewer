@@ -164,17 +164,33 @@ describe("pane action layout", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
 
+    const leftCopy = doc.querySelector("#left-copy");
+    const rightCopy = doc.querySelector("#right-copy");
+    const leftClear = doc.querySelector("#left-clear");
+    const rightClear = doc.querySelector("#right-clear");
     const leftButton = doc.querySelector("#left-favorite-add");
     const rightButton = doc.querySelector("#right-favorite-add");
     const leftBar = doc.querySelector("#left-favorite-paths");
     const rightBar = doc.querySelector("#right-favorite-paths");
+    const leftActions = Array.from(
+      doc.querySelectorAll("#left-pane .pane-actions > *"),
+    );
+    const rightActions = Array.from(
+      doc.querySelectorAll("#right-pane .pane-actions > *"),
+    );
 
+    expect(leftCopy).toBeTruthy();
+    expect(rightCopy).toBeTruthy();
+    expect(leftCopy?.textContent?.trim()).toBe("コピー");
+    expect(rightCopy?.textContent?.trim()).toBe("コピー");
     expect(leftButton).toBeTruthy();
     expect(rightButton).toBeTruthy();
     expect(leftBar).toBeTruthy();
     expect(rightBar).toBeTruthy();
     expect(leftBar?.classList.contains("favorite-paths-list")).toBe(true);
     expect(rightBar?.classList.contains("favorite-paths-list")).toBe(true);
+    expect(leftActions.indexOf(leftCopy!)).toBeLessThan(leftActions.indexOf(leftClear!));
+    expect(rightActions.indexOf(rightCopy!)).toBeLessThan(rightActions.indexOf(rightClear!));
   });
 
   it("renders workspace controls in the toolbar", () => {

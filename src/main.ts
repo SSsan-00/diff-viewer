@@ -60,6 +60,11 @@ import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
 import { bindIgnoreLeadingWhitespaceToggle } from "./ui/ignoreLeadingWhitespaceToggle";
+import {
+  bindPaneSourceCopyButton,
+  buildCopyTextFromVisualRows,
+  buildCopyVisualRowsFromAlignedDiff,
+} from "./ui/paneSourceCopy";
 import { createRecalcScheduler } from "./ui/recalcScheduler";
 import { bindEditorLayoutRecalc } from "./ui/layoutRecalcWatcher";
 import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
@@ -319,6 +324,8 @@ const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clear");
+const leftCopyButton = getRequiredElement<HTMLButtonElement>("#left-copy");
+const rightCopyButton = getRequiredElement<HTMLButtonElement>("#right-copy");
 const leftClearButton = getRequiredElement<HTMLButtonElement>("#left-clear");
 const rightClearButton = getRequiredElement<HTMLButtonElement>("#right-clear");
 const prevButton = document.querySelector<HTMLButtonElement>("#diff-prev");
@@ -4019,6 +4026,30 @@ const rightClearOptions = buildPaneClearOptions("right", {
 
 bindPaneClearButton(leftClearButton, leftClearOptions);
 bindPaneClearButton(rightClearButton, rightClearOptions);
+
+function buildPaneCopyText(side: "left" | "right"): string {
+  const fileZones = derivedDiffCache?.fileZones ?? { left: [], right: [] };
+  const rows = buildCopyVisualRowsFromAlignedDiff(pairedOps, fileZones);
+  return buildCopyTextFromVisualRows(rows, side);
+}
+
+bindPaneSourceCopyButton({
+  button: leftCopyButton,
+  side: "left",
+  doc: document,
+  copy: copyText,
+  toast,
+  getText: () => buildPaneCopyText("left"),
+});
+
+bindPaneSourceCopyButton({
+  button: rightCopyButton,
+  side: "right",
+  doc: document,
+  copy: copyText,
+  toast,
+  getText: () => buildPaneCopyText("right"),
+});
 
 function clearFocusedPane(): void {
   if (lastFocusedSide === "left") {

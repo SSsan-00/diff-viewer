@@ -188,6 +188,14 @@ export const APP_TEMPLATE = `
           </div>
           <div class="pane-actions">
             <button
+              id="left-copy"
+              class="button button-subtle pane-copy"
+              type="button"
+              aria-label="左をコピー"
+            >
+              コピー
+            </button>
+            <button
               id="left-clear"
               class="button button-subtle pane-clear"
               type="button"
@@ -301,6 +309,14 @@ export const APP_TEMPLATE = `
             </div>
           </div>
           <div class="pane-actions">
+            <button
+              id="right-copy"
+              class="button button-subtle pane-copy"
+              type="button"
+              aria-label="右をコピー"
+            >
+              コピー
+            </button>
             <button
               id="right-clear"
               class="button button-subtle pane-clear"
