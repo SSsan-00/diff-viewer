@@ -968,7 +968,7 @@ body {
 }
 
 .pane-select {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 8px;
   font-size: 0.75rem;
