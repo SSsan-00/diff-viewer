@@ -192,8 +192,8 @@ const html = `<!doctype html>
         <li><a href="#controls">4. 主要操作（再計算/移動/トグル）</a></li>
         <li><a href="#anchors">5. アンカー機能</a></li>
         <li><a href="#workspace">6. ワークスペース</a></li>
-        <li><a href="#paths">7. パス登録UI</a></li>
-        <li><a href="#goto-line">8. 行ジャンプUI</a></li>
+        <li><a href="#paths">7. パス登録機能</a></li>
+        <li><a href="#goto-line">8. 行ジャンプ機能</a></li>
         <li><a href="#shortcuts">9. ショートカット一覧</a></li>
       </ul>
     </nav>
@@ -203,9 +203,9 @@ const html = `<!doctype html>
       <p>左右のペインでファイルを並べて差分を確認するための、単一HTMLツールです。</p>
       <ul>
         <li>左右ペインに独立した内容を読み込み、差分を可視化します。</li>
-        <li>スクロール連動や差分のみ表示など、比較に必要な機能をまとめています。</li>
+        <li>スクロール連動、先頭の空白を無視、差分のみなど、比較に必要な機能をまとめています。</li>
       </ul>
-      <p class="hint">よくあるミス: 最初にどこから操作するか分からない場合は、左上の「ワークスペース名」や各ペインの「ファイルを選択」を確認してください。</p>
+      <p class="hint">ヒント: 最初にどこから操作するか分からない場合は、左上の「ワークスペース名」や各ペインの「ファイルを選択」を確認してください。</p>
       <figure>
         <img src="${images.overview}" alt="初期画面" />
         <figcaption>初期画面の全体像</figcaption>
@@ -220,8 +220,10 @@ const html = `<!doctype html>
         <li>ペインにドラッグ&ドロップして読み込むこともできます。</li>
         <li>cshtml → cshtml.cs の順で選んでも、cshtml.cs → cshtml の順で読み込みます。</li>
         <li>ファイルカードをクリックすると、そのファイルの先頭にジャンプします。</li>
+        <li>各ペイン上部の「コピー」で、そのペインの表示どおりの行をコピーできます（差分整列用の空行/ギャップ行や複数ファイル境界の表示も含む）。</li>
+        <li>コピー成功時は「左ペインのソースをコピーしました。」「右ペインのソースをコピーしました。」のトーストが表示されます。</li>
       </ul>
-      <p class="hint">よくあるミス: 片方だけ読み込むと差分が空になるため、左右両方に読み込んでください。</p>
+      <p class="hint">ヒント: 片方だけ読み込むと差分が空になるため、左右両方に読み込んでください。</p>
       <figure>
         <img src="${images.diff}" alt="差分が見える読み込み状態" />
         <figcaption>左右に内容を読み込んだ状態</figcaption>
@@ -239,7 +241,7 @@ const html = `<!doctype html>
         <li>行の背景色で差分を把握できます。</li>
         <li>ハイライトをOFFにすると、色による強調を抑えられます。</li>
       </ul>
-      <p class="hint">よくあるミス: 色が見えにくいときは「ハイライト」をONにしてください。</p>
+      <p class="hint">ヒント: 色が見えにくいときは「ハイライト」をONにしてください。</p>
       <figure>
         <img src="${images.diff}" alt="差分の表示例" />
         <figcaption>差分の表示例</figcaption>
@@ -250,14 +252,15 @@ const html = `<!doctype html>
       <h2>4. 主要操作（再計算/移動/トグル）</h2>
       <p>ヘッダーのボタンとトグルで差分比較の基本操作を行います。</p>
       <ul>
-        <li>「差分再計算」: 内容を再比較します。</li>
+        <li>「再計算」: 内容を再比較します。</li>
         <li>「前の差分 / 次の差分」: 差分ブロックへ移動します。</li>
         <li>「スクロール連動」: 左右のスクロール同期を切り替えます。</li>
-        <li>「ハイライト」: 差分の色強調を切り替えます。</li>
-        <li>「差分のみ表示」: 差分のない行を折りたたみます。</li>
+        <li>「先頭の空白を無視」: 各行の行頭にある半角スペース/タブの差分を無視して比較します（行内/末尾の空白は対象外）。</li>
+        <li>「ハイライト」: 差分の色強調を切り替えます（ライトアイコンのトグル）。</li>
+        <li>「差分のみ」: 差分のない行を折りたたみます。</li>
         <li>「テーマ切り替え」: ライト/ダークテーマを切り替えます。</li>
       </ul>
-      <p class="hint">よくあるミス: 差分が更新されないときは「差分再計算」を押してください。</p>
+      <p class="hint">ヒント: 差分が更新されないときは「再計算」を押してください。</p>
       <figure>
         <img src="${images.toggles}" alt="主要トグルの位置" />
         <figcaption>主要トグルと操作ボタン</figcaption>
@@ -275,7 +278,7 @@ const html = `<!doctype html>
         <li>行番号をクリック、または Ctrl+L でアンカーを追加/解除します。</li>
         <li>アンカー一覧から該当行へジャンプできます。</li>
       </ul>
-      <p class="hint">よくあるミス: 期待した行に飛ばない場合は、左右の行番号が一致しているか確認してください。</p>
+      <p class="hint">ヒント: 期待した行に飛ばない場合は、左右の行番号が一致しているか確認してください。</p>
       <figure>
         <img src="${images.anchors}" alt="アンカー一覧と差分" />
         <figcaption>アンカー一覧が表示された状態</figcaption>
@@ -290,38 +293,38 @@ const html = `<!doctype html>
         <li>「＋」で新規作成、ペンでリネーム、ゴミ箱で削除します（最後の1件は削除不可）。</li>
         <li>ドラッグ&ドロップで並び替えできます。</li>
       </ul>
-      <p class="hint">よくあるミス: 似た名前が並ぶと混乱するため、用途ごとに明確な名前を付けてください。</p>
+      <p class="hint">ヒント: 似た名前が並ぶと混乱するため、用途ごとに明確な名前を付けてください。</p>
       <figure>
         <img src="${images.workspace}" alt="ワークスペース一覧" />
-        <figcaption>ワークスペースUI</figcaption>
+        <figcaption>ワークスペース機能</figcaption>
       </figure>
     </section>
 
     <section id="paths">
-      <h2>7. パス登録UI</h2>
+      <h2>7. パス登録機能</h2>
       <p>よく使うファイルパスを登録して、ワンクリックでコピーできます。</p>
       <ul>
         <li>「パス登録」ボタンまたは Ctrl+P で開閉します。</li>
         <li>ドラッグ&ドロップで並び替えできます。</li>
       </ul>
-      <p class="hint">よくあるミス: Ctrl+P で開く対象は「最後に操作したペイン」です。</p>
+      <p class="hint">ヒント: Ctrl+P で開く対象は「最後に操作したペイン」です。</p>
       <figure>
-        <img src="${images.paths}" alt="パス登録UI" />
-        <figcaption>パス登録UI</figcaption>
+        <img src="${images.paths}" alt="パス登録機能" />
+        <figcaption>パス登録機能</figcaption>
       </figure>
     </section>
 
     <section id="goto-line">
-      <h2>8. 行ジャンプUI</h2>
-      <p>Ctrl+Gで行ジャンプUIを開き、行番号を指定してその行へ移動できます。</p>
+      <h2>8. 行ジャンプ機能</h2>
+      <p>Ctrl+Gで行ジャンプ機能を開き、行番号を指定してその行へ移動できます。</p>
       <ul>
         <li>ジャンプ対象は「フォーカス中のペイン」のファイル単位です。</li>
         <li>行番号を入力して確定すると、その行へ移動します。</li>
       </ul>
-      <p class="hint">よくあるミス: 空欄のままでは移動しないので、行番号を入力してください。</p>
+      <p class="hint">ヒント: 空欄のままでは移動しないので、行番号を入力してください。</p>
       <figure>
-        <img src="${images.gotoLine}" alt="行ジャンプUI" />
-        <figcaption>行ジャンプUI</figcaption>
+        <img src="${images.gotoLine}" alt="行ジャンプ機能" />
+        <figcaption>行ジャンプ機能</figcaption>
       </figure>
     </section>
 
@@ -330,11 +333,11 @@ const html = `<!doctype html>
       <div class="shortcut-grid">
         <div class="shortcut-item">
           <span class="shortcut-key">Ctrl+F</span>
-          <span>検索UIを開く（フォーカス中のペイン）</span>
+          <span>検索機能を開く（フォーカス中のペイン）</span>
         </div>
         <div class="shortcut-item">
           <span class="shortcut-key">Ctrl+G</span>
-          <span>行ジャンプUIを開く（ファイル単位）</span>
+          <span>行ジャンプ機能を開く（ファイル単位）</span>
         </div>
         <div class="shortcut-item">
           <span class="shortcut-key">Ctrl+J / Ctrl+K</span>
@@ -346,7 +349,7 @@ const html = `<!doctype html>
         </div>
         <div class="shortcut-item">
           <span class="shortcut-key">Ctrl+P</span>
-          <span>パス登録UIの開閉</span>
+          <span>パス登録機能の開閉</span>
         </div>
         <div class="shortcut-item">
           <span class="shortcut-key">Ctrl+Z / Ctrl+Y</span>
@@ -358,7 +361,7 @@ const html = `<!doctype html>
         </div>
         <div class="shortcut-item">
           <span class="shortcut-key">Alt+N</span>
-          <span>ワークスペースUIの開閉</span>
+          <span>ワークスペース機能の開閉</span>
         </div>
         <div class="shortcut-item">
           <span class="shortcut-key">↑/↓</span>
