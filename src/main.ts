@@ -59,6 +59,7 @@ import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
+import { bindIgnoreLeadingWhitespaceToggle } from "./ui/ignoreLeadingWhitespaceToggle";
 import { createRecalcScheduler } from "./ui/recalcScheduler";
 import { bindEditorLayoutRecalc } from "./ui/layoutRecalcWatcher";
 import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
@@ -311,6 +312,9 @@ const highlightToggleButton = document.querySelector<HTMLButtonElement>(
 );
 const highlightToggle = getRequiredElement<HTMLInputElement>("#highlight-toggle");
 const themeToggle = document.querySelector<HTMLInputElement>("#theme-toggle");
+const ignoreLeadingWhitespaceToggle = document.querySelector<HTMLInputElement>(
+  "#ignore-leading-whitespace-toggle",
+);
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
@@ -2799,6 +2803,7 @@ let currentBlockIndex = 0;
 let leftFocusDecorationIds: string[] = [];
 let rightFocusDecorationIds: string[] = [];
 let foldEnabled = persistedState?.foldEnabled ?? false;
+let ignoreLeadingFileWhitespace = false;
 let foldRanges: FoldRange[] = [];
 let leftFoldZoneIds: string[] = [];
 let rightFoldZoneIds: string[] = [];
@@ -3030,6 +3035,7 @@ type FoldZoneSpec = {
 type DerivedDiffCache = {
   opsSignature: string;
   segmentSignature: string;
+  decorationVariantKey: string;
   foldRanges: FoldRange[];
   decorations: {
     left: monaco.editor.IModelDeltaDecoration[];
@@ -3476,7 +3482,19 @@ function shouldApplyBySignature(
   return currentIds.length === 0 && nextSignatures.length > 0;
 }
 
-function buildDecorations(ops: PairedOp[]): {
+function canIgnoreLeadingFileWhitespaceFromEditorText(text: string): boolean {
+  const normalized = normalizeText(text);
+  return normalized.length === 0 || normalized[0] !== "\n";
+}
+
+function buildDecorations(
+  ops: PairedOp[],
+  options: {
+    ignoreLeadingFileWhitespace: boolean;
+    leftLeadingFileWhitespaceEligible: boolean;
+    rightLeadingFileWhitespaceEligible: boolean;
+  },
+): {
   left: monaco.editor.IModelDeltaDecoration[];
   right: monaco.editor.IModelDeltaDecoration[];
 } {
@@ -3498,7 +3516,13 @@ function buildDecorations(ops: PairedOp[]): {
       addLineDecoration(left, op.leftLineNo, "line-replace");
       addLineDecoration(right, op.rightLineNo, "line-replace");
 
-      const inline = diffInlineWithAppendLiteral(op.leftLine ?? "", op.rightLine ?? "");
+      const inline = diffInlineWithAppendLiteral(op.leftLine ?? "", op.rightLine ?? "", {
+        ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace,
+        leftLineNo: op.leftLineNo,
+        rightLineNo: op.rightLineNo,
+        leftLeadingFileWhitespaceEligible: options.leftLeadingFileWhitespaceEligible,
+        rightLeadingFileWhitespaceEligible: options.rightLeadingFileWhitespaceEligible,
+      });
       addInlineDecorations(left, op.leftLineNo, inline.leftRanges, "inline-delete");
       addInlineDecorations(right, op.rightLineNo, inline.rightRanges, "inline-insert");
       const spaceRanges = extractHtmlAttributeSpaceDiffRangesPair(
@@ -3759,6 +3783,15 @@ function setEditorHiddenAreas(
 function recalcDiff() {
   const leftText = leftEditor.getValue();
   const rightText = rightEditor.getValue();
+  const leftLeadingFileWhitespaceEligible =
+    canIgnoreLeadingFileWhitespaceFromEditorText(leftText);
+  const rightLeadingFileWhitespaceEligible =
+    canIgnoreLeadingFileWhitespaceFromEditorText(rightText);
+  const decorationVariantKey = [
+    ignoreLeadingFileWhitespace ? "1" : "0",
+    leftLeadingFileWhitespaceEligible ? "1" : "0",
+    rightLeadingFileWhitespaceEligible ? "1" : "0",
+  ].join("|");
   const validation = validateAnchors(
     manualAnchors,
     getNormalizedLineCount(leftText),
@@ -3804,9 +3837,11 @@ function recalcDiff() {
   renderAnchors(validation.invalid, validation.valid);
 
   if (anchorsForDiff.length > 0) {
-    pairedOps = diffWithAnchors(leftText, rightText, anchorsForDiff);
+    pairedOps = diffWithAnchors(leftText, rightText, anchorsForDiff, {
+      ignoreLeadingFileWhitespace,
+    });
   } else {
-    pairedOps = pairReplace(diffLines(leftText, rightText));
+    pairedOps = pairReplace(diffLines(leftText, rightText, { ignoreLeadingFileWhitespace }));
   }
 
   const opsSignature = buildPairedOpsSignature(pairedOps);
@@ -3814,14 +3849,20 @@ function recalcDiff() {
   const useCachedDerived =
     derivedDiffCache !== null &&
     derivedDiffCache.opsSignature === opsSignature &&
-    derivedDiffCache.segmentSignature === segmentSignature;
+    derivedDiffCache.segmentSignature === segmentSignature &&
+    derivedDiffCache.decorationVariantKey === decorationVariantKey;
   const nextDerived = useCachedDerived
     ? derivedDiffCache
     : {
         opsSignature,
         segmentSignature,
+        decorationVariantKey,
         foldRanges: buildFoldRanges(pairedOps, foldOptions),
-        decorations: buildDecorations(pairedOps),
+        decorations: buildDecorations(pairedOps, {
+          ignoreLeadingFileWhitespace,
+          leftLeadingFileWhitespaceEligible,
+          rightLeadingFileWhitespaceEligible,
+        }),
         viewZones: buildViewZones(pairedOps),
         fileZones: buildAlignedFileBoundaryZones(pairedOps, leftSegments, rightSegments),
       };
@@ -4049,6 +4090,17 @@ if (syncToggle) {
     schedulePersist();
   });
 }
+
+bindIgnoreLeadingWhitespaceToggle({
+  input: ignoreLeadingWhitespaceToggle,
+  initialEnabled: false,
+  onChange: (enabled) => {
+    ignoreLeadingFileWhitespace = enabled;
+  },
+  onAfterToggle: () => {
+    recalcDiff();
+  },
+});
 
 const foldToggle = document.querySelector<HTMLInputElement>("#fold-toggle");
 if (foldToggle) {

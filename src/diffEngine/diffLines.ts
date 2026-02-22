@@ -3,6 +3,19 @@ import type { LineOp } from "./types";
 import { extractLineKey } from "./lineSignature";
 import { toAppendLiteralOrLine } from "./appendLiteral";
 import { extractAppendLiteral } from "./appendLiteral";
+import { extractAppendLiteralInlineMap } from "./appendLiteral";
+
+export type DiffLinesOptions = {
+  ignoreLeadingFileWhitespace?: boolean;
+  leftLeadingFileWhitespaceEligible?: boolean;
+  rightLeadingFileWhitespaceEligible?: boolean;
+};
+
+type ResolvedDiffLinesOptions = {
+  ignoreLeadingFileWhitespace: boolean;
+  leftLeadingFileWhitespaceEligible: boolean;
+  rightLeadingFileWhitespaceEligible: boolean;
+};
 
 function splitLines(text: string): string[] {
   // Keep trailing empty line if the text ends with "\n".
@@ -43,6 +56,99 @@ function isBlankLine(line: string): boolean {
 
 function buildCompareLines(lines: string[]): string[] {
   return lines.map((line) => normalizeForMatch(line));
+}
+
+function stripLeadingTabsAndSpaces(value: string): string {
+  return value.replace(/^[ \t]+/, "");
+}
+
+function adjustLeadingFileWhitespaceCompareKey(value: string): string {
+  if (value.startsWith("append:")) {
+    return `append:${stripLeadingTabsAndSpaces(value.slice("append:".length))}`;
+  }
+  return stripLeadingTabsAndSpaces(value);
+}
+
+function buildCompareLinesWithOptions(
+  lines: string[],
+  options: ResolvedDiffLinesOptions,
+): string[] {
+  const compare = buildCompareLines(lines);
+  if (!options.ignoreLeadingFileWhitespace || compare.length === 0) {
+    return compare;
+  }
+  return compare.map((value) => adjustLeadingFileWhitespaceCompareKey(value));
+}
+
+function canIgnoreLeadingFileWhitespaceFromText(text: string): boolean {
+  if (text.length === 0) {
+    return true;
+  }
+  return text[0] !== "\n";
+}
+
+function canIgnoreLeadingFileWhitespaceFromLines(lines: string[]): boolean {
+  if (lines.length === 0) {
+    return true;
+  }
+  // `[""]` can mean empty text or leading newline. Without original text we choose conservative.
+  return (lines[0] ?? "") !== "";
+}
+
+function normalizeDiffLinesOptionsForLines(
+  leftLines: string[],
+  rightLines: string[],
+  options: DiffLinesOptions,
+): ResolvedDiffLinesOptions {
+  return {
+    ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace === true,
+    leftLeadingFileWhitespaceEligible:
+      options.leftLeadingFileWhitespaceEligible ??
+      canIgnoreLeadingFileWhitespaceFromLines(leftLines),
+    rightLeadingFileWhitespaceEligible:
+      options.rightLeadingFileWhitespaceEligible ??
+      canIgnoreLeadingFileWhitespaceFromLines(rightLines),
+  };
+}
+
+function hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(
+  leftLine: string,
+  rightLine: string,
+): boolean {
+  const leftMap = extractAppendLiteralInlineMap(leftLine);
+  const rightMap = extractAppendLiteralInlineMap(rightLine);
+  if (!leftMap || !rightMap) {
+    return false;
+  }
+  const leftWrapper = leftLine.slice(0, leftMap.payloadRange.start) + leftLine.slice(leftMap.payloadRange.end);
+  const rightWrapper =
+    rightLine.slice(0, rightMap.payloadRange.start) + rightLine.slice(rightMap.payloadRange.end);
+  if (leftWrapper !== rightWrapper) {
+    return false;
+  }
+  if (leftMap.payload === rightMap.payload) {
+    return false;
+  }
+  return stripLeadingTabsAndSpaces(leftMap.payload) === stripLeadingTabsAndSpaces(rightMap.payload);
+}
+
+function isIgnorableLeadingFileWhitespaceDiff(
+  leftLine: string,
+  rightLine: string,
+  leftLineNo: number,
+  rightLineNo: number,
+  options: ResolvedDiffLinesOptions,
+): boolean {
+  if (!options.ignoreLeadingFileWhitespace) {
+    return false;
+  }
+  if (leftLine === rightLine) {
+    return false;
+  }
+  if (stripLeadingTabsAndSpaces(leftLine) === stripLeadingTabsAndSpaces(rightLine)) {
+    return true;
+  }
+  return hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(leftLine, rightLine);
 }
 
 function extractFirstLiteral(line: string): string | null {
@@ -131,6 +237,9 @@ function backtrackOps(
   leftCompare: string[],
   rightCompare: string[],
   trace: MyersTrace,
+  leftOffset: number,
+  rightOffset: number,
+  options: ResolvedDiffLinesOptions,
 ): LineOp[] {
   const n = left.length;
   const m = right.length;
@@ -162,6 +271,8 @@ function backtrackOps(
       const rightLine = right[y - 1];
       const leftKey = leftCompare[x - 1];
       const rightKey = rightCompare[y - 1];
+      const globalLeftLineNo = leftOffset + (x - 1);
+      const globalRightLineNo = rightOffset + (y - 1);
       if (leftLine === rightLine) {
         ops.push({
           type: "equal",
@@ -174,6 +285,23 @@ function backtrackOps(
         leftKey === rightKey &&
         isBlankLine(leftLine) &&
         isBlankLine(rightLine)
+      ) {
+        ops.push({
+          type: "equal",
+          leftLine,
+          rightLine,
+          leftLineNo: x - 1,
+          rightLineNo: y - 1,
+        });
+      } else if (
+        leftKey === rightKey &&
+        isIgnorableLeadingFileWhitespaceDiff(
+          leftLine,
+          rightLine,
+          globalLeftLineNo,
+          globalRightLineNo,
+          options,
+        )
       ) {
         ops.push({
           type: "equal",
@@ -360,12 +488,22 @@ function diffLinesMyers(
   rightCompare: string[],
   leftOffset: number,
   rightOffset: number,
+  options: ResolvedDiffLinesOptions,
 ): LineOp[] {
   if (leftLines.length === 0 && rightLines.length === 0) {
     return [];
   }
   const trace = buildMyersTrace(leftCompare, rightCompare);
-  const ops = backtrackOps(leftLines, rightLines, leftCompare, rightCompare, trace);
+  const ops = backtrackOps(
+    leftLines,
+    rightLines,
+    leftCompare,
+    rightCompare,
+    trace,
+    leftOffset,
+    rightOffset,
+    options,
+  );
   return offsetOps(ops, leftOffset, rightOffset);
 }
 
@@ -376,6 +514,7 @@ function diffLinesPatience(
   rightCompare: string[],
   leftOffset: number,
   rightOffset: number,
+  options: ResolvedDiffLinesOptions,
 ): LineOp[] {
   if (leftLines.length === 0 && rightLines.length === 0) {
     return [];
@@ -383,7 +522,15 @@ function diffLinesPatience(
 
   const anchors = longestIncreasingPairs(buildUniquePairs(leftLines, rightLines));
   if (anchors.length === 0) {
-    return diffLinesMyers(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset);
+    return diffLinesMyers(
+      leftLines,
+      rightLines,
+      leftCompare,
+      rightCompare,
+      leftOffset,
+      rightOffset,
+      options,
+    );
   }
 
   const result: LineOp[] = [];
@@ -401,6 +548,7 @@ function diffLinesPatience(
         rightCompare.slice(rightStart, anchor.rightIndex),
         leftOffset + leftStart,
         rightOffset + rightStart,
+        options,
       ),
     );
 
@@ -420,6 +568,23 @@ function diffLinesPatience(
       leftKey === rightKey &&
       isBlankLine(leftLine) &&
       isBlankLine(rightLine)
+    ) {
+      result.push({
+        type: "equal",
+        leftLine,
+        rightLine,
+        leftLineNo: leftOffset + anchor.leftIndex,
+        rightLineNo: rightOffset + anchor.rightIndex,
+      });
+    } else if (
+      leftKey === rightKey &&
+      isIgnorableLeadingFileWhitespaceDiff(
+        leftLine,
+        rightLine,
+        leftOffset + anchor.leftIndex,
+        rightOffset + anchor.rightIndex,
+        options,
+      )
     ) {
       result.push({
         type: "equal",
@@ -448,6 +613,7 @@ function diffLinesPatience(
           [rightKey],
           leftOffset + anchor.leftIndex,
           rightOffset + anchor.rightIndex,
+          options,
         ),
       );
     }
@@ -466,23 +632,41 @@ function diffLinesPatience(
       rightCompare.slice(rightStart),
       leftOffset + leftStart,
       rightOffset + rightStart,
+      options,
     ),
   );
 
   return result;
 }
 
-export function diffLinesFromLines(leftLines: string[], rightLines: string[]): LineOp[] {
-  const leftCompare = buildCompareLines(leftLines);
-  const rightCompare = buildCompareLines(rightLines);
-  return diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, 0, 0);
+export function diffLinesFromLines(
+  leftLines: string[],
+  rightLines: string[],
+  options: DiffLinesOptions = {},
+): LineOp[] {
+  const resolved = normalizeDiffLinesOptionsForLines(leftLines, rightLines, options);
+  const leftCompare = buildCompareLinesWithOptions(leftLines, resolved);
+  const rightCompare = buildCompareLinesWithOptions(rightLines, resolved);
+  return diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, 0, 0, resolved);
 }
 
-export function diffLines(leftText: string, rightText: string): LineOp[] {
+export function diffLines(
+  leftText: string,
+  rightText: string,
+  options: DiffLinesOptions = {},
+): LineOp[] {
   const leftNormalized = normalizeText(leftText);
   const rightNormalized = normalizeText(rightText);
   const leftLines = splitLines(leftNormalized);
   const rightLines = splitLines(rightNormalized);
 
-  return diffLinesFromLines(leftLines, rightLines);
+  return diffLinesFromLines(leftLines, rightLines, {
+    ...options,
+    leftLeadingFileWhitespaceEligible:
+      options.leftLeadingFileWhitespaceEligible ??
+      canIgnoreLeadingFileWhitespaceFromText(leftNormalized),
+    rightLeadingFileWhitespaceEligible:
+      options.rightLeadingFileWhitespaceEligible ??
+      canIgnoreLeadingFileWhitespaceFromText(rightNormalized),
+  });
 }

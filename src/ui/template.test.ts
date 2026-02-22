@@ -9,6 +9,9 @@ describe("pane action layout", () => {
 
     const toolbar = doc.querySelector(".toolbar-right");
     const syncToggle = toolbar?.querySelector("#sync-toggle");
+    const ignoreLeadingWhitespaceToggle = toolbar?.querySelector(
+      "#ignore-leading-whitespace-toggle",
+    );
     const wrapToggle = toolbar?.querySelector("#wrap-toggle");
     const foldToggle = toolbar?.querySelector("#fold-toggle");
     const leftActions = doc.querySelector("#left-pane .pane-actions");
@@ -20,6 +23,7 @@ describe("pane action layout", () => {
     const rightClear = rightActions?.querySelector("#right-clear");
 
     expect(syncToggle).toBeTruthy();
+    expect(ignoreLeadingWhitespaceToggle).toBeTruthy();
     expect(wrapToggle).toBeNull();
     expect(foldToggle).toBeTruthy();
     expect(leftWrap).toBeNull();
@@ -29,6 +33,11 @@ describe("pane action layout", () => {
 
     const toolbarChildren = Array.from(toolbar?.children ?? []);
     expect(toolbarChildren.indexOf(syncToggle!.closest(".toggle")!)).toBeLessThan(
+      toolbarChildren.indexOf(ignoreLeadingWhitespaceToggle!.closest(".toggle")!),
+    );
+    expect(
+      toolbarChildren.indexOf(ignoreLeadingWhitespaceToggle!.closest(".toggle")!),
+    ).toBeLessThan(
       toolbarChildren.indexOf(foldToggle!.closest(".toggle")!),
     );
   });

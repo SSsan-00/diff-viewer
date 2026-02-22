@@ -1,6 +1,7 @@
 import { normalizeText } from "./normalize";
-import { diffLinesFromLines } from "./diffLines";
+import { diffLinesFromLines, type DiffLinesOptions } from "./diffLines";
 import { pairReplace } from "./pairReplace";
+import { extractAppendLiteralInlineMap } from "./appendLiteral";
 import type { LineOp, PairedOp } from "./types";
 
 export type Anchor = {
@@ -145,27 +146,83 @@ function diffSegment(
   rightLines: string[],
   leftOffset: number,
   rightOffset: number,
+  options: DiffLinesOptions,
 ): PairedOp[] {
   if (leftLines.length === 0 && rightLines.length === 0) {
     return [];
   }
 
-  const ops: LineOp[] = diffLinesFromLines(leftLines, rightLines);
+  const ops: LineOp[] = diffLinesFromLines(leftLines, rightLines, {
+    ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace === true,
+  });
   const paired = pairReplace(ops);
   return offsetOps(paired, leftOffset, rightOffset);
 }
 
-function isSameLineForMatch(leftLine: string, rightLine: string): boolean {
-  return leftLine === rightLine;
+function stripLeadingTabsAndSpaces(value: string): string {
+  return value.replace(/^[ \t]+/, "");
+}
+
+function hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(
+  leftLine: string,
+  rightLine: string,
+): boolean {
+  const leftMap = extractAppendLiteralInlineMap(leftLine);
+  const rightMap = extractAppendLiteralInlineMap(rightLine);
+  if (!leftMap || !rightMap) {
+    return false;
+  }
+  const leftWrapper = leftLine.slice(0, leftMap.payloadRange.start) + leftLine.slice(leftMap.payloadRange.end);
+  const rightWrapper =
+    rightLine.slice(0, rightMap.payloadRange.start) + rightLine.slice(rightMap.payloadRange.end);
+  if (leftWrapper !== rightWrapper) {
+    return false;
+  }
+  if (leftMap.payload === rightMap.payload) {
+    return false;
+  }
+  return stripLeadingTabsAndSpaces(leftMap.payload) === stripLeadingTabsAndSpaces(rightMap.payload);
+}
+
+function isSameLineForMatch(
+  leftLine: string,
+  rightLine: string,
+  leftLineNo: number,
+  rightLineNo: number,
+  options: DiffLinesOptions,
+  leftLeadingFileWhitespaceEligible: boolean,
+  rightLeadingFileWhitespaceEligible: boolean,
+): boolean {
+  void leftLineNo;
+  void rightLineNo;
+  void leftLeadingFileWhitespaceEligible;
+  void rightLeadingFileWhitespaceEligible;
+  if (leftLine === rightLine) {
+    return true;
+  }
+  if (!options.ignoreLeadingFileWhitespace) {
+    return false;
+  }
+  if (stripLeadingTabsAndSpaces(leftLine) === stripLeadingTabsAndSpaces(rightLine)) {
+    return true;
+  }
+  return hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(leftLine, rightLine);
 }
 
 export function diffWithAnchors(
   leftText: string,
   rightText: string,
   anchors: Anchor[],
+  options: DiffLinesOptions = {},
 ): PairedOp[] {
-  const leftLines = splitNormalizedLines(leftText);
-  const rightLines = splitNormalizedLines(rightText);
+  const leftNormalized = normalizeText(leftText);
+  const rightNormalized = normalizeText(rightText);
+  const leftLines = leftNormalized.split("\n");
+  const rightLines = rightNormalized.split("\n");
+  const leftLeadingFileWhitespaceEligible =
+    leftNormalized.length === 0 || leftNormalized[0] !== "\n";
+  const rightLeadingFileWhitespaceEligible =
+    rightNormalized.length === 0 || rightNormalized[0] !== "\n";
   const result: PairedOp[] = [];
   let leftStart = 0;
   let rightStart = 0;
@@ -173,12 +230,22 @@ export function diffWithAnchors(
   for (const anchor of anchors) {
     const leftSegment = leftLines.slice(leftStart, anchor.leftLineNo);
     const rightSegment = rightLines.slice(rightStart, anchor.rightLineNo);
-    result.push(...diffSegment(leftSegment, rightSegment, leftStart, rightStart));
+    result.push(...diffSegment(leftSegment, rightSegment, leftStart, rightStart, options));
 
     const leftLine = leftLines[anchor.leftLineNo] ?? "";
     const rightLine = rightLines[anchor.rightLineNo] ?? "";
     result.push({
-      type: isSameLineForMatch(leftLine, rightLine) ? "equal" : "replace",
+      type: isSameLineForMatch(
+        leftLine,
+        rightLine,
+        anchor.leftLineNo,
+        anchor.rightLineNo,
+        options,
+        leftLeadingFileWhitespaceEligible,
+        rightLeadingFileWhitespaceEligible,
+      )
+        ? "equal"
+        : "replace",
       leftLine,
       rightLine,
       leftLineNo: anchor.leftLineNo,
@@ -191,7 +258,7 @@ export function diffWithAnchors(
 
   const tailLeft = leftLines.slice(leftStart);
   const tailRight = rightLines.slice(rightStart);
-  result.push(...diffSegment(tailLeft, tailRight, leftStart, rightStart));
+  result.push(...diffSegment(tailLeft, tailRight, leftStart, rightStart, options));
 
   return result;
 }

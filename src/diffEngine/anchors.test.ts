@@ -80,6 +80,50 @@ describe("diffWithAnchors", () => {
 
     expect(anchorOp).toBeDefined();
   });
+
+  it("treats the first anchor row as equal when only leading whitespace differs and the option is enabled", () => {
+    const left = "    <head>\n<body>";
+    const right = "<head>\n<body>";
+    const anchors: Anchor[] = [{ leftLineNo: 0, rightLineNo: 0 }];
+
+    const off = diffWithAnchors(left, right, anchors);
+    const on = diffWithAnchors(left, right, anchors, {
+      ignoreLeadingFileWhitespace: true,
+    });
+
+    expect(off[0]).toMatchObject({
+      type: "replace",
+      leftLineNo: 0,
+      rightLineNo: 0,
+    });
+    expect(on[0]).toMatchObject({
+      type: "equal",
+      leftLineNo: 0,
+      rightLineNo: 0,
+    });
+  });
+
+  it("treats a later anchor row as equal when only leading whitespace differs and the option is enabled", () => {
+    const left = "same\n    value";
+    const right = "same\nvalue";
+    const anchors: Anchor[] = [{ leftLineNo: 1, rightLineNo: 1 }];
+
+    const off = diffWithAnchors(left, right, anchors);
+    const on = diffWithAnchors(left, right, anchors, {
+      ignoreLeadingFileWhitespace: true,
+    });
+
+    expect(off[1]).toMatchObject({
+      type: "replace",
+      leftLineNo: 1,
+      rightLineNo: 1,
+    });
+    expect(on[1]).toMatchObject({
+      type: "equal",
+      leftLineNo: 1,
+      rightLineNo: 1,
+    });
+  });
 });
 
 describe("anchor helpers", () => {

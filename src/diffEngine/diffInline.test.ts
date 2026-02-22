@@ -81,6 +81,55 @@ describe("diffInline", () => {
     expect(result.rightRanges[0].start).toBe(0);
   });
 
+  it("can ignore leading file whitespace in inline diff while keeping other diffs", () => {
+    const left = '    <div class="a  b" id="x"></div>';
+    const right = '<div class="a b" id="x"></div>';
+    const off = diffInlineWithAppendLiteral(left, right);
+    const on = diffInlineWithAppendLiteral(left, right, {
+      ignoreLeadingFileWhitespace: true,
+      leftLineNo: 0,
+      rightLineNo: 0,
+      leftLeadingFileWhitespaceEligible: true,
+      rightLeadingFileWhitespaceEligible: true,
+    });
+
+    expect(off.leftRanges.some((range) => range.start === 0)).toBe(true);
+    expect(on.leftRanges.some((range) => range.start === 0)).toBe(false);
+    expect(on.leftRanges.length + on.rightRanges.length).toBeGreaterThan(0);
+  });
+
+  it("does not highlight file-start indentation before AppendLine wrapper when enabled", () => {
+    const left = "<!doctype html>";
+    const right = '        sb.AppendLine("<!doctype html>");';
+
+    const off = diffInlineWithAppendLiteral(left, right);
+    const on = diffInlineWithAppendLiteral(left, right, {
+      ignoreLeadingFileWhitespace: true,
+      leftLineNo: 0,
+      rightLineNo: 0,
+      leftLeadingFileWhitespaceEligible: true,
+      rightLeadingFileWhitespaceEligible: true,
+    });
+
+    expect(off.rightRanges.some((range) => range.start === 0)).toBe(true);
+    expect(on.rightRanges.some((range) => range.start === 0)).toBe(false);
+    expect(on.rightRanges.some((range) => range.start === 8)).toBe(true);
+  });
+
+  it("ignores leading whitespace inline diffs on later rows when enabled", () => {
+    const off = diffInlineWithAppendLiteral("  value = 1;", "value = 1;");
+    const on = diffInlineWithAppendLiteral("  value = 1;", "value = 1;", {
+      ignoreLeadingFileWhitespace: true,
+      leftLineNo: 3,
+      rightLineNo: 3,
+      leftLeadingFileWhitespaceEligible: true,
+      rightLeadingFileWhitespaceEligible: true,
+    });
+
+    expect(off.leftRanges.some((range) => range.start === 0)).toBe(true);
+    expect(on.leftRanges.some((range) => range.start === 0)).toBe(false);
+  });
+
   it("highlights SQL date formatting differences", () => {
     const result = diffInline(
       "$sql .= \", to_char(date, 'yyyy/mm/dd')\";",

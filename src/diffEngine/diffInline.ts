@@ -202,15 +202,93 @@ function combineRanges(base: Range[], extra: Range[]): Range[] {
   return merged;
 }
 
+function countLeadingSpacesAndTabs(value: string): number {
+  let index = 0;
+  while (index < value.length) {
+    const ch = value[index];
+    if (ch !== " " && ch !== "\t") {
+      break;
+    }
+    index += 1;
+  }
+  return index;
+}
+
+function offsetRanges(ranges: Range[], offset: number): Range[] {
+  if (offset === 0 || ranges.length === 0) {
+    return ranges;
+  }
+  return ranges.map((range) => ({ start: range.start + offset, end: range.end + offset }));
+}
+
+function trimRangesBefore(ranges: Range[], cutoff: number): Range[] {
+  if (cutoff <= 0 || ranges.length === 0) {
+    return ranges;
+  }
+  const trimmed: Range[] = [];
+  for (const range of ranges) {
+    if (range.end <= cutoff) {
+      continue;
+    }
+    if (range.start < cutoff) {
+      trimmed.push({ start: cutoff, end: range.end });
+      continue;
+    }
+    trimmed.push(range);
+  }
+  return trimmed;
+}
+
+export type DiffInlineWithAppendLiteralOptions = {
+  ignoreLeadingFileWhitespace?: boolean;
+  leftLineNo?: number;
+  rightLineNo?: number;
+  leftLeadingFileWhitespaceEligible?: boolean;
+  rightLeadingFileWhitespaceEligible?: boolean;
+};
+
+function shouldIgnoreLeadingFileWhitespaceInInlineDiff(
+  options: DiffInlineWithAppendLiteralOptions,
+): boolean {
+  return options.ignoreLeadingFileWhitespace === true;
+}
+
 export function diffInlineWithAppendLiteral(
   leftLine: string,
   rightLine: string,
+  options: DiffInlineWithAppendLiteralOptions = {},
 ): InlineDiff {
   const leftMap = buildRangeMap(leftLine);
   const rightMap = buildRangeMap(rightLine);
-  const inline = diffInline(leftMap.compareText, rightMap.compareText);
+  let leftCompare = leftMap.compareText;
+  let rightCompare = rightMap.compareText;
+  let leftPrefixOffset = 0;
+  let rightPrefixOffset = 0;
+  let leftOriginalPrefixOffset = 0;
+  let rightOriginalPrefixOffset = 0;
+
+  if (shouldIgnoreLeadingFileWhitespaceInInlineDiff(options)) {
+    leftPrefixOffset = countLeadingSpacesAndTabs(leftCompare);
+    rightPrefixOffset = countLeadingSpacesAndTabs(rightCompare);
+    leftOriginalPrefixOffset = countLeadingSpacesAndTabs(leftLine);
+    rightOriginalPrefixOffset = countLeadingSpacesAndTabs(rightLine);
+    if (leftPrefixOffset > 0 || rightPrefixOffset > 0) {
+      leftCompare = leftCompare.slice(leftPrefixOffset);
+      rightCompare = rightCompare.slice(rightPrefixOffset);
+    }
+  }
+
+  const inline = diffInline(leftCompare, rightCompare);
+  const leftMapped = combineRanges(
+    mapRanges(offsetRanges(inline.leftRanges, leftPrefixOffset), leftMap),
+    leftMap.wrapperRanges,
+  );
+  const rightMapped = combineRanges(
+    mapRanges(offsetRanges(inline.rightRanges, rightPrefixOffset), rightMap),
+    rightMap.wrapperRanges,
+  );
   return {
-    leftRanges: combineRanges(mapRanges(inline.leftRanges, leftMap), leftMap.wrapperRanges),
-    rightRanges: combineRanges(mapRanges(inline.rightRanges, rightMap), rightMap.wrapperRanges),
+    leftRanges: trimRangesBefore(leftMapped, leftOriginalPrefixOffset),
+    rightRanges: trimRangesBefore(rightMapped, rightOriginalPrefixOffset),
   };
 }

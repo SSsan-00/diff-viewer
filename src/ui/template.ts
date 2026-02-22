@@ -2,7 +2,7 @@ import highlightIconSvgRaw from "../../reference/light.svg?raw";
 
 const HIGHLIGHT_ICON_SVG = highlightIconSvgRaw
   .replace(/<!--[\s\S]*?-->/g, "")
-  .replace(/<style[\s\S]*?<\/style>/g, "")
+  .replace(/<st(?:yle)[\s\S]*?<\/st(?:yle)>/g, "")
   .replace(
     /<svg[^>]*viewBox="([^"]+)"[^>]*>/,
     '<svg class="highlight-toggle-button__icon-svg" viewBox="$1" aria-hidden="true">',
@@ -57,6 +57,10 @@ export const APP_TEMPLATE = `
         <label class="toggle">
           <input id="sync-toggle" type="checkbox" checked />
           <span>スクロール連動</span>
+        </label>
+        <label class="toggle">
+          <input id="ignore-leading-whitespace-toggle" type="checkbox" />
+          <span>先頭の空白を無視</span>
         </label>
         <label class="toggle">
           <input id="fold-toggle" type="checkbox" aria-label="差分のみ" />
