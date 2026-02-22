@@ -306,6 +306,9 @@ const leftFileInput = getRequiredElement<HTMLInputElement>("#left-file");
 const rightFileInput = getRequiredElement<HTMLInputElement>("#right-file");
 const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button");
 const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
+const highlightToggleButton = document.querySelector<HTMLButtonElement>(
+  "#highlight-toggle-button",
+);
 const highlightToggle = getRequiredElement<HTMLInputElement>("#highlight-toggle");
 const themeToggle = document.querySelector<HTMLInputElement>("#theme-toggle");
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
@@ -1193,6 +1196,7 @@ const getPaneLanguage = (segments: LineSegment[]) =>
 
 const syntaxHighlightController = bindSyntaxHighlightToggle({
   input: highlightToggle,
+  button: highlightToggleButton,
   editors: [leftEditor, rightEditor],
   getLanguageForEditor: (index) =>
     index === 0 ? getPaneLanguage(leftSegments) : getPaneLanguage(rightSegments),

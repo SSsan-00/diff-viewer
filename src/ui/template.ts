@@ -1,3 +1,16 @@
+import highlightIconSvgRaw from "../../reference/light.svg?raw";
+
+const HIGHLIGHT_ICON_SVG = highlightIconSvgRaw
+  .replace(/<!--[\s\S]*?-->/g, "")
+  .replace(/<style[\s\S]*?<\/style>/g, "")
+  .replace(
+    /<svg[^>]*viewBox="([^"]+)"[^>]*>/,
+    '<svg class="highlight-toggle-button__icon-svg" viewBox="$1" aria-hidden="true">',
+  )
+  .replace(/\sclass="st0"/g, "")
+  .replace(/\sstyle="[^"]*"/g, "")
+  .trim();
+
 export const APP_TEMPLATE = `
   <div class="app">
     <header class="toolbar">
@@ -46,13 +59,28 @@ export const APP_TEMPLATE = `
           <span>スクロール連動</span>
         </label>
         <label class="toggle">
-          <input id="highlight-toggle" type="checkbox" checked />
-          <span>ハイライト</span>
-        </label>
-        <label class="toggle">
           <input id="fold-toggle" type="checkbox" aria-label="差分のみ表示" />
           <span>差分のみ表示</span>
         </label>
+        <div class="highlight-toggle-control">
+          <button
+            id="highlight-toggle-button"
+            class="highlight-toggle-button"
+            type="button"
+            aria-label="ハイライト"
+            aria-pressed="true"
+          >
+            <span class="highlight-toggle-button__icon" aria-hidden="true">${HIGHLIGHT_ICON_SVG}</span>
+          </button>
+          <input
+            id="highlight-toggle"
+            type="checkbox"
+            checked
+            hidden
+            aria-hidden="true"
+            tabindex="-1"
+          />
+        </div>
         <label class="theme-switch">
           <input
             id="theme-toggle"

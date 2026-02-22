@@ -69,15 +69,35 @@ describe("pane action layout", () => {
     expect(doc.querySelector("#fold-toggle")).toBeTruthy();
   });
 
-  it("adds a highlight toggle to the toolbar", () => {
+  it("renders a highlight icon button to the right of the diff-only toggle", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
 
-    const highlightToggle = doc.querySelector("#highlight-toggle");
+    const toolbar = doc.querySelector(".toolbar-right");
+    const highlightButton = doc.querySelector<HTMLButtonElement>(
+      "#highlight-toggle-button",
+    );
+    const highlightControl = highlightButton?.closest(".highlight-toggle-control");
+    const highlightToggle = doc.querySelector<HTMLInputElement>("#highlight-toggle");
+    const foldToggle = doc.querySelector<HTMLInputElement>("#fold-toggle");
+    const foldControl = foldToggle?.closest(".toggle");
+    const themeSwitch = doc.querySelector(".theme-switch");
+    const toolbarChildren = Array.from(toolbar?.children ?? []);
 
+    expect(highlightButton).toBeTruthy();
+    expect(highlightButton?.getAttribute("aria-label")).toBe("ハイライト");
+    expect(highlightButton?.getAttribute("aria-pressed")).toBe("true");
+    expect(doc.querySelector(".highlight-toggle-button__icon-svg")).toBeTruthy();
     expect(highlightToggle).toBeTruthy();
-    expect(highlightToggle?.closest("label")?.classList.contains("toggle")).toBe(
-      true,
+    expect(highlightToggle?.hasAttribute("hidden")).toBe(true);
+    expect(highlightControl).toBeTruthy();
+    expect(foldControl).toBeTruthy();
+    expect(themeSwitch).toBeTruthy();
+    expect(toolbarChildren.indexOf(highlightControl!)).toBeGreaterThan(
+      toolbarChildren.indexOf(foldControl!),
+    );
+    expect(toolbarChildren.indexOf(highlightControl!)).toBeLessThan(
+      toolbarChildren.indexOf(themeSwitch!),
     );
   });
 

@@ -4,6 +4,7 @@ export type SyntaxHighlightEditor = {
 
 export type SyntaxHighlightToggleOptions = {
   input: HTMLInputElement | null;
+  button?: HTMLButtonElement | null;
   editors: SyntaxHighlightEditor[];
   getLanguageForEditor: (index: number) => string;
   setModelLanguage: (model: object, language: string) => void;
@@ -20,10 +21,28 @@ function applyHighlightState(root: ParentNode, enabled: boolean): void {
   target.dataset.highlight = enabled ? "on" : "off";
 }
 
+function applyHighlightButtonState(
+  button: HTMLButtonElement | null | undefined,
+  enabled: boolean,
+): void {
+  if (!button) {
+    return;
+  }
+  button.setAttribute("aria-pressed", enabled ? "true" : "false");
+}
+
+function dispatchInputChange(input: HTMLInputElement): void {
+  const view = input.ownerDocument?.defaultView;
+  const changeEvent = view
+    ? new view.Event("change", { bubbles: true })
+    : new Event("change");
+  input.dispatchEvent(changeEvent);
+}
+
 export function bindSyntaxHighlightToggle(
   options: SyntaxHighlightToggleOptions,
 ): { applyHighlight: (enabled: boolean) => void } | null {
-  const { input, editors, getLanguageForEditor, setModelLanguage, onAfterToggle } =
+  const { input, button, editors, getLanguageForEditor, setModelLanguage, onAfterToggle } =
     options;
 
   if (!input) {
@@ -32,9 +51,12 @@ export function bindSyntaxHighlightToggle(
 
   let enabled = options.initialEnabled ?? true;
   input.checked = enabled;
+  applyHighlightButtonState(button, enabled);
 
   const applyHighlight = (nextEnabled: boolean) => {
     enabled = nextEnabled;
+    input.checked = enabled;
+    applyHighlightButtonState(button, enabled);
     applyHighlightState(input.ownerDocument ?? document, enabled);
     editors.forEach((editor, index) => {
       const model = editor.getModel();
@@ -51,7 +73,13 @@ export function bindSyntaxHighlightToggle(
     applyHighlight(input.checked);
   };
 
+  const handleButtonClick = () => {
+    input.checked = !input.checked;
+    dispatchInputChange(input);
+  };
+
   input.addEventListener("change", handleToggle);
+  button?.addEventListener("click", handleButtonClick);
 
   return { applyHighlight };
 }
