@@ -191138,6 +191138,215 @@ function bindPaneSourceCopyButton(options) {
     });
 }
 
+function findTagRanges(line) {
+    const ranges = [];
+    let index = 0;
+    while (index < line.length) {
+        const lt = line.indexOf("<", index);
+        if (lt === -1) {
+            break;
+        }
+        let i2 = lt + 1;
+        let quote = null;
+        for (;i2 < line.length; i2 += 1) {
+            const ch = line[i2];
+            if (quote) {
+                if (ch === quote) {
+                    quote = null;
+                }
+                continue;
+            }
+            if (ch === '"' || ch === "'") {
+                quote = ch;
+                continue;
+            }
+            if (ch === ">") {
+                break;
+            }
+        }
+        if (i2 >= line.length) {
+            break;
+        }
+        ranges.push({
+            start: lt,
+            end: i2 + 1
+        });
+        index = i2 + 1;
+    }
+    return ranges;
+}
+
+const TARGET_ATTRIBUTES = new Set([ "class", "id", "name", "value" ]);
+
+function isTargetAttribute(name) {
+    if (TARGET_ATTRIBUTES.has(name)) {
+        return true;
+    }
+    return name.startsWith("data-") || name.startsWith("aria-");
+}
+
+function extractAttributeValueRanges(line) {
+    const ranges = [];
+    const tagRanges = findTagRanges(line);
+    for (const tag2 of tagRanges) {
+        const content = line.slice(tag2.start + 1, tag2.end - 1);
+        let i2 = 0;
+        while (i2 < content.length) {
+            while (i2 < content.length && /\s/.test(content[i2])) {
+                i2 += 1;
+            }
+            const nameStart = i2;
+            while (i2 < content.length && /[A-Za-z0-9_:\-]/.test(content[i2])) {
+                i2 += 1;
+            }
+            if (i2 === nameStart) {
+                i2 += 1;
+                continue;
+            }
+            const name = content.slice(nameStart, i2).toLowerCase();
+            while (i2 < content.length && /\s/.test(content[i2])) {
+                i2 += 1;
+            }
+            if (content[i2] !== "=") {
+                continue;
+            }
+            i2 += 1;
+            while (i2 < content.length && /\s/.test(content[i2])) {
+                i2 += 1;
+            }
+            let quote = null;
+            let escapedQuote = false;
+            if (content[i2] === "\\" && (content[i2 + 1] === '"' || content[i2 + 1] === "'")) {
+                escapedQuote = true;
+                quote = content[i2 + 1];
+                i2 += 2;
+            } else if (content[i2] === '"' || content[i2] === "'") {
+                quote = content[i2];
+                i2 += 1;
+            }
+            if (!quote) {
+                continue;
+            }
+            const valueStart = i2;
+            let valueEnd = -1;
+            while (i2 < content.length) {
+                if (escapedQuote) {
+                    if (content[i2] === "\\" && content[i2 + 1] === quote) {
+                        valueEnd = i2;
+                        i2 += 2;
+                        break;
+                    }
+                } else if (content[i2] === quote) {
+                    valueEnd = i2;
+                    i2 += 1;
+                    break;
+                }
+                i2 += 1;
+            }
+            if (valueEnd === -1) {
+                break;
+            }
+            if (isTargetAttribute(name)) {
+                const start = tag2.start + 1 + valueStart;
+                const end = tag2.start + 1 + valueEnd;
+                ranges.push({
+                    start: start,
+                    end: end,
+                    name: name
+                });
+            }
+        }
+    }
+    return ranges;
+}
+
+function isAsciiSpaceOnly(value) {
+    if (value.length === 0) {
+        return false;
+    }
+    for (const ch of value) {
+        if (ch !== " ") {
+            return false;
+        }
+    }
+    return true;
+}
+
+function findSpaceRangesInAttributes(line, diffRanges) {
+    if (diffRanges.length === 0 || line.length === 0) {
+        return {
+            spaces: [],
+            hasTab: false
+        };
+    }
+    const attrRanges = extractAttributeValueRanges(line);
+    if (attrRanges.length === 0) {
+        return {
+            spaces: [],
+            hasTab: false
+        };
+    }
+    const spaces2 = [];
+    let hasTab = false;
+    for (const diffRange of diffRanges) {
+        for (const attrRange of attrRanges) {
+            const start = Math.max(diffRange.start, attrRange.start);
+            const end = Math.min(diffRange.end, attrRange.end);
+            if (start >= end) {
+                continue;
+            }
+            const fragment = line.slice(start, end);
+            if (fragment.includes("\t")) {
+                hasTab = true;
+            }
+            if (isAsciiSpaceOnly(fragment)) {
+                spaces2.push({
+                    start: start,
+                    end: end
+                });
+            }
+        }
+    }
+    return {
+        spaces: spaces2,
+        hasTab: hasTab
+    };
+}
+
+function hasTabInAttributeValues(line) {
+    if (line.includes("\t")) {
+        return true;
+    }
+    const ranges = extractAttributeValueRanges(line);
+    for (const range2 of ranges) {
+        if (line.slice(range2.start, range2.end).includes("\t")) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function extractHtmlAttributeSpaceDiffRangesPair(leftLine, rightLine, leftRanges, rightRanges) {
+    if (hasTabInAttributeValues(leftLine) || hasTabInAttributeValues(rightLine)) {
+        return {
+            left: [],
+            right: []
+        };
+    }
+    const leftResult = findSpaceRangesInAttributes(leftLine, leftRanges);
+    const rightResult = findSpaceRangesInAttributes(rightLine, rightRanges);
+    if (leftResult.hasTab || rightResult.hasTab) {
+        return {
+            left: [],
+            right: []
+        };
+    }
+    return {
+        left: leftResult.spaces,
+        right: rightResult.spaces
+    };
+}
+
 const FILE_BOUNDARY_PREFIX_PATTERN = /^File\s+\d+:\s*/;
 
 function findFirstFileName(segments) {
@@ -191161,24 +191370,138 @@ function stripFileBoundaryLabelPrefix(label) {
 }
 
 function buildReportRowsFromVisualRows(rows, options = {}) {
+    const ignoreLeadingFileWhitespace2 = options.ignoreLeadingFileWhitespace === true;
+    const syntaxHighlightEnabled = options.syntaxHighlightEnabled === true;
+    const leftLanguage = options.leftLanguage;
+    const rightLanguage = options.rightLanguage;
+    const tokenizeLine = options.tokenizeLine;
     const mappedRows = rows.map(row => ({
         leftText: row.leftText,
-        rightText: row.rightText,
-        kind: row.leftText.length === 0 && row.rightText.length > 0 ? "insert" : row.rightText.length === 0 && row.leftText.length > 0 ? "delete" : row.leftText === row.rightText ? "equal" : "replace"
+        rightText: row.rightText
     }));
+    const mappedWithDiff = mappedRows.map(row => {
+        const leftSyntaxRanges = buildSyntaxRanges(row.leftText, leftLanguage, syntaxHighlightEnabled, tokenizeLine);
+        const rightSyntaxRanges = buildSyntaxRanges(row.rightText, rightLanguage, syntaxHighlightEnabled, tokenizeLine);
+        let kind = row.leftText.length === 0 && row.rightText.length > 0 ? "insert" : row.rightText.length === 0 && row.leftText.length > 0 ? "delete" : row.leftText === row.rightText ? "equal" : "replace";
+        if (ignoreLeadingFileWhitespace2 && stripLeadingSpacesAndTabs(row.leftText) === stripLeadingSpacesAndTabs(row.rightText)) {
+            kind = "equal";
+        }
+        if (kind !== "replace") {
+            return {
+                ...row,
+                kind: kind,
+                leftSyntaxRanges: leftSyntaxRanges,
+                rightSyntaxRanges: rightSyntaxRanges
+            };
+        }
+        const inline2 = diffInlineWithAppendLiteral(row.leftText, row.rightText, {
+            ignoreLeadingFileWhitespace: ignoreLeadingFileWhitespace2
+        });
+        const spaceRanges = extractHtmlAttributeSpaceDiffRangesPair(row.leftText, row.rightText, inline2.leftRanges, inline2.rightRanges);
+        if (inline2.leftRanges.length === 0 && inline2.rightRanges.length === 0 && spaceRanges.left.length === 0 && spaceRanges.right.length === 0) {
+            return {
+                ...row,
+                kind: "equal",
+                leftSyntaxRanges: leftSyntaxRanges,
+                rightSyntaxRanges: rightSyntaxRanges
+            };
+        }
+        return {
+            ...row,
+            kind: kind,
+            leftInlineRanges: inline2.leftRanges,
+            rightInlineRanges: inline2.rightRanges,
+            leftSpaceRanges: spaceRanges.left,
+            rightSpaceRanges: spaceRanges.right,
+            leftSyntaxRanges: leftSyntaxRanges,
+            rightSyntaxRanges: rightSyntaxRanges
+        };
+    });
     const firstLeftFileName = findFirstFileName(options.leftSegments);
     const firstRightFileName = findFirstFileName(options.rightSegments);
     if (!firstLeftFileName && !firstRightFileName) {
-        return mappedRows;
+        return mappedWithDiff;
     }
     return [ {
         leftText: firstLeftFileName,
-        rightText: firstRightFileName
-    }, ...mappedRows ];
+        rightText: firstRightFileName,
+        kind: "equal"
+    }, ...mappedWithDiff ];
+}
+
+function stripLeadingSpacesAndTabs(value) {
+    return value.replace(/^[ \t]+/, "");
+}
+
+function normalizeSyntaxRange(range2, textLength) {
+    if (!Number.isFinite(range2.start) || !Number.isFinite(range2.end)) {
+        return null;
+    }
+    const start = Math.max(0, Math.min(textLength, range2.start));
+    const end = Math.max(0, Math.min(textLength, range2.end));
+    if (end <= start) {
+        return null;
+    }
+    const className2 = range2.className.trim();
+    if (!className2) {
+        return null;
+    }
+    return {
+        start: start,
+        end: end,
+        className: className2
+    };
+}
+
+function buildSyntaxRanges(text2, language2, enabled, tokenizeLine) {
+    if (!enabled || !tokenizeLine || !language2 || language2 === "plaintext" || text2.length === 0) {
+        return void 0;
+    }
+    const source = tokenizeLine(text2, language2);
+    if (source.length === 0) {
+        return void 0;
+    }
+    const normalized = source.map(range2 => normalizeSyntaxRange(range2, text2.length)).filter(range2 => range2 !== null);
+    if (normalized.length === 0) {
+        return void 0;
+    }
+    return normalized;
 }
 
 function escapeHtml(value) {
     return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function getLeadingWhitespaceLength(text2) {
+    let index = 0;
+    while (index < text2.length) {
+        const char = text2[index];
+        if (char !== " " && char !== "\t") {
+            break;
+        }
+        index += 1;
+    }
+    return index;
+}
+
+function escapeHtmlWithLeadingWhitespace(text2, leadingWhitespaceLength, startOffset) {
+    let escaped = "";
+    for (let index = 0; index < text2.length; index += 1) {
+        const char = text2[index];
+        const absolute = startOffset + index;
+        if (absolute < leadingWhitespaceLength) {
+            if (char === " ") {
+                escaped += "&nbsp;";
+                continue;
+            }
+            if (char === "\t") {
+                escaped += "&nbsp;&nbsp;&nbsp;&nbsp;";
+                continue;
+            }
+        }
+        escaped += escapeHtml(char);
+    }
+    return escaped;
 }
 
 function buildRowClass(kind) {
@@ -191188,12 +191511,106 @@ function buildRowClass(kind) {
     return ` class="row-${kind}"`;
 }
 
+function isValidRange(range2, length) {
+    return Number.isFinite(range2.start) && Number.isFinite(range2.end) && range2.start < range2.end && range2.end > 0 && range2.start < length;
+}
+
+function renderCellTextWithRanges(text2, layers) {
+    if (!text2) {
+        return "";
+    }
+    const leadingWhitespaceLength = getLeadingWhitespaceLength(text2);
+    const boundaries = new Set([ 0, text2.length ]);
+    for (const layer of layers) {
+        for (const range2 of layer.ranges ?? []) {
+            if (!isValidRange(range2, text2.length)) {
+                continue;
+            }
+            boundaries.add(Math.max(0, Math.min(text2.length, range2.start)));
+            boundaries.add(Math.max(0, Math.min(text2.length, range2.end)));
+        }
+    }
+    const points = Array.from(boundaries).sort((a, b) => a - b);
+    const chunks = [];
+    for (let index = 0; index < points.length - 1; index += 1) {
+        const start = points[index];
+        const end = points[index + 1];
+        if (end <= start) {
+            continue;
+        }
+        const part = escapeHtmlWithLeadingWhitespace(text2.slice(start, end), leadingWhitespaceLength, start);
+        const classNames2 = [];
+        for (const layer of layers) {
+            const active = (layer.ranges ?? []).some(range2 => isValidRange(range2, text2.length) && range2.start < end && range2.end > start);
+            if (active) {
+                classNames2.push(layer.className);
+            }
+        }
+        if (classNames2.length === 0) {
+            chunks.push(part);
+        } else {
+            chunks.push(`<span class="${classNames2.join(" ")}">${part}</span>`);
+        }
+    }
+    return chunks.join("");
+}
+
+function buildSyntaxLayers(ranges) {
+    if (!ranges || ranges.length === 0) {
+        return [];
+    }
+    const grouped = new Map;
+    for (const range2 of ranges) {
+        const current = grouped.get(range2.className);
+        if (current) {
+            current.push({
+                start: range2.start,
+                end: range2.end
+            });
+        } else {
+            grouped.set(range2.className, [ {
+                start: range2.start,
+                end: range2.end
+            } ]);
+        }
+    }
+    return Array.from(grouped, ([className2, classRanges]) => ({
+        className: className2,
+        ranges: classRanges
+    }));
+}
+
+function renderRowCells(row, mode) {
+    if (mode !== "rich") {
+        const leftLeadingWhitespace = getLeadingWhitespaceLength(row.leftText);
+        const rightLeadingWhitespace = getLeadingWhitespaceLength(row.rightText);
+        const left2 = escapeHtmlWithLeadingWhitespace(row.leftText, leftLeadingWhitespace, 0);
+        const right2 = escapeHtmlWithLeadingWhitespace(row.rightText, rightLeadingWhitespace, 0);
+        return `<td>${left2}</td><td>${right2}</td>`;
+    }
+    const left = renderCellTextWithRanges(row.leftText, [ ...buildSyntaxLayers(row.leftSyntaxRanges), {
+        ranges: row.leftInlineRanges,
+        className: "inline-delete"
+    }, {
+        ranges: row.leftSpaceRanges,
+        className: "inline-space-diff"
+    } ]);
+    const right = renderCellTextWithRanges(row.rightText, [ ...buildSyntaxLayers(row.rightSyntaxRanges), {
+        ranges: row.rightInlineRanges,
+        className: "inline-insert"
+    }, {
+        ranges: row.rightSpaceRanges,
+        className: "inline-space-diff"
+    } ]);
+    return `<td>${left}</td><td>${right}</td>`;
+}
+
 function buildSimpleModeStyles() {
-    return `\n    body {\n      margin: 20px;\n      font-family: "Yu Gothic UI", "Hiragino Sans", sans-serif;\n      color: #1f2328;\n      background: #ffffff;\n    }\n    table {\n      border-collapse: collapse;\n      width: 100%;\n      table-layout: fixed;\n      border: 1px solid #d0d7de;\n    }\n    td {\n      border: 1px solid #d0d7de;\n      padding: 4px 8px;\n      text-align: left;\n      vertical-align: top;\n      white-space: nowrap;\n      overflow: hidden;\n      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\n      font-size: 12px;\n      line-height: 1.45;\n    }\n    .row-insert td:last-child {\n      background: #e6ffec;\n    }\n    .row-delete td:first-child {\n      background: #ffebe9;\n    }\n    .row-replace td {\n      background: #fff8c5;\n    }\n  `;
+    return `\n    body {\n      margin: 20px;\n      font-family: "Yu Gothic UI", "Hiragino Sans", sans-serif;\n      color: #1f2328;\n      background: #ffffff;\n    }\n    table {\n      border-collapse: collapse;\n      width: 100%;\n      table-layout: fixed;\n      border: 1px solid #d0d7de;\n    }\n    td {\n      border: 1px solid #d0d7de;\n      padding: 4px 8px;\n      text-align: left;\n      vertical-align: top;\n      white-space: nowrap;\n      overflow: hidden;\n      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\n      font-size: 12px;\n      line-height: 1.45;\n    }\n  `;
 }
 
 function buildRichModeStyles() {
-    return `\n    body {\n      margin: 0;\n      padding: 10px 0;\n      background: #1f2328;\n      color: #e6edf3;\n      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\n    }\n    table {\n      border-collapse: collapse;\n      width: 100%;\n      table-layout: fixed;\n    }\n    td {\n      border-bottom: 1px solid #30363d;\n      padding: 2px 10px;\n      text-align: left;\n      vertical-align: top;\n      white-space: pre;\n      overflow: visible;\n      color: #e6edf3;\n      font-size: 12px;\n      line-height: 1.45;\n    }\n    tr:nth-child(odd) td {\n      background: #1f2328;\n    }\n    tr:nth-child(even) td {\n      background: #22272e;\n    }\n    .row-insert td:last-child {\n      background: rgba(46, 160, 67, 0.24);\n    }\n    .row-delete td:first-child {\n      background: rgba(248, 81, 73, 0.22);\n    }\n    .row-replace td {\n      background: rgba(187, 128, 9, 0.22);\n    }\n  `;
+    return `\n    body {\n      margin: 0;\n      padding: 10px 0;\n      background: #fffdf8;\n      color: #3c2f22;\n      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\n      font-size: 12px;\n      line-height: 1.45;\n      --inline-insert-bg: rgba(80, 170, 90, 0.38);\n      --inline-delete-bg: rgba(210, 90, 70, 0.35);\n      --inline-insert-outline: rgba(60, 140, 90, 0.35);\n      --inline-delete-outline: rgba(175, 80, 70, 0.35);\n      --pane-divider-color: rgba(201, 190, 169, 0.75);\n    }\n    table {\n      border-collapse: collapse;\n      width: 100%;\n      table-layout: fixed;\n    }\n    td {\n      border-bottom: 1px solid rgba(225, 214, 194, 0.55);\n      padding: 2px 10px;\n      text-align: left;\n      vertical-align: top;\n      white-space: normal;\n      overflow: hidden;\n      word-break: break-word;\n      color: inherit;\n      background: transparent;\n      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;\n    }\n    td:first-child {\n      border-right: 1px solid var(--pane-divider-color);\n    }\n    .row-insert td:last-child {\n      background: rgba(80, 170, 90, 0.18);\n    }\n    .row-delete td:first-child {\n      background: rgba(210, 90, 70, 0.18);\n    }\n    .row-replace td {\n      background: rgba(200, 170, 90, 0.2);\n    }\n    .inline-insert {\n      background-color: var(--inline-insert-bg);\n      border-radius: 3px;\n    }\n    .inline-delete {\n      background-color: var(--inline-delete-bg);\n      border-radius: 3px;\n    }\n    .inline-space-diff {\n      background-color: rgba(255, 190, 20, 0.98);\n      box-shadow:\n        inset 0 0 0 1px rgba(130, 50, 0, 0.98),\n        0 0 0 2px rgba(255, 140, 0, 0.75);\n      border-radius: 3px;\n    }\n    .syntax-keyword {\n      color: #8c2f6b;\n      font-weight: 600;\n    }\n    .syntax-string {\n      color: #0c7745;\n    }\n    .syntax-number {\n      color: #92410d;\n    }\n    .syntax-comment {\n      color: #6f6a63;\n      font-style: italic;\n    }\n    .syntax-type {\n      color: #2758b1;\n    }\n    .syntax-tag {\n      color: #006f8f;\n    }\n    .syntax-attribute {\n      color: #8a6015;\n    }\n    .syntax-operator {\n      color: #534b41;\n    }\n    .syntax-delimiter {\n      color: #4f473f;\n    }\n    .syntax-regexp {\n      color: #8f2f66;\n    }\n    body[data-theme="light"] {\n      background: #fffdf8;\n      color: #3c2f22;\n    }\n    body[data-theme="light"] td {\n      color: #3c2f22;\n      border-bottom: 1px solid rgba(225, 214, 194, 0.55);\n    }\n    body[data-theme="light"] .row-insert td:last-child {\n      background-color: rgba(80, 170, 90, 0.18);\n    }\n    body[data-theme="light"] .row-delete td:first-child {\n      background-color: rgba(210, 90, 70, 0.18);\n    }\n    body[data-theme="light"] .row-replace td {\n      background-color: rgba(200, 170, 90, 0.2);\n    }\n    body[data-theme="dark"] {\n      background: #1f1b18;\n      color: #e6e2d8;\n      --inline-insert-bg: rgba(120, 220, 150, 0.28);\n      --inline-delete-bg: rgba(255, 135, 115, 0.28);\n      --inline-insert-outline: rgba(110, 220, 170, 0.75);\n      --inline-delete-outline: rgba(255, 155, 135, 0.75);\n      --pane-divider-color: rgba(59, 52, 45, 0.95);\n    }\n    body[data-theme="dark"] td {\n      border-bottom: 1px solid rgba(59, 52, 45, 0.75);\n    }\n    body[data-theme="dark"] .row-insert td:last-child {\n      background-color: rgba(80, 170, 90, 0.32);\n    }\n    body[data-theme="dark"] .row-delete td:first-child {\n      background-color: rgba(210, 90, 70, 0.3);\n    }\n    body[data-theme="dark"] .row-replace td {\n      background-color: rgba(200, 170, 90, 0.32);\n    }\n    body[data-theme="dark"] .inline-insert {\n      background-color: var(--inline-insert-bg);\n    }\n    body[data-theme="dark"] .inline-delete {\n      background-color: var(--inline-delete-bg);\n    }\n    body[data-theme="dark"][data-highlight="on"] .inline-insert {\n      box-shadow: inset 0 0 0 1px var(--inline-insert-outline);\n      text-shadow: 0 1px 0 rgba(10, 12, 16, 0.5);\n    }\n    body[data-theme="dark"][data-highlight="on"] .inline-delete {\n      box-shadow: inset 0 0 0 1px var(--inline-delete-outline);\n      text-shadow: 0 1px 0 rgba(10, 12, 16, 0.5);\n    }\n    body[data-theme="dark"] .inline-space-diff {\n      background-color: rgba(255, 200, 60, 0.85);\n      box-shadow:\n        inset 0 0 0 3px rgba(255, 210, 140, 0.98),\n        0 0 0 2px rgba(120, 220, 255, 0.95);\n      text-decoration-color: rgba(255, 220, 160, 0.98);\n    }\n    body[data-theme="dark"] .syntax-keyword {\n      color: #d67ad2;\n    }\n    body[data-theme="dark"] .syntax-string {\n      color: #8fd39b;\n    }\n    body[data-theme="dark"] .syntax-number {\n      color: #e3ae6d;\n    }\n    body[data-theme="dark"] .syntax-comment {\n      color: #9a9488;\n    }\n    body[data-theme="dark"] .syntax-type {\n      color: #83b0ff;\n    }\n    body[data-theme="dark"] .syntax-tag {\n      color: #7ac4ff;\n    }\n    body[data-theme="dark"] .syntax-attribute {\n      color: #e5c07b;\n    }\n    body[data-theme="dark"] .syntax-operator {\n      color: #c9c2b7;\n    }\n    body[data-theme="dark"] .syntax-delimiter {\n      color: #b8b2a8;\n    }\n    body[data-theme="dark"] .syntax-regexp {\n      color: #ff9ecb;\n    }\n  `;
 }
 
 function buildReportStyles(mode) {
@@ -191203,8 +191620,10 @@ function buildReportStyles(mode) {
 function buildDiffReportHtml(rows, meta = {}) {
     const title = meta.title?.trim() ?? "";
     const mode = meta.mode ?? "simple";
-    const bodyRows = rows.length === 0 ? `<tr><td></td><td></td></tr>` : rows.map(row => `<tr${buildRowClass(row.kind)}><td>${escapeHtml(row.leftText)}</td><td>${escapeHtml(row.rightText)}</td></tr>`).join("\n");
-    return `<!doctype html>\n<html lang="ja">\n<head>\n  <meta charset="UTF-8">\n  <title>差分レポート</title>\n  <style>\n    ${buildReportStyles(mode)}\n  </style>\n</head>\n<body data-report-mode="${mode}">\n  ${title ? `<h1>${escapeHtml(title)}</h1>` : ""}\n  <table aria-label="左右比較テーブル">\n    <tbody>\n      ${bodyRows}\n    </tbody>\n  </table>\n</body>\n</html>\n`;
+    const theme = meta.theme ?? "light";
+    const highlight = meta.highlight ?? "on";
+    const bodyRows = rows.length === 0 ? `<tr><td></td><td></td></tr>` : rows.map(row => `<tr${buildRowClass(row.kind)}>${renderRowCells(row, mode)}</tr>`).join("\n");
+    return `<!doctype html>\n<html lang="ja">\n<head>\n  <meta charset="UTF-8">\n  <title>差分レポート</title>\n  <style>\n    ${buildReportStyles(mode)}\n  </style>\n</head>\n<body data-report-mode="${mode}" data-theme="${theme}" data-highlight="${highlight}">\n  ${title ? `<h1>${escapeHtml(title)}</h1>` : ""}\n  <table aria-label="左右比較テーブル">\n    <tbody>\n      ${bodyRows}\n    </tbody>\n  </table>\n</body>\n</html>\n`;
 }
 
 function downloadDiffReportHtml(html2, fileName, doc = document, urlApi = URL) {
@@ -191576,215 +191995,6 @@ function bindFileCardJump(container, onJump) {
         }
         onJump(fileName);
     });
-}
-
-function findTagRanges(line) {
-    const ranges = [];
-    let index = 0;
-    while (index < line.length) {
-        const lt = line.indexOf("<", index);
-        if (lt === -1) {
-            break;
-        }
-        let i2 = lt + 1;
-        let quote = null;
-        for (;i2 < line.length; i2 += 1) {
-            const ch = line[i2];
-            if (quote) {
-                if (ch === quote) {
-                    quote = null;
-                }
-                continue;
-            }
-            if (ch === '"' || ch === "'") {
-                quote = ch;
-                continue;
-            }
-            if (ch === ">") {
-                break;
-            }
-        }
-        if (i2 >= line.length) {
-            break;
-        }
-        ranges.push({
-            start: lt,
-            end: i2 + 1
-        });
-        index = i2 + 1;
-    }
-    return ranges;
-}
-
-const TARGET_ATTRIBUTES = new Set([ "class", "id", "name", "value" ]);
-
-function isTargetAttribute(name) {
-    if (TARGET_ATTRIBUTES.has(name)) {
-        return true;
-    }
-    return name.startsWith("data-") || name.startsWith("aria-");
-}
-
-function extractAttributeValueRanges(line) {
-    const ranges = [];
-    const tagRanges = findTagRanges(line);
-    for (const tag2 of tagRanges) {
-        const content = line.slice(tag2.start + 1, tag2.end - 1);
-        let i2 = 0;
-        while (i2 < content.length) {
-            while (i2 < content.length && /\s/.test(content[i2])) {
-                i2 += 1;
-            }
-            const nameStart = i2;
-            while (i2 < content.length && /[A-Za-z0-9_:\-]/.test(content[i2])) {
-                i2 += 1;
-            }
-            if (i2 === nameStart) {
-                i2 += 1;
-                continue;
-            }
-            const name = content.slice(nameStart, i2).toLowerCase();
-            while (i2 < content.length && /\s/.test(content[i2])) {
-                i2 += 1;
-            }
-            if (content[i2] !== "=") {
-                continue;
-            }
-            i2 += 1;
-            while (i2 < content.length && /\s/.test(content[i2])) {
-                i2 += 1;
-            }
-            let quote = null;
-            let escapedQuote = false;
-            if (content[i2] === "\\" && (content[i2 + 1] === '"' || content[i2 + 1] === "'")) {
-                escapedQuote = true;
-                quote = content[i2 + 1];
-                i2 += 2;
-            } else if (content[i2] === '"' || content[i2] === "'") {
-                quote = content[i2];
-                i2 += 1;
-            }
-            if (!quote) {
-                continue;
-            }
-            const valueStart = i2;
-            let valueEnd = -1;
-            while (i2 < content.length) {
-                if (escapedQuote) {
-                    if (content[i2] === "\\" && content[i2 + 1] === quote) {
-                        valueEnd = i2;
-                        i2 += 2;
-                        break;
-                    }
-                } else if (content[i2] === quote) {
-                    valueEnd = i2;
-                    i2 += 1;
-                    break;
-                }
-                i2 += 1;
-            }
-            if (valueEnd === -1) {
-                break;
-            }
-            if (isTargetAttribute(name)) {
-                const start = tag2.start + 1 + valueStart;
-                const end = tag2.start + 1 + valueEnd;
-                ranges.push({
-                    start: start,
-                    end: end,
-                    name: name
-                });
-            }
-        }
-    }
-    return ranges;
-}
-
-function isAsciiSpaceOnly(value) {
-    if (value.length === 0) {
-        return false;
-    }
-    for (const ch of value) {
-        if (ch !== " ") {
-            return false;
-        }
-    }
-    return true;
-}
-
-function findSpaceRangesInAttributes(line, diffRanges) {
-    if (diffRanges.length === 0 || line.length === 0) {
-        return {
-            spaces: [],
-            hasTab: false
-        };
-    }
-    const attrRanges = extractAttributeValueRanges(line);
-    if (attrRanges.length === 0) {
-        return {
-            spaces: [],
-            hasTab: false
-        };
-    }
-    const spaces2 = [];
-    let hasTab = false;
-    for (const diffRange of diffRanges) {
-        for (const attrRange of attrRanges) {
-            const start = Math.max(diffRange.start, attrRange.start);
-            const end = Math.min(diffRange.end, attrRange.end);
-            if (start >= end) {
-                continue;
-            }
-            const fragment = line.slice(start, end);
-            if (fragment.includes("\t")) {
-                hasTab = true;
-            }
-            if (isAsciiSpaceOnly(fragment)) {
-                spaces2.push({
-                    start: start,
-                    end: end
-                });
-            }
-        }
-    }
-    return {
-        spaces: spaces2,
-        hasTab: hasTab
-    };
-}
-
-function hasTabInAttributeValues(line) {
-    if (line.includes("\t")) {
-        return true;
-    }
-    const ranges = extractAttributeValueRanges(line);
-    for (const range2 of ranges) {
-        if (line.slice(range2.start, range2.end).includes("\t")) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function extractHtmlAttributeSpaceDiffRangesPair(leftLine, rightLine, leftRanges, rightRanges) {
-    if (hasTabInAttributeValues(leftLine) || hasTabInAttributeValues(rightLine)) {
-        return {
-            left: [],
-            right: []
-        };
-    }
-    const leftResult = findSpaceRangesInAttributes(leftLine, leftRanges);
-    const rightResult = findSpaceRangesInAttributes(rightLine, rightRanges);
-    if (leftResult.hasTab || rightResult.hasTab) {
-        return {
-            left: [],
-            right: []
-        };
-    }
-    return {
-        left: leftResult.spaces,
-        right: rightResult.spaces
-    };
 }
 
 async function copyText(value, doc = document) {
@@ -196779,6 +196989,90 @@ function buildVisualRowsForReport() {
     return buildCopyVisualRowsFromAlignedDiff(pairedOps, fileZones);
 }
 
+function getCurrentReportTheme() {
+    const mode = document.documentElement.dataset.theme;
+    return mode === "dark" ? "dark" : "light";
+}
+
+function getCurrentReportHighlight() {
+    const state = document.documentElement.dataset.highlight;
+    return state === "off" ? "off" : "on";
+}
+
+function mapMonacoTokenTypeToReportClass(tokenType) {
+    const normalized = tokenType.toLowerCase();
+    if (!normalized || normalized === "source" || normalized === "white") {
+        return null;
+    }
+    if (normalized.includes("comment")) {
+        return "syntax-comment";
+    }
+    if (normalized.includes("string")) {
+        return "syntax-string";
+    }
+    if (normalized.includes("regexp")) {
+        return "syntax-regexp";
+    }
+    if (normalized.includes("number")) {
+        return "syntax-number";
+    }
+    if (normalized.includes("keyword")) {
+        return "syntax-keyword";
+    }
+    if (normalized.includes("type") || normalized.includes("class") || normalized.includes("namespace") || normalized.includes("interface") || normalized.includes("enum")) {
+        return "syntax-type";
+    }
+    if (normalized.includes("tag")) {
+        return "syntax-tag";
+    }
+    if (normalized.includes("attribute")) {
+        return "syntax-attribute";
+    }
+    if (normalized.includes("operator")) {
+        return "syntax-operator";
+    }
+    if (normalized.includes("delimiter") || normalized.includes("punctuation")) {
+        return "syntax-delimiter";
+    }
+    return null;
+}
+
+function tokenizeLineForReportSyntax(line, language2) {
+    if (!line || !language2 || language2 === "plaintext") {
+        return [];
+    }
+    const tokenLines = editor.tokenize(line, language2);
+    const tokens = tokenLines[0] ?? [];
+    if (tokens.length === 0) {
+        return [];
+    }
+    const ranges = [];
+    for (let index = 0; index < tokens.length; index += 1) {
+        const token = tokens[index];
+        const next = tokens[index + 1];
+        const start = Math.max(0, Math.min(line.length, token.offset));
+        const end = Math.max(start, Math.min(line.length, next?.offset ?? line.length));
+        if (end <= start) {
+            continue;
+        }
+        const className2 = mapMonacoTokenTypeToReportClass(token.type ?? "");
+        if (!className2) {
+            continue;
+        }
+        const last = ranges[ranges.length - 1];
+        if (last && last.className === className2 && last.end === start) {
+            last.end = end;
+            continue;
+        }
+        ranges.push({
+            start: start,
+            end: end,
+            className: className2
+        });
+    }
+    return ranges;
+}
+
 bindPaneSourceCopyButton({
     button: leftCopyButton,
     side: "left",
@@ -196815,12 +197109,20 @@ bindExportReportButton({
     doc: document,
     toast: toast,
     buildHtml: () => {
+        const syntaxHighlightEnabled = reportMode === "rich" && highlightToggle.checked;
         const rows = buildReportRowsFromVisualRows(buildVisualRowsForReport(), {
             leftSegments: leftSegments,
-            rightSegments: rightSegments
+            rightSegments: rightSegments,
+            ignoreLeadingFileWhitespace: ignoreLeadingFileWhitespace,
+            syntaxHighlightEnabled: syntaxHighlightEnabled,
+            leftLanguage: getPaneLanguage(leftSegments),
+            rightLanguage: getPaneLanguage(rightSegments),
+            tokenizeLine: tokenizeLineForReportSyntax
         });
         return buildDiffReportHtml(rows, {
-            mode: reportMode
+            mode: reportMode,
+            theme: getCurrentReportTheme(),
+            highlight: getCurrentReportHighlight()
         });
     },
     fileName: "diff-report.html"

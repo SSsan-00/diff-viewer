@@ -36,6 +36,56 @@ describe("buildReportRowsFromVisualRows", () => {
     expect(rows[0]).toMatchObject({ leftText: "left.cs", rightText: "right.php" });
     expect(rows[1]).toMatchObject({ leftText: "line1", rightText: "line1", kind: "equal" });
   });
+
+  it("marks rows as equal when only leading whitespace differs and ignore option is on", () => {
+    const rows = buildReportRowsFromVisualRows(
+      [{ leftText: "    const total = sumList(numbers);", rightText: "const total = sumList(numbers);" }],
+      { ignoreLeadingFileWhitespace: true },
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.kind).toBe("equal");
+    expect(rows[0]?.leftInlineRanges).toBeUndefined();
+    expect(rows[0]?.rightInlineRanges).toBeUndefined();
+  });
+
+  it("keeps non-leading diffs highlighted while suppressing leading whitespace highlight", () => {
+    const rows = buildReportRowsFromVisualRows(
+      [{ leftText: "    const total = sumList(numbers);", rightText: "const total = calcList(numbers);" }],
+      { ignoreLeadingFileWhitespace: true },
+    );
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.kind).toBe("replace");
+    expect(rows[0]?.leftInlineRanges?.some((range) => range.start === 0)).toBe(false);
+    expect(rows[0]?.rightInlineRanges?.some((range) => range.start === 0)).toBe(false);
+  });
+
+  it("adds syntax ranges when syntax highlight is enabled", () => {
+    const tokenizeLine = vi.fn((line: string, language: string) => {
+      if (language === "typescript" && line.startsWith("const")) {
+        return [{ start: 0, end: 5, className: "syntax-keyword" }];
+      }
+      return [];
+    });
+    const rows = buildReportRowsFromVisualRows(
+      [{ leftText: "const total = 1;", rightText: "const total = 2;" }],
+      {
+        syntaxHighlightEnabled: true,
+        leftLanguage: "typescript",
+        rightLanguage: "typescript",
+        tokenizeLine,
+      },
+    );
+
+    expect(tokenizeLine).toHaveBeenCalledTimes(2);
+    expect(rows[0]?.leftSyntaxRanges).toEqual([
+      { start: 0, end: 5, className: "syntax-keyword" },
+    ]);
+    expect(rows[0]?.rightSyntaxRanges).toEqual([
+      { start: 0, end: 5, className: "syntax-keyword" },
+    ]);
+  });
 });
 
 describe("stripFileBoundaryLabelPrefix", () => {
@@ -70,6 +120,14 @@ describe("buildDiffReportHtml", () => {
     expect(html).toContain("&amp;value");
   });
 
+  it("keeps leading spaces in simple mode output", () => {
+    const html = buildDiffReportHtml([
+      { leftText: "    const total = 1;", rightText: "value" },
+    ]);
+
+    expect(html).toContain("&nbsp;&nbsp;&nbsp;&nbsp;const total = 1;");
+  });
+
   it("uses title tag and does not render body heading text by default", () => {
     const html = buildDiffReportHtml([{ leftText: "L", rightText: "R" }]);
     const dom = new JSDOM(html);
@@ -82,12 +140,55 @@ describe("buildDiffReportHtml", () => {
   it("renders rich mode style when mode is rich", () => {
     const html = buildDiffReportHtml([{ leftText: "L", rightText: "R" }], {
       mode: "rich",
+      theme: "dark",
+      highlight: "off",
     });
 
     expect(html).toContain('data-report-mode="rich"');
+    expect(html).toContain('data-theme="dark"');
+    expect(html).toContain('data-highlight="off"');
     expect(html).toContain("white-space: normal");
-    expect(html).toContain("background: #1f2328");
+    expect(html).toContain("overflow: hidden");
+    expect(html).toContain("word-break: break-word");
+    expect(html).toContain("background: #1f1b18");
+    expect(html).toContain("td:first-child");
+    expect(html).toContain("border-right: 1px solid var(--pane-divider-color)");
+    expect(html).not.toContain("tr:nth-child(");
     expect(html).not.toContain("white-space: nowrap");
+  });
+
+  it("keeps leading spaces in rich mode output", () => {
+    const html = buildDiffReportHtml(
+      [
+        {
+          leftText: "  abc",
+          rightText: "  adc",
+          kind: "replace",
+          leftInlineRanges: [{ start: 3, end: 4 }],
+          rightInlineRanges: [{ start: 3, end: 4 }],
+        },
+      ],
+      { mode: "rich" },
+    );
+
+    expect(html).toContain("&nbsp;&nbsp;a");
+  });
+
+  it("renders syntax token spans in rich mode", () => {
+    const html = buildDiffReportHtml(
+      [
+        {
+          leftText: "const total = 1;",
+          rightText: "const total = 2;",
+          kind: "replace",
+          leftSyntaxRanges: [{ start: 0, end: 5, className: "syntax-keyword" }],
+          rightSyntaxRanges: [{ start: 0, end: 5, className: "syntax-keyword" }],
+        },
+      ],
+      { mode: "rich" },
+    );
+
+    expect(html).toContain('<span class="syntax-keyword">const</span>');
   });
 });
 

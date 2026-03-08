@@ -69,6 +69,7 @@ import {
   bindExportReportButton,
   buildDiffReportHtml,
   buildReportRowsFromVisualRows,
+  type DiffReportSyntaxRange,
   stripFileBoundaryLabelPrefix,
 } from "./ui/diffReport";
 import { bindReportModeMenu, type ReportMode } from "./ui/reportModeMenu";
@@ -4062,6 +4063,97 @@ function buildVisualRowsForReport() {
   return buildCopyVisualRowsFromAlignedDiff(pairedOps, fileZones);
 }
 
+function getCurrentReportTheme(): "light" | "dark" {
+  const mode = document.documentElement.dataset.theme;
+  return mode === "dark" ? "dark" : "light";
+}
+
+function getCurrentReportHighlight(): "on" | "off" {
+  const state = document.documentElement.dataset.highlight;
+  return state === "off" ? "off" : "on";
+}
+
+function mapMonacoTokenTypeToReportClass(tokenType: string): string | null {
+  const normalized = tokenType.toLowerCase();
+  if (!normalized || normalized === "source" || normalized === "white") {
+    return null;
+  }
+  if (normalized.includes("comment")) {
+    return "syntax-comment";
+  }
+  if (normalized.includes("string")) {
+    return "syntax-string";
+  }
+  if (normalized.includes("regexp")) {
+    return "syntax-regexp";
+  }
+  if (normalized.includes("number")) {
+    return "syntax-number";
+  }
+  if (normalized.includes("keyword")) {
+    return "syntax-keyword";
+  }
+  if (
+    normalized.includes("type") ||
+    normalized.includes("class") ||
+    normalized.includes("namespace") ||
+    normalized.includes("interface") ||
+    normalized.includes("enum")
+  ) {
+    return "syntax-type";
+  }
+  if (normalized.includes("tag")) {
+    return "syntax-tag";
+  }
+  if (normalized.includes("attribute")) {
+    return "syntax-attribute";
+  }
+  if (normalized.includes("operator")) {
+    return "syntax-operator";
+  }
+  if (normalized.includes("delimiter") || normalized.includes("punctuation")) {
+    return "syntax-delimiter";
+  }
+  return null;
+}
+
+function tokenizeLineForReportSyntax(
+  line: string,
+  language: string,
+): DiffReportSyntaxRange[] {
+  if (!line || !language || language === "plaintext") {
+    return [];
+  }
+  const tokenLines = monaco.editor.tokenize(line, language) as Array<
+    Array<{ offset: number; type: string }>
+  >;
+  const tokens = tokenLines[0] ?? [];
+  if (tokens.length === 0) {
+    return [];
+  }
+  const ranges: DiffReportSyntaxRange[] = [];
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const next = tokens[index + 1];
+    const start = Math.max(0, Math.min(line.length, token.offset));
+    const end = Math.max(start, Math.min(line.length, next?.offset ?? line.length));
+    if (end <= start) {
+      continue;
+    }
+    const className = mapMonacoTokenTypeToReportClass(token.type ?? "");
+    if (!className) {
+      continue;
+    }
+    const last = ranges[ranges.length - 1];
+    if (last && last.className === className && last.end === start) {
+      last.end = end;
+      continue;
+    }
+    ranges.push({ start, end, className });
+  }
+  return ranges;
+}
+
 bindPaneSourceCopyButton({
   button: leftCopyButton,
   side: "left",
@@ -4097,11 +4189,21 @@ bindExportReportButton({
   doc: document,
   toast,
   buildHtml: () => {
+    const syntaxHighlightEnabled = reportMode === "rich" && highlightToggle.checked;
     const rows = buildReportRowsFromVisualRows(buildVisualRowsForReport(), {
       leftSegments,
       rightSegments,
+      ignoreLeadingFileWhitespace,
+      syntaxHighlightEnabled,
+      leftLanguage: getPaneLanguage(leftSegments),
+      rightLanguage: getPaneLanguage(rightSegments),
+      tokenizeLine: tokenizeLineForReportSyntax,
     });
-    return buildDiffReportHtml(rows, { mode: reportMode });
+    return buildDiffReportHtml(rows, {
+      mode: reportMode,
+      theme: getCurrentReportTheme(),
+      highlight: getCurrentReportHighlight(),
+    });
   },
   fileName: "diff-report.html",
 });
