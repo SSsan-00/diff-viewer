@@ -245,6 +245,26 @@ const scenarios = [
       await page.waitForTimeout(200);
     },
   },
+  {
+    name: "report-simple",
+    workspaces: workspaceBase(emptyAnchors()),
+    persistedState: basePersistedState,
+    favoritePaths: {},
+    theme: null,
+    captureReport: true,
+    reportMode: "simple",
+    actions: async () => {},
+  },
+  {
+    name: "report-rich",
+    workspaces: workspaceBase(emptyAnchors()),
+    persistedState: basePersistedState,
+    favoritePaths: {},
+    theme: "dark",
+    captureReport: true,
+    reportMode: "rich",
+    actions: async () => {},
+  },
 ];
 
 async function preparePage(page, payload) {
@@ -276,13 +296,45 @@ await fs.mkdir(OUT_DIR, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
-for (const scenario of scenarios) {
-  await preparePage(page, scenario);
-  await scenario.actions(page);
-  await page.screenshot({
+async function captureReportScreenshot(basePage, scenario) {
+  if (!scenario.captureReport) {
+    return false;
+  }
+
+  if (scenario.reportMode === "rich") {
+    await basePage.click("#report-mode-toggle");
+    await basePage.waitForSelector("#report-mode-menu:not([hidden])");
+    await basePage.click("#report-mode-rich");
+  }
+
+  const [download] = await Promise.all([
+    basePage.waitForEvent("download"),
+    basePage.click("#export-report"),
+  ]);
+  const reportFile = path.join(OUT_DIR, `${scenario.name}.html`);
+  await download.saveAs(reportFile);
+
+  const reportPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  await reportPage.goto(`file://${reportFile}`, { waitUntil: "networkidle" });
+  await reportPage.screenshot({
     path: path.join(OUT_DIR, `${scenario.name}.png`),
     fullPage: true,
   });
+  await reportPage.close();
+  await fs.rm(reportFile, { force: true });
+  return true;
+}
+
+for (const scenario of scenarios) {
+  await preparePage(page, scenario);
+  await scenario.actions(page);
+  const reportCaptured = await captureReportScreenshot(page, scenario);
+  if (!reportCaptured) {
+    await page.screenshot({
+      path: path.join(OUT_DIR, `${scenario.name}.png`),
+      fullPage: true,
+    });
+  }
 }
 
 await browser.close();

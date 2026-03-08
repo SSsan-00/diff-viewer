@@ -9,7 +9,8 @@
 ├── doc/
 │   ├── BACKLOG.md
 │   ├── MANUAL.html
-│   ├── MANUAL.md
+│   ├── manual.md
+│   ├── manual-assets/
 │   ├── SETUP.md
 │   ├── SPEC.md
 │   └── STRUCTURE.md
@@ -128,7 +129,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 ## doc/
 
-- `doc/MANUAL.md` テキスト版の利用マニュアル（Windows前提の操作一覧）。
+- `doc/manual.md` テキスト版の利用マニュアル（Windows前提の操作一覧）。
 - `doc/MANUAL.html` 画像付きの操作マニュアル（単一HTML）。
 - `doc/manual-assets/` MANUAL.html 生成用のスクリーンショット素材。
 
