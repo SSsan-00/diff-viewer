@@ -94,4 +94,66 @@ describe("bindReportModeMenu", () => {
     expect(onChange).toHaveBeenCalledWith("rich");
     expect(rich?.getAttribute("aria-checked")).toBe("true");
   });
+
+  it("positions menu with viewport-fixed coordinates when opened", () => {
+    const dom = new JSDOM(`
+      <div class="report-export-control">
+        <button id="report-mode-toggle" type="button"></button>
+        <div id="report-mode-menu" role="menu" hidden>
+          <button id="report-mode-simple" type="button">シンプル</button>
+          <button id="report-mode-rich" type="button">リッチ</button>
+        </div>
+      </div>
+    `);
+    const doc = dom.window.document;
+    const trigger = doc.querySelector<HTMLButtonElement>("#report-mode-toggle");
+    const menu = doc.querySelector<HTMLDivElement>("#report-mode-menu");
+
+    if (!trigger || !menu) {
+      throw new Error("test setup failed");
+    }
+
+    Object.defineProperty(dom.window, "innerWidth", { value: 320, configurable: true });
+    Object.defineProperty(dom.window, "innerHeight", { value: 640, configurable: true });
+
+    trigger.getBoundingClientRect = () =>
+      ({
+        top: 10,
+        left: 260,
+        right: 290,
+        bottom: 42,
+        width: 30,
+        height: 32,
+        x: 260,
+        y: 10,
+        toJSON: () => undefined,
+      }) as DOMRect;
+
+    menu.getBoundingClientRect = () =>
+      ({
+        top: 0,
+        left: 0,
+        right: 120,
+        bottom: 84,
+        width: 120,
+        height: 84,
+        x: 0,
+        y: 0,
+        toJSON: () => undefined,
+      }) as DOMRect;
+
+    bindReportModeMenu({
+      triggerButton: trigger,
+      menu,
+      simpleButton: doc.querySelector("#report-mode-simple"),
+      richButton: doc.querySelector("#report-mode-rich"),
+    });
+
+    trigger.click();
+
+    expect(menu.hidden).toBe(false);
+    expect(menu.style.position).toBe("fixed");
+    expect(menu.style.top).toBe("48px");
+    expect(menu.style.left).toBe("170px");
+  });
 });

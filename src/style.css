@@ -624,6 +624,14 @@ body {
   position: relative;
   display: inline-flex;
   align-items: stretch;
+  flex: 0 0 auto;
+  min-width: 0;
+  z-index: 2;
+}
+
+.report-export-control .button {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .report-export-button {
@@ -633,6 +641,9 @@ body {
 }
 
 .report-mode-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 30px;
   width: 30px;
   padding: 0;
@@ -641,6 +652,9 @@ body {
   border-bottom-left-radius: 0;
   font-size: 0.72rem;
   line-height: 1;
+  touch-action: manipulation;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .report-mode-toggle[aria-expanded="true"] {
@@ -657,7 +671,7 @@ body {
   border-radius: 10px;
   background: rgba(255, 253, 248, 0.98);
   box-shadow: 0 8px 18px rgba(60, 47, 34, 0.16);
-  z-index: 55;
+  z-index: 70;
 }
 
 .report-mode-option {
@@ -1787,9 +1801,9 @@ body {
   }
 
   .report-mode-toggle {
-    min-width: 26px;
-    width: 26px;
-    font-size: 0.68rem;
+    min-width: 30px;
+    width: 30px;
+    font-size: 0.72rem;
   }
 
   .toggle {
@@ -1934,9 +1948,19 @@ body {
   }
 
   .report-mode-toggle {
-    min-width: 24px;
-    width: 24px;
-    font-size: 0.62rem;
+    min-width: 28px;
+    width: 28px;
+    font-size: 0.7rem;
+  }
+
+  .report-export-button {
+    padding-left: 8px;
+    padding-right: 8px;
+    font-size: 0.72rem;
+  }
+
+  .report-export-control {
+    flex-shrink: 0;
   }
 
   .toggle {
