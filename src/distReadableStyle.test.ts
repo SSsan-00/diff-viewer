@@ -3,7 +3,8 @@ import { resolve } from "node:path";
 import { readFileSync } from "node:fs";
 
 function extractStyleContents(html: string): string[] {
-  const matches = html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi);
+  const htmlWithoutScripts = html.replace(/<script\b[\s\S]*?<\/script>/gi, "");
+  const matches = htmlWithoutScripts.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi);
   const results: string[] = [];
   for (const match of matches) {
     results.push(match[1] ?? "");

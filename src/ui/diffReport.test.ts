@@ -63,7 +63,8 @@ describe("buildDiffReportHtml", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]?.querySelectorAll("td")[0]?.textContent).toBe("<head>");
     expect(rows[1]?.querySelectorAll("td")[1]?.textContent).toBe("&value");
-    expect(html).toContain("white-space: pre");
+    expect(html).toContain("white-space: nowrap");
+    expect(html).not.toContain("white-space: pre");
     expect(html).toContain("&lt;head&gt;");
     expect(html).toContain("&amp;value");
   });
