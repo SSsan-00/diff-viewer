@@ -46,6 +46,16 @@ describe("buildDiffReportHtml", () => {
     expect(html).toContain("&lt;head&gt;");
     expect(html).toContain("&amp;value");
   });
+
+  it("does not render generated timestamp text", () => {
+    const html = buildDiffReportHtml(
+      [{ leftText: "L", rightText: "R" }],
+      { title: "差分レポート", generatedAt: "2026-03-08T11:56:05.199Z" },
+    );
+
+    expect(html).not.toContain("Generated:");
+    expect(html).not.toContain("2026-03-08T11:56:05.199Z");
+  });
 });
 
 describe("downloadDiffReportHtml", () => {

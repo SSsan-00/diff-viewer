@@ -49,9 +49,6 @@ export function buildDiffReportHtml(
   meta: { title?: string; generatedAt?: string } = {},
 ): string {
   const title = meta.title ?? "差分レポート";
-  const generatedAt = meta.generatedAt
-    ? `<p class="report-meta">Generated: ${escapeHtml(meta.generatedAt)}</p>`
-    : "";
   const bodyRows =
     rows.length === 0
       ? `<tr><td></td><td></td></tr>`
@@ -77,11 +74,6 @@ export function buildDiffReportHtml(
     h1 {
       margin: 0 0 8px;
       font-size: 18px;
-    }
-    .report-meta {
-      margin: 0 0 12px;
-      font-size: 12px;
-      color: #59636e;
     }
     table {
       border-collapse: collapse;
@@ -117,7 +109,6 @@ export function buildDiffReportHtml(
 </head>
 <body>
   <h1>${escapeHtml(title)}</h1>
-  ${generatedAt}
   <table aria-label="差分レポート">
     <thead>
       <tr><th>Left</th><th>Right</th></tr>

@@ -4064,7 +4064,6 @@ bindExportReportButton({
     const rows = buildReportRowsFromVisualRows(buildVisualRowsForExport());
     return buildDiffReportHtml(rows, {
       title: "差分レポート",
-      generatedAt: new Date().toISOString(),
     });
   },
   fileName: "diff-report.html",
