@@ -24,7 +24,8 @@ describe("file boundary zones alignment", () => {
     expect(zones.left.length).toBe(1);
     expect(zones.right.length).toBe(1);
     expect(zones.left[0].afterLineNumber).toBe(zones.right[0].afterLineNumber);
-    expect(zones.left[0].label).toContain("fileB.txt");
+    expect(zones.left[0].label).toBe("fileB.txt");
+    expect(zones.left[0].label?.startsWith("File ")).toBe(false);
     expect(zones.right[0].label).toBeUndefined();
   });
 

@@ -11,7 +11,7 @@ export type ViewZoneSpec = {
 
 type BoundaryInfo = {
   className: string;
-  label: string;
+  label?: string;
 };
 
 type BoundarySide = "left" | "right";
@@ -49,10 +49,7 @@ function buildBoundaryMap(
       continue;
     }
     const paletteIndex = ((segment.fileIndex - 1) % 4) + 1;
-    const label =
-      segment.fileName && segment.fileName.length > 0
-        ? `File ${segment.fileIndex}: ${segment.fileName}`
-        : `File ${segment.fileIndex}`;
+    const label = segment.fileName?.trim();
     map.set(rowIndex, {
       className: `file-boundary-zone file-index-${paletteIndex}`,
       label,

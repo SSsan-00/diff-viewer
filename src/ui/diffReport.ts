@@ -10,6 +10,8 @@ type ObjectUrlApi = {
   revokeObjectURL: (url: string) => void;
 };
 
+const FILE_BOUNDARY_PREFIX_PATTERN = /^File\s+\d+:\s*/;
+
 export type DiffReportRowKind = "equal" | "insert" | "delete" | "replace";
 
 export type DiffReportRow = {
@@ -18,14 +20,55 @@ export type DiffReportRow = {
   kind?: DiffReportRowKind;
 };
 
-export function buildReportRowsFromVisualRows(rows: CopyVisualRow[]): DiffReportRow[] {
-  if (rows.length === 0) {
-    return [];
+type ReportFileSegment = {
+  fileName?: string;
+};
+
+function findFirstFileName(segments: readonly ReportFileSegment[] | undefined): string {
+  if (!segments || segments.length === 0) {
+    return "";
   }
-  return rows.map((row) => ({
+  for (const segment of segments) {
+    const fileName = segment.fileName?.trim();
+    if (fileName) {
+      return fileName;
+    }
+  }
+  return "";
+}
+
+export function stripFileBoundaryLabelPrefix(label: string | undefined): string | undefined {
+  if (!label) {
+    return label;
+  }
+  return label.replace(FILE_BOUNDARY_PREFIX_PATTERN, "");
+}
+
+export function buildReportRowsFromVisualRows(
+  rows: CopyVisualRow[],
+  options: {
+    leftSegments?: readonly ReportFileSegment[];
+    rightSegments?: readonly ReportFileSegment[];
+  } = {},
+): DiffReportRow[] {
+  const mappedRows = rows.map((row) => ({
     leftText: row.leftText,
     rightText: row.rightText,
   }));
+
+  const firstLeftFileName = findFirstFileName(options.leftSegments);
+  const firstRightFileName = findFirstFileName(options.rightSegments);
+  if (!firstLeftFileName && !firstRightFileName) {
+    return mappedRows;
+  }
+
+  return [
+    {
+      leftText: firstLeftFileName,
+      rightText: firstRightFileName,
+    },
+    ...mappedRows,
+  ];
 }
 
 function escapeHtml(value: string): string {
@@ -46,9 +89,9 @@ function buildRowClass(kind?: DiffReportRowKind): string {
 
 export function buildDiffReportHtml(
   rows: DiffReportRow[],
-  meta: { title?: string; generatedAt?: string } = {},
+  meta: { title?: string } = {},
 ): string {
-  const title = meta.title ?? "差分レポート";
+  const title = meta.title?.trim() ?? "";
   const bodyRows =
     rows.length === 0
       ? `<tr><td></td><td></td></tr>`
@@ -63,7 +106,7 @@ export function buildDiffReportHtml(
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>${escapeHtml(title)}</title>
+  <title>Diff Viewer</title>
   <style>
     body {
       margin: 20px;
@@ -71,17 +114,12 @@ export function buildDiffReportHtml(
       color: #1f2328;
       background: #ffffff;
     }
-    h1 {
-      margin: 0 0 8px;
-      font-size: 18px;
-    }
     table {
       border-collapse: collapse;
       width: 100%;
       table-layout: fixed;
       border: 1px solid #d0d7de;
     }
-    th,
     td {
       border: 1px solid #d0d7de;
       padding: 4px 8px;
@@ -91,10 +129,6 @@ export function buildDiffReportHtml(
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size: 12px;
       line-height: 1.45;
-    }
-    th {
-      background: #f6f8fa;
-      font-weight: 700;
     }
     .row-insert td:last-child {
       background: #e6ffec;
@@ -108,11 +142,8 @@ export function buildDiffReportHtml(
   </style>
 </head>
 <body>
-  <h1>${escapeHtml(title)}</h1>
-  <table aria-label="差分レポート">
-    <thead>
-      <tr><th>Left</th><th>Right</th></tr>
-    </thead>
+  ${title ? `<h1>${escapeHtml(title)}</h1>` : ""}
+  <table aria-label="左右比較テーブル">
     <tbody>
       ${bodyRows}
     </tbody>
@@ -185,7 +216,7 @@ export function exportDiffReport(options: {
 
   const ok = download(html, fileName, doc);
   if (ok) {
-    toast.show("差分レポートを出力しました。");
+    toast.show("レポートを出力しました。");
     return true;
   }
   toast.show("レポート出力に失敗しました。", "error");

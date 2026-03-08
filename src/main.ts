@@ -69,6 +69,7 @@ import {
   bindExportReportButton,
   buildDiffReportHtml,
   buildReportRowsFromVisualRows,
+  stripFileBoundaryLabelPrefix,
 } from "./ui/diffReport";
 import { createRecalcScheduler } from "./ui/recalcScheduler";
 import { bindEditorLayoutRecalc } from "./ui/layoutRecalcWatcher";
@@ -4029,12 +4030,27 @@ bindPaneClearButton(leftClearButton, leftClearOptions);
 bindPaneClearButton(rightClearButton, rightClearOptions);
 
 function buildPaneCopyText(side: "left" | "right"): string {
-  const rows = buildVisualRowsForExport();
+  const rows = buildVisualRowsForCopy();
   return buildCopyTextFromVisualRows(rows, side);
 }
 
-function buildVisualRowsForExport() {
+function buildVisualRowsForCopy() {
   const fileZones = derivedDiffCache?.fileZones ?? { left: [], right: [] };
+  return buildCopyVisualRowsFromAlignedDiff(pairedOps, fileZones);
+}
+
+function buildVisualRowsForReport() {
+  const sourceZones = derivedDiffCache?.fileZones ?? { left: [], right: [] };
+  const fileZones = {
+    left: sourceZones.left.map((zone) => ({
+      ...zone,
+      label: stripFileBoundaryLabelPrefix(zone.label),
+    })),
+    right: sourceZones.right.map((zone) => ({
+      ...zone,
+      label: stripFileBoundaryLabelPrefix(zone.label),
+    })),
+  };
   return buildCopyVisualRowsFromAlignedDiff(pairedOps, fileZones);
 }
 
@@ -4061,10 +4077,11 @@ bindExportReportButton({
   doc: document,
   toast,
   buildHtml: () => {
-    const rows = buildReportRowsFromVisualRows(buildVisualRowsForExport());
-    return buildDiffReportHtml(rows, {
-      title: "差分レポート",
+    const rows = buildReportRowsFromVisualRows(buildVisualRowsForReport(), {
+      leftSegments,
+      rightSegments,
     });
+    return buildDiffReportHtml(rows);
   },
   fileName: "diff-report.html",
 });

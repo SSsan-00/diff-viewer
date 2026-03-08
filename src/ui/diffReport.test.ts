@@ -6,6 +6,7 @@ import {
   buildDiffReportHtml,
   buildReportRowsFromVisualRows,
   downloadDiffReportHtml,
+  stripFileBoundaryLabelPrefix,
 } from "./diffReport";
 
 describe("buildReportRowsFromVisualRows", () => {
@@ -22,6 +23,27 @@ describe("buildReportRowsFromVisualRows", () => {
     expect(rows[1]).toEqual({ leftText: "", rightText: "only-right" });
     expect(rows[2]).toEqual({ leftText: "only-left", rightText: "" });
   });
+
+  it("prepends first loaded file names as header row", () => {
+    const rows = buildReportRowsFromVisualRows(
+      [{ leftText: "line1", rightText: "line1" }],
+      {
+        leftSegments: [{ fileName: "left.cs" }],
+        rightSegments: [{ fileName: "right.php" }],
+      },
+    );
+
+    expect(rows[0]).toEqual({ leftText: "left.cs", rightText: "right.php" });
+    expect(rows[1]).toEqual({ leftText: "line1", rightText: "line1" });
+  });
+});
+
+describe("stripFileBoundaryLabelPrefix", () => {
+  it("removes File N: prefix and keeps file name only", () => {
+    expect(stripFileBoundaryLabelPrefix("File 2: sample.cs")).toBe("sample.cs");
+    expect(stripFileBoundaryLabelPrefix("File 12: foo/bar.php")).toBe("foo/bar.php");
+    expect(stripFileBoundaryLabelPrefix("plain.txt")).toBe("plain.txt");
+  });
 });
 
 describe("buildDiffReportHtml", () => {
@@ -34,11 +56,10 @@ describe("buildDiffReportHtml", () => {
     const doc = dom.window.document;
 
     const table = doc.querySelector("table");
-    const headers = Array.from(doc.querySelectorAll("thead th"));
     const rows = Array.from(doc.querySelectorAll("tbody tr"));
 
     expect(table).toBeTruthy();
-    expect(headers.map((node) => node.textContent?.trim())).toEqual(["Left", "Right"]);
+    expect(doc.querySelectorAll("thead th")).toHaveLength(0);
     expect(rows).toHaveLength(2);
     expect(rows[0]?.querySelectorAll("td")[0]?.textContent).toBe("<head>");
     expect(rows[1]?.querySelectorAll("td")[1]?.textContent).toBe("&value");
@@ -47,14 +68,11 @@ describe("buildDiffReportHtml", () => {
     expect(html).toContain("&amp;value");
   });
 
-  it("does not render generated timestamp text", () => {
-    const html = buildDiffReportHtml(
-      [{ leftText: "L", rightText: "R" }],
-      { title: "差分レポート", generatedAt: "2026-03-08T11:56:05.199Z" },
-    );
+  it("does not render extra report heading text by default", () => {
+    const html = buildDiffReportHtml([{ leftText: "L", rightText: "R" }]);
 
-    expect(html).not.toContain("Generated:");
-    expect(html).not.toContain("2026-03-08T11:56:05.199Z");
+    expect(html).not.toContain("差分レポート");
+    expect(html).not.toContain("<h1>");
   });
 });
 
@@ -117,6 +135,6 @@ describe("bindExportReportButton", () => {
       "diff-report.html",
       dom.window.document,
     );
-    expect(toast.show).toHaveBeenCalledWith("差分レポートを出力しました。");
+    expect(toast.show).toHaveBeenCalledWith("レポートを出力しました。");
   });
 });
