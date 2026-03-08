@@ -20,8 +20,8 @@ describe("buildReportRowsFromVisualRows", () => {
     const rows = buildReportRowsFromVisualRows(visualRows);
 
     expect(rows).toHaveLength(3);
-    expect(rows[1]).toEqual({ leftText: "", rightText: "only-right" });
-    expect(rows[2]).toEqual({ leftText: "only-left", rightText: "" });
+    expect(rows[1]).toMatchObject({ leftText: "", rightText: "only-right", kind: "insert" });
+    expect(rows[2]).toMatchObject({ leftText: "only-left", rightText: "", kind: "delete" });
   });
 
   it("prepends first loaded file names as header row", () => {
@@ -33,8 +33,8 @@ describe("buildReportRowsFromVisualRows", () => {
       },
     );
 
-    expect(rows[0]).toEqual({ leftText: "left.cs", rightText: "right.php" });
-    expect(rows[1]).toEqual({ leftText: "line1", rightText: "line1" });
+    expect(rows[0]).toMatchObject({ leftText: "left.cs", rightText: "right.php" });
+    expect(rows[1]).toMatchObject({ leftText: "line1", rightText: "line1", kind: "equal" });
   });
 });
 
@@ -77,6 +77,17 @@ describe("buildDiffReportHtml", () => {
 
     expect(doc.title).toBe("差分レポート");
     expect(html).not.toContain("<h1>");
+  });
+
+  it("renders rich mode style when mode is rich", () => {
+    const html = buildDiffReportHtml([{ leftText: "L", rightText: "R" }], {
+      mode: "rich",
+    });
+
+    expect(html).toContain('data-report-mode="rich"');
+    expect(html).toContain("white-space: normal");
+    expect(html).toContain("background: #1f2328");
+    expect(html).not.toContain("white-space: nowrap");
   });
 });
 

@@ -51,7 +51,52 @@ export const APP_TEMPLATE = `
         </div>
       </div>
       <div class="toolbar-right">
-        <button id="export-report" class="button" type="button">レポート出力</button>
+        <div class="report-export-control">
+          <button
+            id="export-report"
+            class="button report-export-button"
+            type="button"
+          >
+            レポート出力
+          </button>
+          <button
+            id="report-mode-toggle"
+            class="button report-mode-toggle"
+            type="button"
+            aria-label="出力モードを選択"
+            aria-haspopup="menu"
+            aria-expanded="false"
+            aria-controls="report-mode-menu"
+          >
+            ▾
+          </button>
+          <div
+            id="report-mode-menu"
+            class="report-mode-menu"
+            role="menu"
+            aria-label="出力モード"
+            hidden
+          >
+            <button
+              id="report-mode-simple"
+              class="report-mode-option is-selected"
+              type="button"
+              role="menuitemradio"
+              aria-checked="true"
+            >
+              シンプル
+            </button>
+            <button
+              id="report-mode-rich"
+              class="report-mode-option"
+              type="button"
+              role="menuitemradio"
+              aria-checked="false"
+            >
+              リッチ
+            </button>
+          </div>
+        </div>
         <button id="diff-prev" class="button" type="button">前の差分</button>
         <button id="diff-next" class="button" type="button">次の差分</button>
         <label class="toggle">

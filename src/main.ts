@@ -71,6 +71,7 @@ import {
   buildReportRowsFromVisualRows,
   stripFileBoundaryLabelPrefix,
 } from "./ui/diffReport";
+import { bindReportModeMenu, type ReportMode } from "./ui/reportModeMenu";
 import { createRecalcScheduler } from "./ui/recalcScheduler";
 import { bindEditorLayoutRecalc } from "./ui/layoutRecalcWatcher";
 import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
@@ -331,6 +332,13 @@ const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clear");
 const exportReportButton = getRequiredElement<HTMLButtonElement>("#export-report");
+const reportModeToggleButton =
+  getRequiredElement<HTMLButtonElement>("#report-mode-toggle");
+const reportModeMenu = getRequiredElement<HTMLDivElement>("#report-mode-menu");
+const reportModeSimpleButton =
+  getRequiredElement<HTMLButtonElement>("#report-mode-simple");
+const reportModeRichButton =
+  getRequiredElement<HTMLButtonElement>("#report-mode-rich");
 const leftCopyButton = getRequiredElement<HTMLButtonElement>("#left-copy");
 const rightCopyButton = getRequiredElement<HTMLButtonElement>("#right-copy");
 const leftClearButton = getRequiredElement<HTMLButtonElement>("#left-clear");
@@ -4072,6 +4080,18 @@ bindPaneSourceCopyButton({
   getText: () => buildPaneCopyText("right"),
 });
 
+let reportMode: ReportMode = "simple";
+bindReportModeMenu({
+  triggerButton: reportModeToggleButton,
+  menu: reportModeMenu,
+  simpleButton: reportModeSimpleButton,
+  richButton: reportModeRichButton,
+  initialMode: reportMode,
+  onChange: (nextMode) => {
+    reportMode = nextMode;
+  },
+});
+
 bindExportReportButton({
   button: exportReportButton,
   doc: document,
@@ -4081,7 +4101,7 @@ bindExportReportButton({
       leftSegments,
       rightSegments,
     });
-    return buildDiffReportHtml(rows);
+    return buildDiffReportHtml(rows, { mode: reportMode });
   },
   fileName: "diff-report.html",
 });

@@ -620,6 +620,69 @@ body {
   border-radius: 12px;
 }
 
+.report-export-control {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+}
+
+.report-export-button {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  padding-right: 14px;
+}
+
+.report-mode-toggle {
+  min-width: 30px;
+  width: 30px;
+  padding: 0;
+  margin-left: -1px;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  font-size: 0.72rem;
+  line-height: 1;
+}
+
+.report-mode-toggle[aria-expanded="true"] {
+  background-color: #f3e9d7;
+}
+
+.report-mode-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 120px;
+  padding: 6px;
+  border: 1px solid #c9bea9;
+  border-radius: 10px;
+  background: rgba(255, 253, 248, 0.98);
+  box-shadow: 0 8px 18px rgba(60, 47, 34, 0.16);
+  z-index: 55;
+}
+
+.report-mode-option {
+  width: 100%;
+  display: block;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: #3c2f22;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-family: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
+  cursor: pointer;
+}
+
+.report-mode-option:hover {
+  background: rgba(63, 110, 208, 0.1);
+}
+
+.report-mode-option.is-selected {
+  background: rgba(63, 110, 208, 0.14);
+  font-weight: 700;
+}
+
 .button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
@@ -1723,6 +1786,12 @@ body {
     font-size: 0.8rem;
   }
 
+  .report-mode-toggle {
+    min-width: 26px;
+    width: 26px;
+    font-size: 0.68rem;
+  }
+
   .toggle {
     padding: 4px 10px;
     font-size: 0.8rem;
@@ -1862,6 +1931,12 @@ body {
   .button-subtle {
     padding: 3px 8px;
     font-size: 0.72rem;
+  }
+
+  .report-mode-toggle {
+    min-width: 24px;
+    width: 24px;
+    font-size: 0.62rem;
   }
 
   .toggle {
@@ -2222,6 +2297,28 @@ body {
 
 [data-theme="dark"] .button-subtle {
   background-color: #26211d;
+}
+
+[data-theme="dark"] .report-mode-toggle[aria-expanded="true"] {
+  background-color: #3a322b;
+}
+
+[data-theme="dark"] .report-mode-menu {
+  border-color: #3b342d;
+  background: rgba(36, 31, 27, 0.98);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .report-mode-option {
+  color: #e6e2d8;
+}
+
+[data-theme="dark"] .report-mode-option:hover {
+  background: rgba(115, 165, 255, 0.18);
+}
+
+[data-theme="dark"] .report-mode-option.is-selected {
+  background: rgba(115, 165, 255, 0.26);
 }
 
 [data-theme="dark"] .goto-line-panel {

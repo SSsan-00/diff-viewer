@@ -10,10 +10,29 @@ describe("pane action layout", () => {
     const toolbar = doc.querySelector(".toolbar-right");
     const recalcButton = toolbar?.querySelector("#recalc");
     const exportButton = toolbar?.querySelector("#export-report");
+    const modeTrigger = toolbar?.querySelector("#report-mode-toggle");
+    const modeMenu = toolbar?.querySelector("#report-mode-menu");
+    const modeSimple = toolbar?.querySelector("#report-mode-simple");
+    const modeRich = toolbar?.querySelector("#report-mode-rich");
+    const exportControl = toolbar?.querySelector(".report-export-control");
+    const toolbarChildren = Array.from(toolbar?.children ?? []);
+    const diffPrev = toolbar?.querySelector("#diff-prev");
 
     expect(recalcButton).toBeNull();
     expect(exportButton).toBeTruthy();
     expect(exportButton?.textContent?.trim()).toBe("レポート出力");
+    expect(modeTrigger).toBeTruthy();
+    expect(modeTrigger?.getAttribute("aria-haspopup")).toBe("menu");
+    expect(modeMenu).toBeTruthy();
+    expect(modeMenu?.getAttribute("role")).toBe("menu");
+    expect(modeSimple).toBeTruthy();
+    expect(modeRich).toBeTruthy();
+    expect(modeSimple?.textContent?.trim()).toBe("シンプル");
+    expect(modeRich?.textContent?.trim()).toBe("リッチ");
+    expect(exportControl).toBeTruthy();
+    expect(toolbarChildren.indexOf(exportControl!)).toBeLessThan(
+      toolbarChildren.indexOf(diffPrev!),
+    );
   });
 
   it("places the diff-only toggle in the toolbar and removes pane toggles", () => {

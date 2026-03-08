@@ -13,6 +13,7 @@ type ObjectUrlApi = {
 const FILE_BOUNDARY_PREFIX_PATTERN = /^File\s+\d+:\s*/;
 
 export type DiffReportRowKind = "equal" | "insert" | "delete" | "replace";
+export type DiffReportMode = "simple" | "rich";
 
 export type DiffReportRow = {
   leftText: string;
@@ -54,6 +55,14 @@ export function buildReportRowsFromVisualRows(
   const mappedRows = rows.map((row) => ({
     leftText: row.leftText,
     rightText: row.rightText,
+    kind:
+      row.leftText.length === 0 && row.rightText.length > 0
+        ? "insert"
+        : row.rightText.length === 0 && row.leftText.length > 0
+          ? "delete"
+          : row.leftText === row.rightText
+            ? "equal"
+            : "replace",
   }));
 
   const firstLeftFileName = findFirstFileName(options.leftSegments);
@@ -81,33 +90,14 @@ function escapeHtml(value: string): string {
 }
 
 function buildRowClass(kind?: DiffReportRowKind): string {
-  if (!kind) {
+  if (!kind || kind === "equal") {
     return "";
   }
   return ` class="row-${kind}"`;
 }
 
-export function buildDiffReportHtml(
-  rows: DiffReportRow[],
-  meta: { title?: string } = {},
-): string {
-  const title = meta.title?.trim() ?? "";
-  const bodyRows =
-    rows.length === 0
-      ? `<tr><td></td><td></td></tr>`
-      : rows
-          .map(
-            (row) =>
-              `<tr${buildRowClass(row.kind)}><td>${escapeHtml(row.leftText)}</td><td>${escapeHtml(row.rightText)}</td></tr>`,
-          )
-          .join("\n");
-
-  return `<!doctype html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <title>差分レポート</title>
-  <style>
+function buildSimpleModeStyles(): string {
+  return `
     body {
       margin: 20px;
       font-family: "Yu Gothic UI", "Hiragino Sans", sans-serif;
@@ -131,18 +121,82 @@ export function buildDiffReportHtml(
       font-size: 12px;
       line-height: 1.45;
     }
+  `;
+}
+
+function buildRichModeStyles(): string {
+  return `
+    body {
+      margin: 0;
+      padding: 10px 0;
+      background: #1f2328;
+      color: #e6edf3;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      table-layout: fixed;
+    }
+    td {
+      border-bottom: 1px solid #30363d;
+      padding: 2px 10px;
+      text-align: left;
+      vertical-align: top;
+      white-space: normal;
+      overflow: visible;
+      color: #e6edf3;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    tr:nth-child(odd) td {
+      background: #1f2328;
+    }
+    tr:nth-child(even) td {
+      background: #22272e;
+    }
     .row-insert td:last-child {
-      background: #e6ffec;
+      background: rgba(46, 160, 67, 0.24);
     }
     .row-delete td:first-child {
-      background: #ffebe9;
+      background: rgba(248, 81, 73, 0.22);
     }
     .row-replace td {
-      background: #fff8c5;
+      background: rgba(187, 128, 9, 0.22);
     }
+  `;
+}
+
+function buildReportStyles(mode: DiffReportMode): string {
+  return mode === "rich" ? buildRichModeStyles() : buildSimpleModeStyles();
+}
+
+export function buildDiffReportHtml(
+  rows: DiffReportRow[],
+  meta: { title?: string; mode?: DiffReportMode } = {},
+): string {
+  const title = meta.title?.trim() ?? "";
+  const mode = meta.mode ?? "simple";
+  const bodyRows =
+    rows.length === 0
+      ? `<tr><td></td><td></td></tr>`
+      : rows
+          .map(
+            (row) =>
+              `<tr${buildRowClass(row.kind)}><td>${escapeHtml(row.leftText)}</td><td>${escapeHtml(row.rightText)}</td></tr>`,
+          )
+          .join("\n");
+
+  return `<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>差分レポート</title>
+  <style>
+    ${buildReportStyles(mode)}
   </style>
 </head>
-<body>
+<body data-report-mode="${mode}">
   ${title ? `<h1>${escapeHtml(title)}</h1>` : ""}
   <table aria-label="左右比較テーブル">
     <tbody>
