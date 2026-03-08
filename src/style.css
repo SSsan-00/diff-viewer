@@ -158,9 +158,15 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
   padding: 16px 24px;
   background: linear-gradient(120deg, #f0e4cf, #e2d4bf);
   border-bottom: 1px solid #c9bea9;
+}
+
+.toolbar-left {
+  min-width: 0;
+  flex: 0 0 auto;
 }
 
 .title {
@@ -380,6 +386,32 @@ body {
   display: flex;
   gap: 16px;
   align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  justify-content: flex-start;
+}
+
+.toolbar-right > * {
+  flex: 0 0 auto;
+}
+
+.toolbar-right .button,
+.toolbar-right .toggle,
+.toolbar-right .toggle span {
+  white-space: nowrap;
+}
+
+.toolbar-right::-webkit-scrollbar {
+  height: 6px;
+}
+
+.toolbar-right::-webkit-scrollbar-thumb {
+  background-color: rgba(80, 70, 55, 0.25);
+  border-radius: 999px;
 }
 
 .anchor-panel {
@@ -1018,9 +1050,21 @@ body {
   border-bottom: 1px solid #e1d6c2;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.pane-title::-webkit-scrollbar {
+  height: 6px;
+}
+
+.pane-title::-webkit-scrollbar-thumb {
+  background-color: rgba(80, 70, 55, 0.25);
+  border-radius: 999px;
 }
 
 .pane-title-left {
@@ -1028,15 +1072,22 @@ body {
   align-items: center;
   gap: 12px;
   min-width: 0;
+  flex: 0 0 auto;
   flex-wrap: nowrap;
+}
+
+.pane-title-left > span {
+  white-space: nowrap;
 }
 
 .pane-actions {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex: 0 0 auto;
+  margin-left: auto;
   flex-wrap: nowrap;
-  overflow: hidden;
+  overflow: visible;
   white-space: nowrap;
 }
 
@@ -1690,6 +1741,12 @@ body {
     gap: 12px;
     align-items: flex-start;
   }
+
+  .toolbar-right {
+    width: 100%;
+    max-width: 100%;
+    align-self: stretch;
+  }
 }
 
 @media (max-width: 1100px) {
@@ -1716,9 +1773,13 @@ body {
   }
 
   .toolbar-right {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    width: 100%;
     gap: 8px;
     align-items: center;
+    justify-content: flex-start;
   }
 
   .anchor-panel {
@@ -1745,15 +1806,17 @@ body {
   }
 
   .pane-title {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     padding: 8px 10px;
+    overflow-x: auto;
+    overflow-y: hidden;
   }
 
   .pane-title-left,
   .pane-actions,
   .file-picker {
-    flex-wrap: wrap;
-    row-gap: 4px;
+    flex-wrap: nowrap;
+    row-gap: 0;
   }
 
   .file-picker .button {
@@ -2034,13 +2097,12 @@ body {
   }
 
   .pane-actions {
-    overflow-x: auto;
-    overflow-y: hidden;
-    max-width: 100%;
+    overflow: visible;
+    max-width: none;
     scrollbar-width: thin;
     white-space: nowrap;
-    justify-content: flex-end;
-    flex: 1;
+    justify-content: flex-start;
+    flex: 0 0 auto;
   }
 
   .file-picker .button {
