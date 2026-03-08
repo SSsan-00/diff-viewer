@@ -65,6 +65,11 @@ import {
   buildCopyTextFromVisualRows,
   buildCopyVisualRowsFromAlignedDiff,
 } from "./ui/paneSourceCopy";
+import {
+  bindExportReportButton,
+  buildDiffReportHtml,
+  buildReportRowsFromVisualRows,
+} from "./ui/diffReport";
 import { createRecalcScheduler } from "./ui/recalcScheduler";
 import { bindEditorLayoutRecalc } from "./ui/layoutRecalcWatcher";
 import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
@@ -324,6 +329,7 @@ const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clear");
+const exportReportButton = getRequiredElement<HTMLButtonElement>("#export-report");
 const leftCopyButton = getRequiredElement<HTMLButtonElement>("#left-copy");
 const rightCopyButton = getRequiredElement<HTMLButtonElement>("#right-copy");
 const leftClearButton = getRequiredElement<HTMLButtonElement>("#left-clear");
@@ -3958,11 +3964,6 @@ function recalcDiff() {
   focusDiffLines(null, null);
 }
 
-const recalcButton = document.querySelector<HTMLButtonElement>("#recalc");
-recalcButton?.addEventListener("click", () => {
-  recalcScheduler.runNow();
-});
-
 function buildPaneClearOptions(
   side: "left" | "right",
   config: {
@@ -4028,9 +4029,13 @@ bindPaneClearButton(leftClearButton, leftClearOptions);
 bindPaneClearButton(rightClearButton, rightClearOptions);
 
 function buildPaneCopyText(side: "left" | "right"): string {
-  const fileZones = derivedDiffCache?.fileZones ?? { left: [], right: [] };
-  const rows = buildCopyVisualRowsFromAlignedDiff(pairedOps, fileZones);
+  const rows = buildVisualRowsForExport();
   return buildCopyTextFromVisualRows(rows, side);
+}
+
+function buildVisualRowsForExport() {
+  const fileZones = derivedDiffCache?.fileZones ?? { left: [], right: [] };
+  return buildCopyVisualRowsFromAlignedDiff(pairedOps, fileZones);
 }
 
 bindPaneSourceCopyButton({
@@ -4049,6 +4054,20 @@ bindPaneSourceCopyButton({
   copy: copyText,
   toast,
   getText: () => buildPaneCopyText("right"),
+});
+
+bindExportReportButton({
+  button: exportReportButton,
+  doc: document,
+  toast,
+  buildHtml: () => {
+    const rows = buildReportRowsFromVisualRows(buildVisualRowsForExport());
+    return buildDiffReportHtml(rows, {
+      title: "差分レポート",
+      generatedAt: new Date().toISOString(),
+    });
+  },
+  fileName: "diff-report.html",
 });
 
 function clearFocusedPane(): void {

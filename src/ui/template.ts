@@ -51,7 +51,7 @@ export const APP_TEMPLATE = `
         </div>
       </div>
       <div class="toolbar-right">
-        <button id="recalc" class="button" type="button">再計算</button>
+        <button id="export-report" class="button" type="button">レポート出力</button>
         <button id="diff-prev" class="button" type="button">前の差分</button>
         <button id="diff-next" class="button" type="button">次の差分</button>
         <label class="toggle">

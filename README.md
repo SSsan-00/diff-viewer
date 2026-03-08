@@ -7,9 +7,10 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` / `dist/i
 
 - 2ペインの Monaco Editor で差分表示（行/行内ハイライト）
 - スクロール連動 ON/OFF
-- 差分再計算 / 前後ジャンプ
+- 自動差分更新（編集時デバウンス） / 前後ジャンプ
+- レポート出力（表示どおりの左右2列HTML、仮想行含む）
 - アンカー行（手動）の追加・削除・ジャンプ
-- **自動アンカー（DOCTYPE）**：左右に `<!DOCTYPE`（または `<！DOCTYPE`）がある場合、その行同士を再計算時にアンカーとして扱う
+- **自動アンカー（DOCTYPE）**：左右に `<!DOCTYPE`（または `<！DOCTYPE`）がある場合、その行同士を差分更新時にアンカーとして扱う
 - アンカーパネルの折りたたみ/展開
 - 差分なし領域の折りたたみ（クリックで展開）
 - 言語差のある行も識別子ベースで対応付け
@@ -35,7 +36,7 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` / `dist/i
 
 1) `dist/index.html`（可読版）または `dist/index.min.html`（最適化版）を開く（`file://` 直開きOK）  
 2) 左右それぞれにファイルを読み込み or テキストを貼り付け  
-3) `差分再計算` を押して差分表示  
+3) 編集内容に応じて差分表示は自動更新  
 4) アンカーは左右の行番号を順にクリックして追加（同じ行をクリックすると削除）
 
 ### ファイル読み込み（複数ファイルの連結）
@@ -48,7 +49,7 @@ VS Code っぽい差分ビューを **単一HTML**（`dist/index.html` / `dist/i
 
 ### 自動アンカー（DOCTYPE）
 
-- `差分再計算` 実行時、左右のテキスト内に `<!DOCTYPE`（または `<！DOCTYPE`）を含む行が存在する場合、
+- 差分更新時、左右のテキスト内に `<!DOCTYPE`（または `<！DOCTYPE`）を含む行が存在する場合、
   - 左右それぞれで **最初に見つかった DOCTYPE 行同士**を **自動アンカー（1件）**として扱います。
 - 既存アンカーと矛盾（順序逆転・重複など）する場合は、自動アンカーは追加しません（安定性優先）。
 
@@ -121,9 +122,10 @@ pnpm run verify:dist
 ### Functional checks
 
 - Monaco editors render
-- Diff recalculation
+- Diff recalculation (auto)
 - Scroll sync ON/OFF
 - Next/previous diff jump
+- Report export (2-column HTML with virtual rows)
 - Folding（差分なし領域の折りたたみ）
 - File load（file input / drag & drop）
   - multiple files append + newline rules

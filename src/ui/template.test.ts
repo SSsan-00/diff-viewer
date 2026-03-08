@@ -3,6 +3,19 @@ import { JSDOM } from "jsdom";
 import { APP_TEMPLATE } from "./template";
 
 describe("pane action layout", () => {
+  it("removes recalc button and adds export report button in toolbar", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const toolbar = doc.querySelector(".toolbar-right");
+    const recalcButton = toolbar?.querySelector("#recalc");
+    const exportButton = toolbar?.querySelector("#export-report");
+
+    expect(recalcButton).toBeNull();
+    expect(exportButton).toBeTruthy();
+    expect(exportButton?.textContent?.trim()).toBe("レポート出力");
+  });
+
   it("places the diff-only toggle in the toolbar and removes pane toggles", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;

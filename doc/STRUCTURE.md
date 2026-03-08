@@ -107,6 +107,10 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/paneClear.test.ts` クリア挙動のテスト。
 - `src/ui/paneMessages.ts` ペインの読み込み/エラーメッセージ制御。exports: `setPaneMessage`, `clearPaneMessage`。
 - `src/ui/paneMessages.test.ts` メッセージ制御のテスト。
+- `src/ui/paneSourceCopy.ts` 各ペインの「コピー」向けに表示行（仮想行含む）を文字列化し、コピー処理を接続。exports: `buildCopyVisualRowsFromAlignedDiff`, `buildCopyTextFromVisualRows`, `bindPaneSourceCopyButton`。
+- `src/ui/paneSourceCopy.test.ts` コピー用表示行とボタン接続のテスト。
+- `src/ui/diffReport.ts` 表示行（仮想行含む）から左右2列のHTMLレポートを生成し、ダウンロード処理を接続。exports: `buildDiffReportHtml`, `downloadDiffReportHtml`, `bindExportReportButton`。
+- `src/ui/diffReport.test.ts` レポートHTML生成・ダウンロード接続のテスト。
 - `src/ui/fileCards.ts` ファイル一覧カードの描画。export: `renderFileCards`。
 - `src/ui/fileCards.test.ts` カード描画のテスト。
 - `src/ui/fileCardJump.ts` ファイルカードクリックのハンドラ接続。export: `bindFileCardJump`。
