@@ -106,7 +106,7 @@ export function buildDiffReportHtml(
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>Diff Viewer</title>
+  <title>差分レポート</title>
   <style>
     body {
       margin: 20px;
@@ -126,6 +126,7 @@ export function buildDiffReportHtml(
       text-align: left;
       vertical-align: top;
       white-space: nowrap;
+      overflow: hidden;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
       font-size: 12px;
       line-height: 1.45;
