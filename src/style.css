@@ -399,6 +399,10 @@ body {
   flex: 0 0 auto;
 }
 
+.toolbar-right > :first-child {
+  margin-left: auto;
+}
+
 .toolbar-right .button,
 .toolbar-right .toggle,
 .toolbar-right .toggle span {
