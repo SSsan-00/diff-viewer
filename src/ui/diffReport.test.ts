@@ -158,7 +158,7 @@ describe("buildDiffReportHtml", () => {
     expect(html).toContain("white-space: normal");
     expect(html).toContain("overflow: hidden");
     expect(html).toContain("word-break: break-word");
-    expect(html).toContain("background: #1f1b18");
+    expect(html).toContain("background: #1e1e1e");
     expect(html).toContain("td:first-child");
     expect(html).toContain("border-right: 1px solid var(--pane-divider-color)");
     expect(html).not.toContain("tr:nth-child(");
