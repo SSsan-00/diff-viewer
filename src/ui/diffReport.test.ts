@@ -125,7 +125,15 @@ describe("buildDiffReportHtml", () => {
       { leftText: "    const total = 1;", rightText: "value" },
     ]);
 
-    expect(html).toContain("&nbsp;&nbsp;&nbsp;&nbsp;const total = 1;");
+    expect(html).toContain("&nbsp;&nbsp;&nbsp;&nbsp;const&nbsp;total&nbsp;=&nbsp;1;");
+  });
+
+  it("keeps inner consecutive spaces in simple mode output", () => {
+    const html = buildDiffReportHtml([
+      { leftText: "const  total =  1;", rightText: "plain" },
+    ]);
+
+    expect(html).toContain("const&nbsp;&nbsp;total&nbsp;=&nbsp;&nbsp;1;");
   });
 
   it("uses title tag and does not render body heading text by default", () => {
@@ -172,6 +180,16 @@ describe("buildDiffReportHtml", () => {
     );
 
     expect(html).toContain("&nbsp;&nbsp;a");
+  });
+
+  it("keeps inner consecutive spaces in rich mode output", () => {
+    const html = buildDiffReportHtml(
+      [{ leftText: "value  value", rightText: "value   value" }],
+      { mode: "rich" },
+    );
+
+    expect(html).toContain("value&nbsp;&nbsp;value");
+    expect(html).toContain("value&nbsp;&nbsp;&nbsp;value");
   });
 
   it("renders syntax token spans in rich mode", () => {

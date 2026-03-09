@@ -213,36 +213,17 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function getLeadingWhitespaceLength(text: string): number {
-  let index = 0;
-  while (index < text.length) {
-    const char = text[index];
-    if (char !== " " && char !== "\t") {
-      break;
-    }
-    index += 1;
-  }
-  return index;
-}
-
-function escapeHtmlWithLeadingWhitespace(
-  text: string,
-  leadingWhitespaceLength: number,
-  startOffset: number,
-): string {
+function escapeHtmlWithPreservedWhitespace(text: string): string {
   let escaped = "";
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index];
-    const absolute = startOffset + index;
-    if (absolute < leadingWhitespaceLength) {
-      if (char === " ") {
-        escaped += "&nbsp;";
-        continue;
-      }
-      if (char === "\t") {
-        escaped += "&nbsp;&nbsp;&nbsp;&nbsp;";
-        continue;
-      }
+    if (char === " ") {
+      escaped += "&nbsp;";
+      continue;
+    }
+    if (char === "\t") {
+      escaped += "&nbsp;&nbsp;&nbsp;&nbsp;";
+      continue;
     }
     escaped += escapeHtml(char);
   }
@@ -271,7 +252,6 @@ function renderCellTextWithRanges(
   if (!text) {
     return "";
   }
-  const leadingWhitespaceLength = getLeadingWhitespaceLength(text);
   const boundaries = new Set<number>([0, text.length]);
   for (const layer of layers) {
     for (const range of layer.ranges ?? []) {
@@ -290,11 +270,7 @@ function renderCellTextWithRanges(
     if (end <= start) {
       continue;
     }
-    const part = escapeHtmlWithLeadingWhitespace(
-      text.slice(start, end),
-      leadingWhitespaceLength,
-      start,
-    );
+    const part = escapeHtmlWithPreservedWhitespace(text.slice(start, end));
     const classNames: string[] = [];
     for (const layer of layers) {
       const active = (layer.ranges ?? []).some(
@@ -339,10 +315,8 @@ function buildSyntaxLayers(
 
 function renderRowCells(row: DiffReportRow, mode: DiffReportMode): string {
   if (mode !== "rich") {
-    const leftLeadingWhitespace = getLeadingWhitespaceLength(row.leftText);
-    const rightLeadingWhitespace = getLeadingWhitespaceLength(row.rightText);
-    const left = escapeHtmlWithLeadingWhitespace(row.leftText, leftLeadingWhitespace, 0);
-    const right = escapeHtmlWithLeadingWhitespace(row.rightText, rightLeadingWhitespace, 0);
+    const left = escapeHtmlWithPreservedWhitespace(row.leftText);
+    const right = escapeHtmlWithPreservedWhitespace(row.rightText);
     return `<td>${left}</td><td>${right}</td>`;
   }
   const left = renderCellTextWithRanges(row.leftText, [
