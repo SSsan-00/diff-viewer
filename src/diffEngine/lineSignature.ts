@@ -1,3 +1,5 @@
+import { extractEmbeddedOutputCall } from "./embeddedOutputCall";
+
 const KEYWORDS = new Set([
   "var",
   "let",
@@ -85,6 +87,10 @@ export function extractLineKey(line: string): string | null {
   const braceToken = extractBraceToken(normalizedLine);
   if (braceToken) {
     return braceToken;
+  }
+  const embeddedOutputCall = extractEmbeddedOutputCall(normalizedLine);
+  if (embeddedOutputCall) {
+    return embeddedOutputCall;
   }
   const normalized = stripDollarIdentifiers(normalizedLine.trimStart());
   const funcMatch = normalized.match(/([A-Za-z_][A-Za-z0-9_]*)\s*\(/);

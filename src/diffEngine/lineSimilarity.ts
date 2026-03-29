@@ -1,4 +1,5 @@
 import { extractAppendLiteral } from "./appendLiteral";
+import { extractEmbeddedOutputCall } from "./embeddedOutputCall";
 
 type LineCategory = "decl" | "call" | "other";
 
@@ -569,6 +570,10 @@ export function buildLineFeatures(line: string): LineFeatures {
   const identifiers = extractIdentifiers(featureLine);
   const literals = extractLiterals(featureLine);
   const numbers = extractNumbers(featureLine);
+  const embeddedOutputCall = extractEmbeddedOutputCall(normalizedLine);
+  if (embeddedOutputCall) {
+    identifiers.push(`embeddedcall:${embeddedOutputCall}`);
+  }
   const commentText = normalizeCommentText(featureLine);
   if (commentText) {
     identifiers.push("comment");
@@ -604,7 +609,9 @@ export function buildLineFeatures(line: string): LineFeatures {
     identifiers.push(braceToken);
   }
   const category = detectCategory(featureLine);
-  const primaryId = pickPrimaryId(identifiers, literals, featureLine);
+  const primaryId = embeddedOutputCall
+    ? `embeddedcall:${embeddedOutputCall}`
+    : pickPrimaryId(identifiers, literals, featureLine);
   extractEmbeddedHintTokens(featureLine).forEach((token) => identifiers.push(token));
   if (appendLike) {
     literals.forEach((literal) => {

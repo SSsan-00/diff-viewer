@@ -4,6 +4,7 @@ import { extractLineKey } from "./lineSignature";
 import { toAppendLiteralOrLine } from "./appendLiteral";
 import { extractAppendLiteral } from "./appendLiteral";
 import { extractAppendLiteralInlineMap } from "./appendLiteral";
+import { extractEmbeddedOutputCall } from "./embeddedOutputCall";
 
 export type DiffLinesOptions = {
   ignoreLeadingFileWhitespace?: boolean;
@@ -26,6 +27,10 @@ function normalizeForMatch(line: string): string {
   const trimmed = stripRazorLinePrefix(line).replace(/^\s+/, "");
   if (isBlankLine(trimmed)) {
     return "";
+  }
+  const embeddedOutputCall = extractEmbeddedOutputCall(trimmed);
+  if (embeddedOutputCall) {
+    return `embeddedcall:${embeddedOutputCall}`;
   }
   const initVar = extractInitVariable(trimmed);
   if (initVar) {

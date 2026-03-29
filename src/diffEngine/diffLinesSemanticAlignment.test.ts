@@ -321,6 +321,39 @@ describe("semantic alignment across languages", () => {
     expect(findEqual(ops, "}", "<? }")).toBe(false);
   });
 
+  it("aligns php embedded function outputs with Razor Html.Raw calls", () => {
+    const left = [
+      "<?= SetMetaTag() ?>",
+      "<?php RenderHeadMeta(); ?>",
+      "<? EmitBodyMeta(); ?>",
+      "<? echo EmitAnalyticsTag(); ?>",
+      "<?php echo WriteAnalyticsTag(); ?>",
+    ];
+    const right = [
+      "@Html.Raw(SetMetaTag())",
+      "@Html.Raw(RenderHeadMeta())",
+      "@Html.Raw(EmitBodyMeta())",
+      "@Html.Raw(EmitAnalyticsTag())",
+      "@Html.Raw(WriteAnalyticsTag())",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "SetMetaTag()", "@Html.Raw(SetMetaTag())")).toBe(true);
+    expect(findReplace(ops, "RenderHeadMeta()", "@Html.Raw(RenderHeadMeta())")).toBe(true);
+    expect(findReplace(ops, "EmitBodyMeta()", "@Html.Raw(EmitBodyMeta())")).toBe(true);
+    expect(findReplace(ops, "EmitAnalyticsTag()", "@Html.Raw(EmitAnalyticsTag())")).toBe(true);
+    expect(findReplace(ops, "WriteAnalyticsTag()", "@Html.Raw(WriteAnalyticsTag())")).toBe(true);
+    expect(findEqual(ops, "SetMetaTag()", "@Html.Raw(SetMetaTag())")).toBe(false);
+  });
+
+  it("does not align php embedded outputs with different Razor function names", () => {
+    const left = ["<?php SetMetaTag(); ?>"];
+    const right = ["@Html.Raw(RenderMetaTag())"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "SetMetaTag", "RenderMetaTag")).toBe(false);
+  });
+
   it("aligns SQL construction across languages", () => {
     const left = ["builder.AppendLine(\"select * from users\");"];
     const right = ["$sql .= \"select * from users\";"];
