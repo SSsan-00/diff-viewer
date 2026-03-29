@@ -92,7 +92,7 @@ describe("bindPaneSourceCopyButton", () => {
   });
 
   it("copies left pane text on click", async () => {
-    const dom = new JSDOM(`<button id="left-copy">コピー</button>`);
+    const dom = new JSDOM(`<button id="left-copy">ソースコピー</button>`);
     const button = dom.window.document.querySelector<HTMLButtonElement>("#left-copy");
     const toast = { show: vi.fn() };
     const rows = [
@@ -119,7 +119,7 @@ describe("bindPaneSourceCopyButton", () => {
   });
 
   it("copies right pane text on click", async () => {
-    const dom = new JSDOM(`<button id="right-copy">コピー</button>`);
+    const dom = new JSDOM(`<button id="right-copy">ソースコピー</button>`);
     const button = dom.window.document.querySelector<HTMLButtonElement>("#right-copy");
     const toast = { show: vi.fn() };
     const rows = [{ leftText: "L1", rightText: "R1" }];

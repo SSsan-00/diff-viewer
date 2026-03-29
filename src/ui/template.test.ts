@@ -110,6 +110,16 @@ describe("pane action layout", () => {
     expect(doc.querySelector("#fold-toggle")).toBeTruthy();
   });
 
+  it("renders the header clear button label as 全クリア", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const clearButton = doc.querySelector<HTMLButtonElement>("#clear");
+
+    expect(clearButton).toBeTruthy();
+    expect(clearButton?.textContent?.trim()).toBe("全クリア");
+  });
+
   it("renders a highlight icon button to the right of the diff-only toggle", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
@@ -213,8 +223,8 @@ describe("pane action layout", () => {
 
     expect(leftCopy).toBeTruthy();
     expect(rightCopy).toBeTruthy();
-    expect(leftCopy?.textContent?.trim()).toBe("コピー");
-    expect(rightCopy?.textContent?.trim()).toBe("コピー");
+    expect(leftCopy?.textContent?.trim()).toBe("ソースコピー");
+    expect(rightCopy?.textContent?.trim()).toBe("ソースコピー");
     expect(leftButton).toBeTruthy();
     expect(rightButton).toBeTruthy();
     expect(leftBar).toBeTruthy();

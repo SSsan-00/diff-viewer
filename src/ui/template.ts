@@ -194,7 +194,7 @@ export const APP_TEMPLATE = `
             </span>
           </span>
         </label>
-        <button id="clear" class="button button-subtle" type="button">クリア</button>
+        <button id="clear" class="button button-subtle" type="button">全クリア</button>
       </div>
     </header>
     <div
@@ -236,9 +236,9 @@ export const APP_TEMPLATE = `
               id="left-copy"
               class="button button-subtle pane-copy"
               type="button"
-              aria-label="左をコピー"
+              aria-label="左ペインのソースをコピー"
             >
-              コピー
+              ソースコピー
             </button>
             <button
               id="left-clear"
@@ -358,9 +358,9 @@ export const APP_TEMPLATE = `
               id="right-copy"
               class="button button-subtle pane-copy"
               type="button"
-              aria-label="右をコピー"
+              aria-label="右ペインのソースをコピー"
             >
-              コピー
+              ソースコピー
             </button>
             <button
               id="right-clear"
