@@ -1,4 +1,5 @@
 import { deleteWorkspace, type WorkspacesState } from "../storage/workspaces";
+import type { TextStore } from "../storage/textStore";
 
 export type WorkspaceRemovalResult =
   | { ok: true; state: WorkspacesState }
@@ -13,6 +14,7 @@ export function removeWorkspaceWithConfirm(
   state: WorkspacesState,
   id: string,
   confirm: (message: string) => boolean,
+  options?: { textStore?: TextStore },
 ): WorkspaceRemovalResult {
   const target = state.workspaces.find((workspace) => workspace.id === id);
   if (!target) {
@@ -22,7 +24,7 @@ export function removeWorkspaceWithConfirm(
   if (!confirm(message)) {
     return { ok: false, reason: "cancelled", state };
   }
-  const result = deleteWorkspace(storage, state, id);
+  const result = deleteWorkspace(storage, state, id, options);
   if (result.ok) {
     return { ok: true, state: result.state };
   }

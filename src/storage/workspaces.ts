@@ -3,6 +3,10 @@ export const WORKSPACE_NAME_LIMIT = 25;
 
 import type { Anchor } from "../diffEngine/anchors";
 import type { LineSegment } from "../file/lineNumbering";
+import {
+  createUnavailableTextStore,
+  type TextStore,
+} from "./textStore";
 
 export type WorkspaceAnchorState = {
   manualAnchors: Anchor[];
@@ -59,6 +63,25 @@ export type WorkspaceResult =
   | { ok: false; reason: WorkspaceError; state: WorkspacesState };
 
 const STORAGE_KEY = "diffViewer.workspaces";
+
+type WorkspaceStorageOptions = {
+  textStore?: TextStore;
+  deletedWorkspaceIds?: string[];
+};
+type TextStorageMode = "inline" | "indexeddb";
+type SerializedWorkspacesState = {
+  workspaces: Workspace[];
+  selectedId: string;
+  textStorage: TextStorageMode;
+};
+
+let saveQueue: Promise<void> = Promise.resolve();
+
+function enqueueSave(task: () => Promise<void>): Promise<void> {
+  const pending = saveQueue.then(task, task);
+  saveQueue = pending.catch(() => undefined);
+  return pending;
+}
 
 function createWorkspaceId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -197,6 +220,10 @@ function normalizeScrollTop(value: unknown): number | null {
   return value;
 }
 
+function normalizeTextStorageMode(value: unknown): TextStorageMode | null {
+  return value === "inline" || value === "indexeddb" ? value : null;
+}
+
 function ensureDefaultState(): WorkspacesState {
   const workspace: Workspace = {
     id: createWorkspaceId(),
@@ -273,7 +300,118 @@ function normalizeState(raw: unknown): WorkspacesState {
   return { workspaces: filtered, selectedId };
 }
 
-export function loadWorkspaces(storage: Storage | null): WorkspacesState {
+function getTextStore(options?: WorkspaceStorageOptions): TextStore {
+  return options?.textStore ?? createUnavailableTextStore();
+}
+
+function getWorkspaceTextKey(
+  workspaceId: string,
+  side: "left" | "right",
+): string {
+  return `${STORAGE_KEY}:text:${workspaceId}:${side}`;
+}
+
+function serializeState(
+  state: WorkspacesState,
+  includeInlineTexts: boolean,
+): SerializedWorkspacesState {
+  return {
+    selectedId: state.selectedId,
+    textStorage: includeInlineTexts ? "inline" : "indexeddb",
+    workspaces: state.workspaces.map((workspace) => ({
+      ...workspace,
+      leftText: includeInlineTexts ? workspace.leftText : "",
+      rightText: includeInlineTexts ? workspace.rightText : "",
+    })),
+  };
+}
+
+async function hydrateWorkspaceTexts(
+  state: WorkspacesState,
+  textStore: TextStore,
+): Promise<WorkspacesState> {
+  const workspaces = await Promise.all(
+    state.workspaces.map(async (workspace) => {
+      const [leftText, rightText] = await Promise.all([
+        textStore.get(getWorkspaceTextKey(workspace.id, "left")),
+        textStore.get(getWorkspaceTextKey(workspace.id, "right")),
+      ]);
+      return {
+        ...workspace,
+        leftText: leftText ?? workspace.leftText,
+        rightText: rightText ?? workspace.rightText,
+      };
+    }),
+  );
+  return { ...state, workspaces };
+}
+
+async function writeWorkspaceTexts(
+  state: WorkspacesState,
+  textStore: TextStore,
+): Promise<void> {
+  await Promise.all(
+    state.workspaces.flatMap((workspace) => [
+      workspace.leftText.length > 0
+        ? textStore.set(getWorkspaceTextKey(workspace.id, "left"), workspace.leftText)
+        : textStore.delete(getWorkspaceTextKey(workspace.id, "left")),
+      workspace.rightText.length > 0
+        ? textStore.set(getWorkspaceTextKey(workspace.id, "right"), workspace.rightText)
+        : textStore.delete(getWorkspaceTextKey(workspace.id, "right")),
+    ]),
+  );
+}
+
+async function deleteWorkspaceTexts(
+  workspaceIds: string[],
+  textStore: TextStore,
+): Promise<void> {
+  await Promise.all(
+    workspaceIds.flatMap((workspaceId) => [
+      textStore.delete(getWorkspaceTextKey(workspaceId, "left")),
+      textStore.delete(getWorkspaceTextKey(workspaceId, "right")),
+    ]),
+  );
+}
+
+async function persistSnapshot(
+  storage: Storage | null,
+  state: WorkspacesState,
+  options?: WorkspaceStorageOptions,
+): Promise<void> {
+  const textStore = getTextStore(options);
+  if (!storage) {
+    return;
+  }
+  if (!textStore.isAvailable) {
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify(serializeState(state, true)));
+    } catch (error) {
+      console.warn("Failed to persist workspaces:", error);
+    }
+    return;
+  }
+  try {
+    await Promise.all([
+      writeWorkspaceTexts(state, textStore),
+      deleteWorkspaceTexts(options?.deletedWorkspaceIds ?? [], textStore),
+    ]);
+    storage.setItem(STORAGE_KEY, JSON.stringify(serializeState(state, false)));
+  } catch (error) {
+    console.warn("Failed to persist workspaces with IndexedDB:", error);
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify(serializeState(state, true)));
+    } catch (storageError) {
+      console.warn("Failed to persist workspaces:", storageError);
+    }
+  }
+}
+
+export async function loadWorkspaces(
+  storage: Storage | null,
+  options?: WorkspaceStorageOptions,
+): Promise<WorkspacesState> {
+  const textStore = getTextStore(options);
   if (!storage) {
     return ensureDefaultState();
   }
@@ -281,17 +419,41 @@ export function loadWorkspaces(storage: Storage | null): WorkspacesState {
     const raw = storage.getItem(STORAGE_KEY);
     if (!raw) {
       const fallback = ensureDefaultState();
-      saveWorkspaces(storage, fallback);
+      await saveWorkspaces(storage, fallback, options);
       return fallback;
     }
     const parsed = JSON.parse(raw);
     const normalized = normalizeState(parsed);
-    saveWorkspaces(storage, normalized);
-    return normalized;
+    const textStorageMode =
+      parsed && typeof parsed === "object"
+        ? normalizeTextStorageMode((parsed as { textStorage?: unknown }).textStorage)
+        : null;
+    const hasInlineTexts = normalized.workspaces.some(
+      (workspace) => workspace.leftText.length > 0 || workspace.rightText.length > 0,
+    );
+    if (!textStore.isAvailable) {
+      return normalized;
+    }
+    if (textStorageMode === "inline" || (textStorageMode === null && hasInlineTexts)) {
+      await saveWorkspaces(storage, normalized, options);
+      return normalized;
+    }
+    let hydrated = normalized;
+    let hydratedFromTextStore = false;
+    try {
+      hydrated = await hydrateWorkspaceTexts(normalized, textStore);
+      hydratedFromTextStore = true;
+    } catch (error) {
+      console.warn("Failed to hydrate workspaces from IndexedDB:", error);
+    }
+    if (hydratedFromTextStore && textStorageMode !== "indexeddb") {
+      await saveWorkspaces(storage, hydrated, options);
+    }
+    return hydrated;
   } catch (error) {
     console.warn("Failed to parse workspaces:", error);
     const fallback = ensureDefaultState();
-    saveWorkspaces(storage, fallback);
+    await saveWorkspaces(storage, fallback, options);
     return fallback;
   }
 }
@@ -299,17 +461,28 @@ export function loadWorkspaces(storage: Storage | null): WorkspacesState {
 export function saveWorkspaces(
   storage: Storage | null,
   state: WorkspacesState,
-): void {
+  options?: WorkspaceStorageOptions,
+): Promise<void> {
   if (!storage) {
-    return;
+    return Promise.resolve();
   }
-  storage.setItem(STORAGE_KEY, JSON.stringify(state));
+  const textStore = getTextStore(options);
+  if (!textStore.isAvailable) {
+    try {
+      storage.setItem(STORAGE_KEY, JSON.stringify(serializeState(state, true)));
+    } catch (error) {
+      console.warn("Failed to persist workspaces:", error);
+    }
+    return Promise.resolve();
+  }
+  return enqueueSave(() => persistSnapshot(storage, state, options));
 }
 
 export function createWorkspace(
   storage: Storage | null,
   state: WorkspacesState,
   rawName: string,
+  options?: WorkspaceStorageOptions,
 ): WorkspaceResult {
   if (state.workspaces.length >= WORKSPACE_LIMIT) {
     return { ok: false, reason: "limit", state };
@@ -345,7 +518,7 @@ export function createWorkspace(
     workspaces: [...state.workspaces, nextWorkspace],
     selectedId: nextWorkspace.id,
   };
-  saveWorkspaces(storage, nextState);
+  void saveWorkspaces(storage, nextState, options);
   return { ok: true, state: nextState };
 }
 
@@ -354,6 +527,7 @@ export function renameWorkspace(
   state: WorkspacesState,
   id: string,
   rawName: string,
+  options?: WorkspaceStorageOptions,
 ): WorkspaceResult {
   const name = normalizeName(rawName);
   const error = isValidName(name);
@@ -371,7 +545,7 @@ export function renameWorkspace(
     workspaces: nextWorkspaces,
     selectedId: state.selectedId,
   };
-  saveWorkspaces(storage, nextState);
+  void saveWorkspaces(storage, nextState, options);
   return { ok: true, state: nextState };
 }
 
@@ -379,6 +553,7 @@ export function deleteWorkspace(
   storage: Storage | null,
   state: WorkspacesState,
   id: string,
+  options?: WorkspaceStorageOptions,
 ): WorkspaceResult {
   if (state.workspaces.length <= 1) {
     return { ok: false, reason: "last", state };
@@ -390,7 +565,10 @@ export function deleteWorkspace(
   const selectedId =
     id === state.selectedId ? nextWorkspaces[0].id : state.selectedId;
   const nextState: WorkspacesState = { workspaces: nextWorkspaces, selectedId };
-  saveWorkspaces(storage, nextState);
+  void saveWorkspaces(storage, nextState, {
+    ...options,
+    deletedWorkspaceIds: [id],
+  });
   return { ok: true, state: nextState };
 }
 
@@ -398,12 +576,13 @@ export function selectWorkspace(
   storage: Storage | null,
   state: WorkspacesState,
   id: string,
+  options?: WorkspaceStorageOptions,
 ): WorkspaceResult {
   if (!state.workspaces.some((workspace) => workspace.id === id)) {
     return { ok: false, reason: "not-found", state };
   }
   const nextState: WorkspacesState = { ...state, selectedId: id };
-  saveWorkspaces(storage, nextState);
+  void saveWorkspaces(storage, nextState, options);
   return { ok: true, state: nextState };
 }
 
@@ -412,6 +591,7 @@ export function reorderWorkspaces(
   state: WorkspacesState,
   fromIndex: number,
   toIndex: number,
+  options?: WorkspaceStorageOptions,
 ): WorkspaceResult {
   if (
     fromIndex < 0 ||
@@ -429,7 +609,7 @@ export function reorderWorkspaces(
     workspaces: nextWorkspaces,
     selectedId: state.selectedId,
   };
-  saveWorkspaces(storage, nextState);
+  void saveWorkspaces(storage, nextState, options);
   return { ok: true, state: nextState };
 }
 
@@ -439,6 +619,7 @@ export function setWorkspaceTexts(
   id: string,
   leftText: string,
   rightText: string,
+  options?: WorkspaceStorageOptions,
 ): WorkspaceResult {
   const index = state.workspaces.findIndex((workspace) => workspace.id === id);
   if (index === -1) {
@@ -448,7 +629,7 @@ export function setWorkspaceTexts(
     workspace.id === id ? { ...workspace, leftText, rightText } : workspace,
   );
   const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
-  saveWorkspaces(storage, nextState);
+  void saveWorkspaces(storage, nextState, options);
   return { ok: true, state: nextState };
 }
 
@@ -458,6 +639,7 @@ export function setWorkspacePaneState(
   id: string,
   pane: "left" | "right",
   snapshot: WorkspacePaneState,
+  options?: WorkspaceStorageOptions,
 ): WorkspaceResult {
   const index = state.workspaces.findIndex((workspace) => workspace.id === id);
   if (index === -1) {
@@ -487,7 +669,7 @@ export function setWorkspacePaneState(
     };
   });
   const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
-  saveWorkspaces(storage, nextState);
+  void saveWorkspaces(storage, nextState, options);
   return { ok: true, state: nextState };
 }
 
@@ -496,6 +678,7 @@ export function setWorkspaceAnchors(
   state: WorkspacesState,
   id: string,
   anchors: WorkspaceAnchorState,
+  options?: WorkspaceStorageOptions,
 ): WorkspaceResult {
   const index = state.workspaces.findIndex((workspace) => workspace.id === id);
   if (index === -1) {
@@ -505,6 +688,6 @@ export function setWorkspaceAnchors(
     workspace.id === id ? { ...workspace, anchors } : workspace,
   );
   const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
-  saveWorkspaces(storage, nextState);
+  void saveWorkspaces(storage, nextState, options);
   return { ok: true, state: nextState };
 }

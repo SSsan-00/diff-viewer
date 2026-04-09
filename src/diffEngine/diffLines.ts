@@ -140,8 +140,6 @@ function hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(
 function isIgnorableLeadingFileWhitespaceDiff(
   leftLine: string,
   rightLine: string,
-  leftLineNo: number,
-  rightLineNo: number,
   options: ResolvedDiffLinesOptions,
 ): boolean {
   if (!options.ignoreLeadingFileWhitespace) {
@@ -189,6 +187,12 @@ function extractInitVariable(line: string): string | null {
 }
 
 type MyersTrace = number[][];
+type MyersBisect = {
+  leftMid: number;
+  rightMid: number;
+};
+
+const MYERS_TRACE_SAFE_LENGTH_SUM = 256;
 
 function buildMyersTrace(left: string[], right: string[]): MyersTrace {
   const n = left.length;
@@ -236,11 +240,97 @@ function buildMyersTrace(left: string[], right: string[]): MyersTrace {
   return trace;
 }
 
+function buildMatchedLineOps(
+  leftLine: string,
+  rightLine: string,
+  leftLineNo: number,
+  rightLineNo: number,
+  options: ResolvedDiffLinesOptions,
+): LineOp[] {
+  if (leftLine === rightLine) {
+    return [{
+      type: "equal",
+      leftLine,
+      rightLine,
+      leftLineNo,
+      rightLineNo,
+    }];
+  }
+  if (isBlankLine(leftLine) && isBlankLine(rightLine)) {
+    return [{
+      type: "equal",
+      leftLine,
+      rightLine,
+      leftLineNo,
+      rightLineNo,
+    }];
+  }
+  if (
+    isIgnorableLeadingFileWhitespaceDiff(
+      leftLine,
+      rightLine,
+      options,
+    )
+  ) {
+    return [{
+      type: "equal",
+      leftLine,
+      rightLine,
+      leftLineNo,
+      rightLineNo,
+    }];
+  }
+  return [
+    {
+      type: "delete",
+      leftLine,
+      leftLineNo,
+    },
+    {
+      type: "insert",
+      rightLine,
+      rightLineNo,
+    },
+  ];
+}
+
+function buildDeleteOps(
+  leftLines: string[],
+  leftStart: number,
+  leftEnd: number,
+  leftOffset: number,
+): LineOp[] {
+  const ops: LineOp[] = [];
+  for (let index = leftStart; index < leftEnd; index += 1) {
+    ops.push({
+      type: "delete",
+      leftLine: leftLines[index],
+      leftLineNo: leftOffset + index,
+    });
+  }
+  return ops;
+}
+
+function buildInsertOps(
+  rightLines: string[],
+  rightStart: number,
+  rightEnd: number,
+  rightOffset: number,
+): LineOp[] {
+  const ops: LineOp[] = [];
+  for (let index = rightStart; index < rightEnd; index += 1) {
+    ops.push({
+      type: "insert",
+      rightLine: rightLines[index],
+      rightLineNo: rightOffset + index,
+    });
+  }
+  return ops;
+}
+
 function backtrackOps(
   left: string[],
   right: string[],
-  leftCompare: string[],
-  rightCompare: string[],
   trace: MyersTrace,
   leftOffset: number,
   rightOffset: number,
@@ -274,68 +364,35 @@ function backtrackOps(
     while (x > prevX && y > prevY) {
       const leftLine = left[x - 1];
       const rightLine = right[y - 1];
-      const leftKey = leftCompare[x - 1];
-      const rightKey = rightCompare[y - 1];
       const globalLeftLineNo = leftOffset + (x - 1);
       const globalRightLineNo = rightOffset + (y - 1);
-      if (leftLine === rightLine) {
+      const matchedOps = buildMatchedLineOps(
+        leftLine,
+        rightLine,
+        globalLeftLineNo,
+        globalRightLineNo,
+        options,
+      );
+      for (let index = matchedOps.length - 1; index >= 0; index -= 1) {
+        const op = matchedOps[index];
+        if (op.type === "equal") {
+          ops.push({
+            ...op,
+            leftLineNo: x - 1,
+            rightLineNo: y - 1,
+          });
+          continue;
+        }
+        if (op.type === "delete") {
+          ops.push({
+            ...op,
+            leftLineNo: x - 1,
+          });
+          continue;
+        }
         ops.push({
-          type: "equal",
-          leftLine,
-          rightLine,
-          leftLineNo: x - 1,
+          ...op,
           rightLineNo: y - 1,
-        });
-      } else if (
-        leftKey === rightKey &&
-        isBlankLine(leftLine) &&
-        isBlankLine(rightLine)
-      ) {
-        ops.push({
-          type: "equal",
-          leftLine,
-          rightLine,
-          leftLineNo: x - 1,
-          rightLineNo: y - 1,
-        });
-      } else if (
-        leftKey === rightKey &&
-        isIgnorableLeadingFileWhitespaceDiff(
-          leftLine,
-          rightLine,
-          globalLeftLineNo,
-          globalRightLineNo,
-          options,
-        )
-      ) {
-        ops.push({
-          type: "equal",
-          leftLine,
-          rightLine,
-          leftLineNo: x - 1,
-          rightLineNo: y - 1,
-        });
-      } else if (leftKey === rightKey) {
-        ops.push({
-          type: "insert",
-          rightLine,
-          rightLineNo: y - 1,
-        });
-        ops.push({
-          type: "delete",
-          leftLine,
-          leftLineNo: x - 1,
-        });
-      } else {
-        ops.push({
-          type: "insert",
-          rightLine,
-          rightLineNo: y - 1,
-        });
-        ops.push({
-          type: "delete",
-          leftLine,
-          leftLineNo: x - 1,
         });
       }
       x -= 1;
@@ -365,6 +422,157 @@ function backtrackOps(
   }
 
   return ops.reverse();
+}
+
+function shouldUseMyersTrace(leftLength: number, rightLength: number): boolean {
+  return leftLength + rightLength <= MYERS_TRACE_SAFE_LENGTH_SUM;
+}
+
+function findMyersBisect(
+  leftCompare: string[],
+  rightCompare: string[],
+  leftStart: number,
+  leftEnd: number,
+  rightStart: number,
+  rightEnd: number,
+): MyersBisect {
+  const leftLength = leftEnd - leftStart;
+  const rightLength = rightEnd - rightStart;
+  const maxD = Math.ceil((leftLength + rightLength) / 2);
+  const vOffset = maxD;
+  const vLength = 2 * maxD + 2;
+  const forward = new Int32Array(vLength).fill(-1);
+  const reverse = new Int32Array(vLength).fill(-1);
+  const delta = leftLength - rightLength;
+  const front = delta % 2 !== 0;
+
+  forward[vOffset + 1] = 0;
+  reverse[vOffset + 1] = 0;
+
+  let forwardStart = 0;
+  let forwardEnd = 0;
+  let reverseStart = 0;
+  let reverseEnd = 0;
+
+  for (let d = 0; d <= maxD; d += 1) {
+    for (let k = -d + forwardStart; k <= d - forwardEnd; k += 2) {
+      const kOffset = vOffset + k;
+      let x;
+
+      if (k === -d || (k !== d && forward[kOffset - 1] < forward[kOffset + 1])) {
+        x = forward[kOffset + 1];
+      } else {
+        x = forward[kOffset - 1] + 1;
+      }
+
+      let y = x - k;
+      while (
+        x < leftLength &&
+        y < rightLength &&
+        leftCompare[leftStart + x] === rightCompare[rightStart + y]
+      ) {
+        x += 1;
+        y += 1;
+      }
+
+      forward[kOffset] = x;
+
+      if (x > leftLength) {
+        forwardEnd += 2;
+      } else if (y > rightLength) {
+        forwardStart += 2;
+      } else if (front) {
+        const reverseOffset = vOffset + delta - k;
+        if (reverseOffset >= 0 && reverseOffset < vLength && reverse[reverseOffset] !== -1) {
+          const reverseX = leftLength - reverse[reverseOffset];
+          if (x >= reverseX) {
+            return {
+              leftMid: leftStart + x,
+              rightMid: rightStart + y,
+            };
+          }
+        }
+      }
+    }
+
+    for (let k = -d + reverseStart; k <= d - reverseEnd; k += 2) {
+      const kOffset = vOffset + k;
+      let x;
+
+      if (k === -d || (k !== d && reverse[kOffset - 1] < reverse[kOffset + 1])) {
+        x = reverse[kOffset + 1];
+      } else {
+        x = reverse[kOffset - 1] + 1;
+      }
+
+      let y = x - k;
+      while (
+        x < leftLength &&
+        y < rightLength &&
+        leftCompare[leftEnd - x - 1] === rightCompare[rightEnd - y - 1]
+      ) {
+        x += 1;
+        y += 1;
+      }
+
+      reverse[kOffset] = x;
+
+      if (x > leftLength) {
+        reverseEnd += 2;
+      } else if (y > rightLength) {
+        reverseStart += 2;
+      } else if (!front) {
+        const forwardOffset = vOffset + delta - k;
+        if (forwardOffset >= 0 && forwardOffset < vLength && forward[forwardOffset] !== -1) {
+          const forwardX = forward[forwardOffset];
+          const forwardK = forwardOffset - vOffset;
+          const forwardY = forwardX - forwardK;
+          const reverseX = leftLength - x;
+          if (forwardX >= reverseX) {
+            return {
+              leftMid: leftStart + forwardX,
+              rightMid: rightStart + forwardY,
+            };
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    leftMid: leftStart + Math.floor(leftLength / 2),
+    rightMid: rightStart + Math.floor(rightLength / 2),
+  };
+}
+
+function hasSharedCompareKey(
+  leftCompare: string[],
+  rightCompare: string[],
+  leftStart: number,
+  leftEnd: number,
+  rightStart: number,
+  rightEnd: number,
+): boolean {
+  const leftLength = leftEnd - leftStart;
+  const rightLength = rightEnd - rightStart;
+  const scanLeftFirst = leftLength <= rightLength;
+  const smallerStart = scanLeftFirst ? leftStart : rightStart;
+  const smallerEnd = scanLeftFirst ? leftEnd : rightEnd;
+  const smallerSource = scanLeftFirst ? leftCompare : rightCompare;
+  const largerStart = scanLeftFirst ? rightStart : leftStart;
+  const largerEnd = scanLeftFirst ? rightEnd : leftEnd;
+  const largerSource = scanLeftFirst ? rightCompare : leftCompare;
+  const keys = new Set<string>();
+
+  for (let index = smallerStart; index < smallerEnd; index += 1) {
+    keys.add(smallerSource[index]);
+  }
+  for (let index = largerStart; index < largerEnd; index += 1) {
+    if (keys.has(largerSource[index])) {
+      return true;
+    }
+  }
+  return false;
 }
 
 type UniquePair = {
@@ -495,21 +703,159 @@ function diffLinesMyers(
   rightOffset: number,
   options: ResolvedDiffLinesOptions,
 ): LineOp[] {
-  if (leftLines.length === 0 && rightLines.length === 0) {
-    return [];
+  function diffRange(
+    leftStart: number,
+    leftEnd: number,
+    rightStart: number,
+    rightEnd: number,
+  ): LineOp[] {
+    const prefix: LineOp[] = [];
+    let nextLeftStart = leftStart;
+    let nextRightStart = rightStart;
+
+    while (
+      nextLeftStart < leftEnd &&
+      nextRightStart < rightEnd &&
+      leftCompare[nextLeftStart] === rightCompare[nextRightStart]
+    ) {
+      prefix.push(
+        ...buildMatchedLineOps(
+          leftLines[nextLeftStart],
+          rightLines[nextRightStart],
+          leftOffset + nextLeftStart,
+          rightOffset + nextRightStart,
+          options,
+        ),
+      );
+      nextLeftStart += 1;
+      nextRightStart += 1;
+    }
+
+    const suffixPairs: Array<{ leftIndex: number; rightIndex: number }> = [];
+    let nextLeftEnd = leftEnd;
+    let nextRightEnd = rightEnd;
+
+    while (
+      nextLeftStart < nextLeftEnd &&
+      nextRightStart < nextRightEnd &&
+      leftCompare[nextLeftEnd - 1] === rightCompare[nextRightEnd - 1]
+    ) {
+      nextLeftEnd -= 1;
+      nextRightEnd -= 1;
+      suffixPairs.push({
+        leftIndex: nextLeftEnd,
+        rightIndex: nextRightEnd,
+      });
+    }
+
+    const leftLength = nextLeftEnd - nextLeftStart;
+    const rightLength = nextRightEnd - nextRightStart;
+
+    let middle: LineOp[];
+    if (leftLength === 0) {
+      middle = buildInsertOps(rightLines, nextRightStart, nextRightEnd, rightOffset);
+    } else if (rightLength === 0) {
+      middle = buildDeleteOps(leftLines, nextLeftStart, nextLeftEnd, leftOffset);
+    } else if (
+      !hasSharedCompareKey(
+        leftCompare,
+        rightCompare,
+        nextLeftStart,
+        nextLeftEnd,
+        nextRightStart,
+        nextRightEnd,
+      )
+    ) {
+      middle = buildDeleteOps(leftLines, nextLeftStart, nextLeftEnd, leftOffset).concat(
+        buildInsertOps(rightLines, nextRightStart, nextRightEnd, rightOffset),
+      );
+    } else if (shouldUseMyersTrace(leftLength, rightLength)) {
+      const trace = buildMyersTrace(
+        leftCompare.slice(nextLeftStart, nextLeftEnd),
+        rightCompare.slice(nextRightStart, nextRightEnd),
+      );
+      middle = offsetOps(
+        backtrackOps(
+          leftLines.slice(nextLeftStart, nextLeftEnd),
+          rightLines.slice(nextRightStart, nextRightEnd),
+          trace,
+          nextLeftStart,
+          nextRightStart,
+          options,
+        ),
+        leftOffset,
+        rightOffset,
+      );
+    } else {
+      const split = findMyersBisect(
+        leftCompare,
+        rightCompare,
+        nextLeftStart,
+        nextLeftEnd,
+        nextRightStart,
+        nextRightEnd,
+      );
+      if (split.leftMid === nextLeftStart && split.rightMid === nextRightStart) {
+        middle = leftLength >= rightLength
+          ? [
+              {
+                type: "delete",
+                leftLine: leftLines[nextLeftStart],
+                leftLineNo: leftOffset + nextLeftStart,
+              },
+              ...diffRange(nextLeftStart + 1, nextLeftEnd, nextRightStart, nextRightEnd),
+            ]
+          : [
+              {
+                type: "insert",
+                rightLine: rightLines[nextRightStart],
+                rightLineNo: rightOffset + nextRightStart,
+              },
+              ...diffRange(nextLeftStart, nextLeftEnd, nextRightStart + 1, nextRightEnd),
+            ];
+      } else if (split.leftMid === nextLeftEnd && split.rightMid === nextRightEnd) {
+        middle = leftLength >= rightLength
+          ? [
+              ...diffRange(nextLeftStart, nextLeftEnd - 1, nextRightStart, nextRightEnd),
+              {
+                type: "delete",
+                leftLine: leftLines[nextLeftEnd - 1],
+                leftLineNo: leftOffset + nextLeftEnd - 1,
+              },
+            ]
+          : [
+              ...diffRange(nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd - 1),
+              {
+                type: "insert",
+                rightLine: rightLines[nextRightEnd - 1],
+                rightLineNo: rightOffset + nextRightEnd - 1,
+              },
+            ];
+      } else {
+        middle = diffRange(nextLeftStart, split.leftMid, nextRightStart, split.rightMid).concat(
+          diffRange(split.leftMid, nextLeftEnd, split.rightMid, nextRightEnd),
+        );
+      }
+    }
+
+    const suffix: LineOp[] = [];
+    for (let index = suffixPairs.length - 1; index >= 0; index -= 1) {
+      const pair = suffixPairs[index];
+      suffix.push(
+        ...buildMatchedLineOps(
+          leftLines[pair.leftIndex],
+          rightLines[pair.rightIndex],
+          leftOffset + pair.leftIndex,
+          rightOffset + pair.rightIndex,
+          options,
+        ),
+      );
+    }
+
+    return prefix.concat(middle, suffix);
   }
-  const trace = buildMyersTrace(leftCompare, rightCompare);
-  const ops = backtrackOps(
-    leftLines,
-    rightLines,
-    leftCompare,
-    rightCompare,
-    trace,
-    leftOffset,
-    rightOffset,
-    options,
-  );
-  return offsetOps(ops, leftOffset, rightOffset);
+
+  return diffRange(0, leftLines.length, 0, rightLines.length);
 }
 
 function diffLinesPatience(
@@ -586,8 +932,6 @@ function diffLinesPatience(
       isIgnorableLeadingFileWhitespaceDiff(
         leftLine,
         rightLine,
-        leftOffset + anchor.leftIndex,
-        rightOffset + anchor.rightIndex,
         options,
       )
     ) {

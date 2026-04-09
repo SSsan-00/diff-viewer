@@ -16295,12 +16295,12 @@ class ObserverNode {
             }
         }
         if (children) {
-            let getChildren2 = function(reader, children2) {
+            let getChildren = function(reader, children2) {
                 if (isObservable(children2)) {
-                    return getChildren2(reader, children2.read(reader));
+                    return getChildren(reader, children2.read(reader));
                 }
                 if (Array.isArray(children2)) {
-                    return children2.flatMap(c => getChildren2(reader, c));
+                    return children2.flatMap(c => getChildren(reader, c));
                 }
                 if (children2 instanceof ObserverNode) {
                     if (reader) {
@@ -16313,9 +16313,8 @@ class ObserverNode {
                 }
                 return [];
             };
-            var getChildren = getChildren2;
             const d = derived(this, reader => {
-                this._element.replaceChildren(...getChildren2(reader, children));
+                this._element.replaceChildren(...getChildren(reader, children));
             });
             this._deriveds.push(d);
             if (!childrenIsObservable(children)) {
@@ -28851,7 +28850,7 @@ function removeVeryShortMatchingLinesBetweenDiffs(sequence1, _sequence2, sequenc
         shouldRepeat = false;
         const result = [ diffs[0] ];
         for (let i2 = 1; i2 < diffs.length; i2++) {
-            let shouldJoinDiffs2 = function(before, after2) {
+            let shouldJoinDiffs = function(before, after2) {
                 const unchangedRange = new OffsetRange(lastResult.seq1Range.endExclusive, cur.seq1Range.start);
                 const unchangedText = sequence1.getText(unchangedRange);
                 const unchangedTextWithoutWs = unchangedText.replace(/\s/g, "");
@@ -28860,10 +28859,9 @@ function removeVeryShortMatchingLinesBetweenDiffs(sequence1, _sequence2, sequenc
                 }
                 return false;
             };
-            var shouldJoinDiffs = shouldJoinDiffs2;
             const cur = diffs[i2];
             const lastResult = result[result.length - 1];
-            const shouldJoin = shouldJoinDiffs2(lastResult, cur);
+            const shouldJoin = shouldJoinDiffs(lastResult, cur);
             if (shouldJoin) {
                 shouldRepeat = true;
                 result[result.length - 1] = result[result.length - 1].join(cur);
@@ -28887,7 +28885,7 @@ function removeVeryShortMatchingTextBetweenLongDiffs(sequence1, sequence2, seque
         shouldRepeat = false;
         const result = [ diffs[0] ];
         for (let i2 = 1; i2 < diffs.length; i2++) {
-            let shouldJoinDiffs2 = function(before, after2) {
+            let shouldJoinDiffs = function(before, after2) {
                 const unchangedRange = new OffsetRange(lastResult.seq1Range.endExclusive, cur.seq1Range.start);
                 const unchangedLineCount = sequence1.countLinesIn(unchangedRange);
                 if (unchangedLineCount > 5 || unchangedRange.length > 500) {
@@ -28914,10 +28912,9 @@ function removeVeryShortMatchingTextBetweenLongDiffs(sequence1, sequence2, seque
                 }
                 return false;
             };
-            var shouldJoinDiffs = shouldJoinDiffs2;
             const cur = diffs[i2];
             const lastResult = result[result.length - 1];
-            const shouldJoin = shouldJoinDiffs2(lastResult, cur);
+            const shouldJoin = shouldJoinDiffs(lastResult, cur);
             if (shouldJoin) {
                 shouldRepeat = true;
                 result[result.length - 1] = result[result.length - 1].join(cur);
@@ -125227,7 +125224,7 @@ let DiffEditorViewZones = class DiffEditorViewZones2 extends Disposable {
                             suppressMouseDown: true
                         });
                     } else {
-                        let createViewZoneMarginArrow2 = function() {
+                        let createViewZoneMarginArrow = function() {
                             const arrow = document.createElement("div");
                             arrow.className = "arrow-revert-change " + ThemeIcon.asClassName(Codicon.arrowRight);
                             reader.store.add(addDisposableListener(arrow, "mousedown", e => e.stopPropagation()));
@@ -125237,13 +125234,12 @@ let DiffEditorViewZones = class DiffEditorViewZones2 extends Disposable {
                             }));
                             return $$l("div", {}, arrow);
                         };
-                        var createViewZoneMarginArrow = createViewZoneMarginArrow2;
                         if (syncedMovedText?.lineRangeMapping.modified.delta(-1).deltaLength(2).contains(a.modifiedRange.endLineNumberExclusive - 1)) {
                             continue;
                         }
                         let marginDomNode = void 0;
                         if (a.diff && a.diff.modified.isEmpty && this._options.shouldRenderOldRevertArrows.read(reader)) {
-                            marginDomNode = createViewZoneMarginArrow2();
+                            marginDomNode = createViewZoneMarginArrow();
                         }
                         modViewZones.push({
                             afterLineNumber: a.modifiedRange.endLineNumberExclusive - 1,
@@ -125393,7 +125389,7 @@ function computeRangeAlignment(originalEditor, modifiedEditor, diffs, originalEd
         }
     }
     for (const m of diffs) {
-        let emitAlignment2 = function(origLineNumberExclusive, modLineNumberExclusive, forceAlignment = false) {
+        let emitAlignment = function(origLineNumberExclusive, modLineNumberExclusive, forceAlignment = false) {
             if (origLineNumberExclusive < lastOrigLineNumber || modLineNumberExclusive < lastModLineNumber) {
                 return;
             }
@@ -125419,7 +125415,6 @@ function computeRangeAlignment(originalEditor, modifiedEditor, diffs, originalEd
             lastOrigLineNumber = origLineNumberExclusive;
             lastModLineNumber = modLineNumberExclusive;
         };
-        var emitAlignment = emitAlignment2;
         const c = m.lineRangeMapping;
         handleAlignmentsOutsideOfDiffs(c.original.startLineNumber, c.modified.startLineNumber);
         let first2 = true;
@@ -125428,16 +125423,16 @@ function computeRangeAlignment(originalEditor, modifiedEditor, diffs, originalEd
         if (innerHunkAlignment) {
             for (const i2 of c.innerChanges || []) {
                 if (i2.originalRange.startColumn > 1 && i2.modifiedRange.startColumn > 1) {
-                    emitAlignment2(i2.originalRange.startLineNumber, i2.modifiedRange.startLineNumber);
+                    emitAlignment(i2.originalRange.startLineNumber, i2.modifiedRange.startLineNumber);
                 }
                 const originalModel = originalEditor.getModel();
                 const maxColumn = i2.originalRange.endLineNumber <= originalModel.getLineCount() ? originalModel.getLineMaxColumn(i2.originalRange.endLineNumber) : Number.MAX_SAFE_INTEGER;
                 if (i2.originalRange.endColumn < maxColumn) {
-                    emitAlignment2(i2.originalRange.endLineNumber, i2.modifiedRange.endLineNumber);
+                    emitAlignment(i2.originalRange.endLineNumber, i2.modifiedRange.endLineNumber);
                 }
             }
         }
-        emitAlignment2(c.original.endLineNumberExclusive, c.modified.endLineNumberExclusive, true);
+        emitAlignment(c.original.endLineNumberExclusive, c.modified.endLineNumberExclusive, true);
         lastOriginalLineNumber = c.original.endLineNumberExclusive;
         lastModifiedLineNumber = c.modified.endLineNumberExclusive;
     }
@@ -185981,18 +185976,17 @@ let AbstractGotoSymbolQuickAccessProvider = (_Qa = class extends AbstractEditorN
         const sortedFilteredSymbolPicks = filteredSymbolPicks.sort((symbolA, symbolB) => filterBySymbolKind ? this.compareByKindAndScore(symbolA, symbolB) : this.compareByScore(symbolA, symbolB));
         let symbolPicks = [];
         if (filterBySymbolKind) {
-            let updateLastSeparatorLabel2 = function() {
+            let updateLastSeparatorLabel = function() {
                 if (lastSeparator && typeof lastSymbolKind === "number" && lastSymbolKindCounter > 0) {
                     lastSeparator.label = format(NLS_SYMBOL_KIND_CACHE[lastSymbolKind] || FALLBACK_NLS_SYMBOL_KIND, lastSymbolKindCounter);
                 }
             };
-            var updateLastSeparatorLabel = updateLastSeparatorLabel2;
             let lastSymbolKind = void 0;
             let lastSeparator = void 0;
             let lastSymbolKindCounter = 0;
             for (const symbolPick of sortedFilteredSymbolPicks) {
                 if (lastSymbolKind !== symbolPick.kind) {
-                    updateLastSeparatorLabel2();
+                    updateLastSeparatorLabel();
                     lastSymbolKind = symbolPick.kind;
                     lastSymbolKindCounter = 1;
                     lastSeparator = {
@@ -186004,7 +185998,7 @@ let AbstractGotoSymbolQuickAccessProvider = (_Qa = class extends AbstractEditorN
                 }
                 symbolPicks.push(symbolPick);
             }
-            updateLastSeparatorLabel2();
+            updateLastSeparatorLabel();
         } else if (sortedFilteredSymbolPicks.length > 0) {
             symbolPicks = [ {
                 label: localize(1351, "symbols ({0})", filteredSymbolPicks.length),
@@ -188137,7 +188131,7 @@ function hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload$1(leftLine, right
     return stripLeadingTabsAndSpaces$1(leftMap.payload) === stripLeadingTabsAndSpaces$1(rightMap.payload);
 }
 
-function isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, leftLineNo, rightLineNo, options) {
+function isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options) {
     if (!options.ignoreLeadingFileWhitespace) {
         return false;
     }
@@ -188178,6 +188172,8 @@ function extractInitVariable$1(line) {
     return null;
 }
 
+const MYERS_TRACE_SAFE_LENGTH_SUM = 256;
+
 function buildMyersTrace(left, right) {
     const n2 = left.length;
     const m = right.length;
@@ -188214,7 +188210,70 @@ function buildMyersTrace(left, right) {
     return trace;
 }
 
-function backtrackOps(left, right, leftCompare, rightCompare, trace, leftOffset, rightOffset, options) {
+function buildMatchedLineOps(leftLine, rightLine, leftLineNo, rightLineNo, options) {
+    if (leftLine === rightLine) {
+        return [ {
+            type: "equal",
+            leftLine: leftLine,
+            rightLine: rightLine,
+            leftLineNo: leftLineNo,
+            rightLineNo: rightLineNo
+        } ];
+    }
+    if (isBlankLine(leftLine) && isBlankLine(rightLine)) {
+        return [ {
+            type: "equal",
+            leftLine: leftLine,
+            rightLine: rightLine,
+            leftLineNo: leftLineNo,
+            rightLineNo: rightLineNo
+        } ];
+    }
+    if (isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options)) {
+        return [ {
+            type: "equal",
+            leftLine: leftLine,
+            rightLine: rightLine,
+            leftLineNo: leftLineNo,
+            rightLineNo: rightLineNo
+        } ];
+    }
+    return [ {
+        type: "delete",
+        leftLine: leftLine,
+        leftLineNo: leftLineNo
+    }, {
+        type: "insert",
+        rightLine: rightLine,
+        rightLineNo: rightLineNo
+    } ];
+}
+
+function buildDeleteOps(leftLines, leftStart, leftEnd, leftOffset) {
+    const ops = [];
+    for (let index = leftStart; index < leftEnd; index += 1) {
+        ops.push({
+            type: "delete",
+            leftLine: leftLines[index],
+            leftLineNo: leftOffset + index
+        });
+    }
+    return ops;
+}
+
+function buildInsertOps(rightLines, rightStart, rightEnd, rightOffset) {
+    const ops = [];
+    for (let index = rightStart; index < rightEnd; index += 1) {
+        ops.push({
+            type: "insert",
+            rightLine: rightLines[index],
+            rightLineNo: rightOffset + index
+        });
+    }
+    return ops;
+}
+
+function backtrackOps(left, right, trace, leftOffset, rightOffset, options) {
     const n2 = left.length;
     const m = right.length;
     const max = n2 + m;
@@ -188237,55 +188296,29 @@ function backtrackOps(left, right, leftCompare, rightCompare, trace, leftOffset,
         while (x > prevX && y > prevY) {
             const leftLine = left[x - 1];
             const rightLine = right[y - 1];
-            const leftKey = leftCompare[x - 1];
-            const rightKey = rightCompare[y - 1];
             const globalLeftLineNo = leftOffset + (x - 1);
             const globalRightLineNo = rightOffset + (y - 1);
-            if (leftLine === rightLine) {
+            const matchedOps = buildMatchedLineOps(leftLine, rightLine, globalLeftLineNo, globalRightLineNo, options);
+            for (let index = matchedOps.length - 1; index >= 0; index -= 1) {
+                const op = matchedOps[index];
+                if (op.type === "equal") {
+                    ops.push({
+                        ...op,
+                        leftLineNo: x - 1,
+                        rightLineNo: y - 1
+                    });
+                    continue;
+                }
+                if (op.type === "delete") {
+                    ops.push({
+                        ...op,
+                        leftLineNo: x - 1
+                    });
+                    continue;
+                }
                 ops.push({
-                    type: "equal",
-                    leftLine: leftLine,
-                    rightLine: rightLine,
-                    leftLineNo: x - 1,
+                    ...op,
                     rightLineNo: y - 1
-                });
-            } else if (leftKey === rightKey && isBlankLine(leftLine) && isBlankLine(rightLine)) {
-                ops.push({
-                    type: "equal",
-                    leftLine: leftLine,
-                    rightLine: rightLine,
-                    leftLineNo: x - 1,
-                    rightLineNo: y - 1
-                });
-            } else if (leftKey === rightKey && isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, globalLeftLineNo, globalRightLineNo, options)) {
-                ops.push({
-                    type: "equal",
-                    leftLine: leftLine,
-                    rightLine: rightLine,
-                    leftLineNo: x - 1,
-                    rightLineNo: y - 1
-                });
-            } else if (leftKey === rightKey) {
-                ops.push({
-                    type: "insert",
-                    rightLine: rightLine,
-                    rightLineNo: y - 1
-                });
-                ops.push({
-                    type: "delete",
-                    leftLine: leftLine,
-                    leftLineNo: x - 1
-                });
-            } else {
-                ops.push({
-                    type: "insert",
-                    rightLine: rightLine,
-                    rightLineNo: y - 1
-                });
-                ops.push({
-                    type: "delete",
-                    leftLine: leftLine,
-                    leftLineNo: x - 1
                 });
             }
             x -= 1;
@@ -188311,6 +188344,121 @@ function backtrackOps(left, right, leftCompare, rightCompare, trace, leftOffset,
         }
     }
     return ops.reverse();
+}
+
+function shouldUseMyersTrace(leftLength, rightLength) {
+    return leftLength + rightLength <= MYERS_TRACE_SAFE_LENGTH_SUM;
+}
+
+function findMyersBisect(leftCompare, rightCompare, leftStart, leftEnd, rightStart, rightEnd) {
+    const leftLength = leftEnd - leftStart;
+    const rightLength = rightEnd - rightStart;
+    const maxD = Math.ceil((leftLength + rightLength) / 2);
+    const vOffset = maxD;
+    const vLength = 2 * maxD + 2;
+    const forward = new Int32Array(vLength).fill(-1);
+    const reverse = new Int32Array(vLength).fill(-1);
+    const delta = leftLength - rightLength;
+    const front = delta % 2 !== 0;
+    forward[vOffset + 1] = 0;
+    reverse[vOffset + 1] = 0;
+    let forwardStart = 0;
+    let forwardEnd = 0;
+    let reverseStart = 0;
+    let reverseEnd = 0;
+    for (let d = 0; d <= maxD; d += 1) {
+        for (let k = -d + forwardStart; k <= d - forwardEnd; k += 2) {
+            const kOffset = vOffset + k;
+            let x;
+            if (k === -d || k !== d && forward[kOffset - 1] < forward[kOffset + 1]) {
+                x = forward[kOffset + 1];
+            } else {
+                x = forward[kOffset - 1] + 1;
+            }
+            let y = x - k;
+            while (x < leftLength && y < rightLength && leftCompare[leftStart + x] === rightCompare[rightStart + y]) {
+                x += 1;
+                y += 1;
+            }
+            forward[kOffset] = x;
+            if (x > leftLength) {
+                forwardEnd += 2;
+            } else if (y > rightLength) {
+                forwardStart += 2;
+            } else if (front) {
+                const reverseOffset = vOffset + delta - k;
+                if (reverseOffset >= 0 && reverseOffset < vLength && reverse[reverseOffset] !== -1) {
+                    const reverseX = leftLength - reverse[reverseOffset];
+                    if (x >= reverseX) {
+                        return {
+                            leftMid: leftStart + x,
+                            rightMid: rightStart + y
+                        };
+                    }
+                }
+            }
+        }
+        for (let k = -d + reverseStart; k <= d - reverseEnd; k += 2) {
+            const kOffset = vOffset + k;
+            let x;
+            if (k === -d || k !== d && reverse[kOffset - 1] < reverse[kOffset + 1]) {
+                x = reverse[kOffset + 1];
+            } else {
+                x = reverse[kOffset - 1] + 1;
+            }
+            let y = x - k;
+            while (x < leftLength && y < rightLength && leftCompare[leftEnd - x - 1] === rightCompare[rightEnd - y - 1]) {
+                x += 1;
+                y += 1;
+            }
+            reverse[kOffset] = x;
+            if (x > leftLength) {
+                reverseEnd += 2;
+            } else if (y > rightLength) {
+                reverseStart += 2;
+            } else if (!front) {
+                const forwardOffset = vOffset + delta - k;
+                if (forwardOffset >= 0 && forwardOffset < vLength && forward[forwardOffset] !== -1) {
+                    const forwardX = forward[forwardOffset];
+                    const forwardK = forwardOffset - vOffset;
+                    const forwardY = forwardX - forwardK;
+                    const reverseX = leftLength - x;
+                    if (forwardX >= reverseX) {
+                        return {
+                            leftMid: leftStart + forwardX,
+                            rightMid: rightStart + forwardY
+                        };
+                    }
+                }
+            }
+        }
+    }
+    return {
+        leftMid: leftStart + Math.floor(leftLength / 2),
+        rightMid: rightStart + Math.floor(rightLength / 2)
+    };
+}
+
+function hasSharedCompareKey(leftCompare, rightCompare, leftStart, leftEnd, rightStart, rightEnd) {
+    const leftLength = leftEnd - leftStart;
+    const rightLength = rightEnd - rightStart;
+    const scanLeftFirst = leftLength <= rightLength;
+    const smallerStart = scanLeftFirst ? leftStart : rightStart;
+    const smallerEnd = scanLeftFirst ? leftEnd : rightEnd;
+    const smallerSource = scanLeftFirst ? leftCompare : rightCompare;
+    const largerStart = scanLeftFirst ? rightStart : leftStart;
+    const largerEnd = scanLeftFirst ? rightEnd : leftEnd;
+    const largerSource = scanLeftFirst ? rightCompare : leftCompare;
+    const keys = new Set;
+    for (let index = smallerStart; index < smallerEnd; index += 1) {
+        keys.add(smallerSource[index]);
+    }
+    for (let index = largerStart; index < largerEnd; index += 1) {
+        if (keys.has(largerSource[index])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function buildKeyMap(lines) {
@@ -188419,12 +188567,72 @@ function offsetOps$1(ops, leftOffset, rightOffset) {
 }
 
 function diffLinesMyers(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset, options) {
-    if (leftLines.length === 0 && rightLines.length === 0) {
-        return [];
+    function diffRange(leftStart, leftEnd, rightStart, rightEnd) {
+        const prefix = [];
+        let nextLeftStart = leftStart;
+        let nextRightStart = rightStart;
+        while (nextLeftStart < leftEnd && nextRightStart < rightEnd && leftCompare[nextLeftStart] === rightCompare[nextRightStart]) {
+            prefix.push(...buildMatchedLineOps(leftLines[nextLeftStart], rightLines[nextRightStart], leftOffset + nextLeftStart, rightOffset + nextRightStart, options));
+            nextLeftStart += 1;
+            nextRightStart += 1;
+        }
+        const suffixPairs = [];
+        let nextLeftEnd = leftEnd;
+        let nextRightEnd = rightEnd;
+        while (nextLeftStart < nextLeftEnd && nextRightStart < nextRightEnd && leftCompare[nextLeftEnd - 1] === rightCompare[nextRightEnd - 1]) {
+            nextLeftEnd -= 1;
+            nextRightEnd -= 1;
+            suffixPairs.push({
+                leftIndex: nextLeftEnd,
+                rightIndex: nextRightEnd
+            });
+        }
+        const leftLength = nextLeftEnd - nextLeftStart;
+        const rightLength = nextRightEnd - nextRightStart;
+        let middle;
+        if (leftLength === 0) {
+            middle = buildInsertOps(rightLines, nextRightStart, nextRightEnd, rightOffset);
+        } else if (rightLength === 0) {
+            middle = buildDeleteOps(leftLines, nextLeftStart, nextLeftEnd, leftOffset);
+        } else if (!hasSharedCompareKey(leftCompare, rightCompare, nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd)) {
+            middle = buildDeleteOps(leftLines, nextLeftStart, nextLeftEnd, leftOffset).concat(buildInsertOps(rightLines, nextRightStart, nextRightEnd, rightOffset));
+        } else if (shouldUseMyersTrace(leftLength, rightLength)) {
+            const trace = buildMyersTrace(leftCompare.slice(nextLeftStart, nextLeftEnd), rightCompare.slice(nextRightStart, nextRightEnd));
+            middle = offsetOps$1(backtrackOps(leftLines.slice(nextLeftStart, nextLeftEnd), rightLines.slice(nextRightStart, nextRightEnd), trace, nextLeftStart, nextRightStart, options), leftOffset, rightOffset);
+        } else {
+            const split = findMyersBisect(leftCompare, rightCompare, nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd);
+            if (split.leftMid === nextLeftStart && split.rightMid === nextRightStart) {
+                middle = leftLength >= rightLength ? [ {
+                    type: "delete",
+                    leftLine: leftLines[nextLeftStart],
+                    leftLineNo: leftOffset + nextLeftStart
+                }, ...diffRange(nextLeftStart + 1, nextLeftEnd, nextRightStart, nextRightEnd) ] : [ {
+                    type: "insert",
+                    rightLine: rightLines[nextRightStart],
+                    rightLineNo: rightOffset + nextRightStart
+                }, ...diffRange(nextLeftStart, nextLeftEnd, nextRightStart + 1, nextRightEnd) ];
+            } else if (split.leftMid === nextLeftEnd && split.rightMid === nextRightEnd) {
+                middle = leftLength >= rightLength ? [ ...diffRange(nextLeftStart, nextLeftEnd - 1, nextRightStart, nextRightEnd), {
+                    type: "delete",
+                    leftLine: leftLines[nextLeftEnd - 1],
+                    leftLineNo: leftOffset + nextLeftEnd - 1
+                } ] : [ ...diffRange(nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd - 1), {
+                    type: "insert",
+                    rightLine: rightLines[nextRightEnd - 1],
+                    rightLineNo: rightOffset + nextRightEnd - 1
+                } ];
+            } else {
+                middle = diffRange(nextLeftStart, split.leftMid, nextRightStart, split.rightMid).concat(diffRange(split.leftMid, nextLeftEnd, split.rightMid, nextRightEnd));
+            }
+        }
+        const suffix = [];
+        for (let index = suffixPairs.length - 1; index >= 0; index -= 1) {
+            const pair = suffixPairs[index];
+            suffix.push(...buildMatchedLineOps(leftLines[pair.leftIndex], rightLines[pair.rightIndex], leftOffset + pair.leftIndex, rightOffset + pair.rightIndex, options));
+        }
+        return prefix.concat(middle, suffix);
     }
-    const trace = buildMyersTrace(leftCompare, rightCompare);
-    const ops = backtrackOps(leftLines, rightLines, leftCompare, rightCompare, trace, leftOffset, rightOffset, options);
-    return offsetOps$1(ops, leftOffset, rightOffset);
+    return diffRange(0, leftLines.length, 0, rightLines.length);
 }
 
 function diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset, options) {
@@ -188462,7 +188670,7 @@ function diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, lef
                 leftLineNo: leftOffset + anchor.leftIndex,
                 rightLineNo: rightOffset + anchor.rightIndex
             });
-        } else if (leftKey === rightKey && isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, leftOffset + anchor.leftIndex, rightOffset + anchor.rightIndex, options)) {
+        } else if (leftKey === rightKey && isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options)) {
             result.push({
                 type: "equal",
                 leftLine: leftLine,
@@ -192237,11 +192445,95 @@ function moveFavoritePath(storage2, pane, workspaceId, paths, fromIndex, toIndex
     return next;
 }
 
+const DB_NAME = "diff-viewer";
+
+const STORE_NAME = "texts";
+
+const unavailableTextStore = {
+    isAvailable: false,
+    get: async () => null,
+    set: async () => void 0,
+    delete: async () => void 0
+};
+
+function requestToPromise(request) {
+    return new Promise((resolve2, reject) => {
+        request.onsuccess = () => resolve2(request.result);
+        request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed."));
+    });
+}
+
+function transactionDone(transaction2) {
+    return new Promise((resolve2, reject) => {
+        transaction2.oncomplete = () => resolve2();
+        transaction2.onerror = () => reject(transaction2.error ?? new Error("IndexedDB transaction failed."));
+        transaction2.onabort = () => reject(transaction2.error ?? new Error("IndexedDB transaction aborted."));
+    });
+}
+
+function createIndexedDbTextStore(indexedDb = globalThis.indexedDB) {
+    if (!indexedDb) {
+        return unavailableTextStore;
+    }
+    let dbPromise = null;
+    const getDb = () => {
+        if (!dbPromise) {
+            dbPromise = new Promise((resolve2, reject) => {
+                const request = indexedDb.open(DB_NAME, 1);
+                request.onupgradeneeded = () => {
+                    const database = request.result;
+                    if (!database.objectStoreNames.contains(STORE_NAME)) {
+                        database.createObjectStore(STORE_NAME);
+                    }
+                };
+                request.onsuccess = () => resolve2(request.result);
+                request.onerror = () => reject(request.error ?? new Error("Failed to open IndexedDB."));
+            });
+        }
+        return dbPromise;
+    };
+    return {
+        isAvailable: true,
+        async get(key) {
+            const database = await getDb();
+            const transaction2 = database.transaction(STORE_NAME, "readonly");
+            const store = transaction2.objectStore(STORE_NAME);
+            const result = await requestToPromise(store.get(key));
+            await transactionDone(transaction2);
+            return typeof result === "string" ? result : null;
+        },
+        async set(key, value) {
+            const database = await getDb();
+            const transaction2 = database.transaction(STORE_NAME, "readwrite");
+            transaction2.objectStore(STORE_NAME).put(value, key);
+            await transactionDone(transaction2);
+        },
+        async delete(key) {
+            const database = await getDb();
+            const transaction2 = database.transaction(STORE_NAME, "readwrite");
+            transaction2.objectStore(STORE_NAME).delete(key);
+            await transactionDone(transaction2);
+        }
+    };
+}
+
+function createUnavailableTextStore() {
+    return unavailableTextStore;
+}
+
 const WORKSPACE_LIMIT = 10;
 
 const WORKSPACE_NAME_LIMIT = 25;
 
 const STORAGE_KEY$1 = "diffViewer.workspaces";
+
+let saveQueue$1 = Promise.resolve();
+
+function enqueueSave$1(task) {
+    const pending = saveQueue$1.then(task, task);
+    saveQueue$1 = pending.catch(() => void 0);
+    return pending;
+}
 
 function createWorkspaceId() {
     if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -192353,6 +192645,10 @@ function normalizeScrollTop(value) {
     return value;
 }
 
+function normalizeTextStorageMode$1(value) {
+    return value === "inline" || value === "indexeddb" ? value : null;
+}
+
 function ensureDefaultState() {
     const workspace = {
         id: createWorkspaceId(),
@@ -192420,7 +192716,77 @@ function normalizeState(raw) {
     };
 }
 
-function loadWorkspaces(storage2) {
+function getTextStore$1(options) {
+    return options?.textStore ?? createUnavailableTextStore();
+}
+
+function getWorkspaceTextKey(workspaceId, side) {
+    return `${STORAGE_KEY$1}:text:${workspaceId}:${side}`;
+}
+
+function serializeState(state, includeInlineTexts) {
+    return {
+        selectedId: state.selectedId,
+        textStorage: includeInlineTexts ? "inline" : "indexeddb",
+        workspaces: state.workspaces.map(workspace => ({
+            ...workspace,
+            leftText: includeInlineTexts ? workspace.leftText : "",
+            rightText: includeInlineTexts ? workspace.rightText : ""
+        }))
+    };
+}
+
+async function hydrateWorkspaceTexts(state, textStore2) {
+    const workspaces = await Promise.all(state.workspaces.map(async workspace => {
+        const [leftText, rightText] = await Promise.all([ textStore2.get(getWorkspaceTextKey(workspace.id, "left")), textStore2.get(getWorkspaceTextKey(workspace.id, "right")) ]);
+        return {
+            ...workspace,
+            leftText: leftText ?? workspace.leftText,
+            rightText: rightText ?? workspace.rightText
+        };
+    }));
+    return {
+        ...state,
+        workspaces: workspaces
+    };
+}
+
+async function writeWorkspaceTexts(state, textStore2) {
+    await Promise.all(state.workspaces.flatMap(workspace => [ workspace.leftText.length > 0 ? textStore2.set(getWorkspaceTextKey(workspace.id, "left"), workspace.leftText) : textStore2.delete(getWorkspaceTextKey(workspace.id, "left")), workspace.rightText.length > 0 ? textStore2.set(getWorkspaceTextKey(workspace.id, "right"), workspace.rightText) : textStore2.delete(getWorkspaceTextKey(workspace.id, "right")) ]));
+}
+
+async function deleteWorkspaceTexts(workspaceIds, textStore2) {
+    await Promise.all(workspaceIds.flatMap(workspaceId => [ textStore2.delete(getWorkspaceTextKey(workspaceId, "left")), textStore2.delete(getWorkspaceTextKey(workspaceId, "right")) ]));
+}
+
+async function persistSnapshot$1(storage2, state, options) {
+    const textStore2 = getTextStore$1(options);
+    if (!storage2) {
+        return;
+    }
+    if (!textStore2.isAvailable) {
+        try {
+            storage2.setItem(STORAGE_KEY$1, JSON.stringify(serializeState(state, true)));
+        } catch (error) {
+            console.warn("Failed to persist workspaces:", error);
+        }
+        return;
+    }
+    try {
+        await Promise.all([ writeWorkspaceTexts(state, textStore2), deleteWorkspaceTexts(options?.deletedWorkspaceIds ?? [], textStore2) ]);
+        storage2.setItem(STORAGE_KEY$1, JSON.stringify(serializeState(state, false)));
+    } catch (error) {
+        console.warn("Failed to persist workspaces with IndexedDB:", error);
+        try {
+            storage2.setItem(STORAGE_KEY$1, JSON.stringify(serializeState(state, true)));
+        } catch (storageError) {
+            console.warn("Failed to persist workspaces:", storageError);
+        }
+    }
+}
+
+async function loadWorkspaces(storage2, options) {
+    const textStore2 = getTextStore$1(options);
     if (!storage2) {
         return ensureDefaultState();
     }
@@ -192428,29 +192794,57 @@ function loadWorkspaces(storage2) {
         const raw = storage2.getItem(STORAGE_KEY$1);
         if (!raw) {
             const fallback2 = ensureDefaultState();
-            saveWorkspaces(storage2, fallback2);
+            await saveWorkspaces(storage2, fallback2, options);
             return fallback2;
         }
         const parsed = JSON.parse(raw);
         const normalized = normalizeState(parsed);
-        saveWorkspaces(storage2, normalized);
-        return normalized;
+        const textStorageMode = parsed && typeof parsed === "object" ? normalizeTextStorageMode$1(parsed.textStorage) : null;
+        const hasInlineTexts = normalized.workspaces.some(workspace => workspace.leftText.length > 0 || workspace.rightText.length > 0);
+        if (!textStore2.isAvailable) {
+            return normalized;
+        }
+        if (textStorageMode === "inline" || textStorageMode === null && hasInlineTexts) {
+            await saveWorkspaces(storage2, normalized, options);
+            return normalized;
+        }
+        let hydrated = normalized;
+        let hydratedFromTextStore = false;
+        try {
+            hydrated = await hydrateWorkspaceTexts(normalized, textStore2);
+            hydratedFromTextStore = true;
+        } catch (error) {
+            console.warn("Failed to hydrate workspaces from IndexedDB:", error);
+        }
+        if (hydratedFromTextStore && textStorageMode !== "indexeddb") {
+            await saveWorkspaces(storage2, hydrated, options);
+        }
+        return hydrated;
     } catch (error) {
         console.warn("Failed to parse workspaces:", error);
         const fallback2 = ensureDefaultState();
-        saveWorkspaces(storage2, fallback2);
+        await saveWorkspaces(storage2, fallback2, options);
         return fallback2;
     }
 }
 
-function saveWorkspaces(storage2, state) {
+function saveWorkspaces(storage2, state, options) {
     if (!storage2) {
-        return;
+        return Promise.resolve();
     }
-    storage2.setItem(STORAGE_KEY$1, JSON.stringify(state));
+    const textStore2 = getTextStore$1(options);
+    if (!textStore2.isAvailable) {
+        try {
+            storage2.setItem(STORAGE_KEY$1, JSON.stringify(serializeState(state, true)));
+        } catch (error) {
+            console.warn("Failed to persist workspaces:", error);
+        }
+        return Promise.resolve();
+    }
+    return enqueueSave$1(() => persistSnapshot$1(storage2, state, options));
 }
 
-function createWorkspace(storage2, state, rawName) {
+function createWorkspace(storage2, state, rawName, options) {
     if (state.workspaces.length >= WORKSPACE_LIMIT) {
         return {
             ok: false,
@@ -192493,14 +192887,14 @@ function createWorkspace(storage2, state, rawName) {
         workspaces: [ ...state.workspaces, nextWorkspace ],
         selectedId: nextWorkspace.id
     };
-    saveWorkspaces(storage2, nextState);
+    void saveWorkspaces(storage2, nextState, options);
     return {
         ok: true,
         state: nextState
     };
 }
 
-function renameWorkspace(storage2, state, id, rawName) {
+function renameWorkspace(storage2, state, id, rawName, options) {
     const name = normalizeName(rawName);
     const error = isValidName(name);
     if (error) {
@@ -192526,14 +192920,14 @@ function renameWorkspace(storage2, state, id, rawName) {
         workspaces: nextWorkspaces,
         selectedId: state.selectedId
     };
-    saveWorkspaces(storage2, nextState);
+    void saveWorkspaces(storage2, nextState, options);
     return {
         ok: true,
         state: nextState
     };
 }
 
-function deleteWorkspace(storage2, state, id) {
+function deleteWorkspace(storage2, state, id, options) {
     if (state.workspaces.length <= 1) {
         return {
             ok: false,
@@ -192554,14 +192948,17 @@ function deleteWorkspace(storage2, state, id) {
         workspaces: nextWorkspaces,
         selectedId: selectedId
     };
-    saveWorkspaces(storage2, nextState);
+    void saveWorkspaces(storage2, nextState, {
+        ...options,
+        deletedWorkspaceIds: [ id ]
+    });
     return {
         ok: true,
         state: nextState
     };
 }
 
-function reorderWorkspaces(storage2, state, fromIndex, toIndex) {
+function reorderWorkspaces(storage2, state, fromIndex, toIndex, options) {
     if (fromIndex < 0 || fromIndex >= state.workspaces.length || toIndex < 0 || toIndex >= state.workspaces.length || fromIndex === toIndex) {
         return {
             ok: false,
@@ -192576,14 +192973,14 @@ function reorderWorkspaces(storage2, state, fromIndex, toIndex) {
         workspaces: nextWorkspaces,
         selectedId: state.selectedId
     };
-    saveWorkspaces(storage2, nextState);
+    void saveWorkspaces(storage2, nextState, options);
     return {
         ok: true,
         state: nextState
     };
 }
 
-function setWorkspacePaneState(storage2, state, id, pane, snapshot) {
+function setWorkspacePaneState(storage2, state, id, pane, snapshot, options) {
     const index = state.workspaces.findIndex(workspace => workspace.id === id);
     if (index === -1) {
         return {
@@ -192627,14 +193024,14 @@ function setWorkspacePaneState(storage2, state, id, pane, snapshot) {
         ...state,
         workspaces: nextWorkspaces
     };
-    saveWorkspaces(storage2, nextState);
+    void saveWorkspaces(storage2, nextState, options);
     return {
         ok: true,
         state: nextState
     };
 }
 
-function setWorkspaceAnchors(storage2, state, id, anchors) {
+function setWorkspaceAnchors(storage2, state, id, anchors, options) {
     const index = state.workspaces.findIndex(workspace => workspace.id === id);
     if (index === -1) {
         return {
@@ -192651,7 +193048,7 @@ function setWorkspaceAnchors(storage2, state, id, anchors) {
         ...state,
         workspaces: nextWorkspaces
     };
-    saveWorkspaces(storage2, nextState);
+    void saveWorkspaces(storage2, nextState, options);
     return {
         ok: true,
         state: nextState
@@ -193289,7 +193686,7 @@ function createWorkspacePanelController(options) {
     };
 }
 
-function removeWorkspaceWithConfirm(storage2, state, id, confirm) {
+function removeWorkspaceWithConfirm(storage2, state, id, confirm, options) {
     const target = state.workspaces.find(workspace => workspace.id === id);
     if (!target) {
         return {
@@ -193306,7 +193703,7 @@ function removeWorkspaceWithConfirm(storage2, state, id, confirm) {
             state: state
         };
     }
-    const result = deleteWorkspace(storage2, state, id);
+    const result = deleteWorkspace(storage2, state, id, options);
     if (result.ok) {
         return {
             ok: true,
@@ -193500,6 +193897,14 @@ const STORAGE_KEY = "diff-viewer:state";
 
 const STORAGE_VERSION = 1;
 
+let saveQueue = Promise.resolve();
+
+function enqueueSave(task) {
+    const pending = saveQueue.then(task, task);
+    saveQueue = pending.catch(() => void 0);
+    return pending;
+}
+
 function isRecord(value) {
     return typeof value === "object" && value !== null;
 }
@@ -193568,7 +193973,74 @@ function normalizeEncoding(value, fallback2) {
     return fallback2;
 }
 
-function loadPersistedState(storage2, key = STORAGE_KEY) {
+function normalizeTextStorageMode(value) {
+    return value === "inline" || value === "indexeddb" ? value : null;
+}
+
+function getTextStore(options) {
+    return options?.textStore ?? createUnavailableTextStore();
+}
+
+function getStateKey(options) {
+    return options?.key ?? STORAGE_KEY;
+}
+
+function getPersistedTextKey(key, side) {
+    return `${key}:text:${side}`;
+}
+
+function serializePersistedState(state, includeInlineText) {
+    return {
+        ...state,
+        leftText: includeInlineText ? state.leftText : "",
+        rightText: includeInlineText ? state.rightText : "",
+        textStorage: includeInlineText ? "inline" : "indexeddb"
+    };
+}
+
+async function writePersistedTexts(state, key, textStore2) {
+    const leftKey = getPersistedTextKey(key, "left");
+    const rightKey = getPersistedTextKey(key, "right");
+    await Promise.all([ state.leftText.length > 0 ? textStore2.set(leftKey, state.leftText) : textStore2.delete(leftKey), state.rightText.length > 0 ? textStore2.set(rightKey, state.rightText) : textStore2.delete(rightKey) ]);
+}
+
+async function readPersistedTexts(state, key, textStore2) {
+    const [leftText, rightText] = await Promise.all([ textStore2.get(getPersistedTextKey(key, "left")), textStore2.get(getPersistedTextKey(key, "right")) ]);
+    return {
+        ...state,
+        leftText: leftText ?? state.leftText,
+        rightText: rightText ?? state.rightText
+    };
+}
+
+async function persistSnapshot(storage2, state, key, textStore2) {
+    if (!storage2) {
+        return;
+    }
+    if (!textStore2.isAvailable) {
+        try {
+            storage2.setItem(key, JSON.stringify(serializePersistedState(state, true)));
+        } catch (error) {
+            console.warn("Failed to persist state:", error);
+        }
+        return;
+    }
+    try {
+        await writePersistedTexts(state, key, textStore2);
+        storage2.setItem(key, JSON.stringify(serializePersistedState(state, false)));
+    } catch (error) {
+        console.warn("Failed to persist state with IndexedDB:", error);
+        try {
+            storage2.setItem(key, JSON.stringify(serializePersistedState(state, true)));
+        } catch (storageError) {
+            console.warn("Failed to persist state:", storageError);
+        }
+    }
+}
+
+async function loadPersistedState(storage2, options) {
+    const key = getStateKey(options);
+    const textStore2 = getTextStore(options);
     if (!storage2) {
         return null;
     }
@@ -193581,14 +194053,13 @@ function loadPersistedState(storage2, key = STORAGE_KEY) {
         if (!isRecord(parsed) || parsed.version !== STORAGE_VERSION) {
             return null;
         }
-        const leftEncoding = normalizeEncoding(parsed.leftEncoding, "auto");
-        const rightEncoding = normalizeEncoding(parsed.rightEncoding, "auto");
-        return {
+        const textStorageMode = normalizeTextStorageMode(parsed.textStorage);
+        const state = {
             version: STORAGE_VERSION,
             leftText: toStringOrEmpty(parsed.leftText),
             rightText: toStringOrEmpty(parsed.rightText),
-            leftEncoding: leftEncoding,
-            rightEncoding: rightEncoding,
+            leftEncoding: normalizeEncoding(parsed.leftEncoding, "auto"),
+            rightEncoding: normalizeEncoding(parsed.rightEncoding, "auto"),
             scrollSync: toBoolean(parsed.scrollSync, true),
             foldEnabled: toBoolean(parsed.foldEnabled, false),
             anchorPanelCollapsed: toBoolean(parsed.anchorPanelCollapsed, false),
@@ -193596,47 +194067,90 @@ function loadPersistedState(storage2, key = STORAGE_KEY) {
             leftSegments: normalizeSegments(parsed.leftSegments),
             rightSegments: normalizeSegments(parsed.rightSegments)
         };
+        if (!textStore2.isAvailable) {
+            return state;
+        }
+        const hasInlineText = state.leftText.length > 0 || state.rightText.length > 0;
+        if (textStorageMode === "inline" || textStorageMode === null && hasInlineText) {
+            await persistSnapshot(storage2, state, key, textStore2);
+            return state;
+        }
+        let hydrated = state;
+        let hydratedFromTextStore = false;
+        try {
+            hydrated = await readPersistedTexts(state, key, textStore2);
+            hydratedFromTextStore = true;
+        } catch (error) {
+            console.warn("Failed to hydrate persisted state from IndexedDB:", error);
+        }
+        if (hydratedFromTextStore && textStorageMode !== "indexeddb") {
+            await persistSnapshot(storage2, hydrated, key, textStore2);
+        }
+        return hydrated;
     } catch (error) {
         console.warn("Failed to parse persisted state:", error);
         return null;
     }
 }
 
-function savePersistedState(storage2, state, key = STORAGE_KEY) {
+function savePersistedState(storage2, state, options) {
+    const key = getStateKey(options);
+    const textStore2 = getTextStore(options);
     if (!storage2) {
-        return;
+        return Promise.resolve();
     }
-    try {
-        storage2.setItem(key, JSON.stringify(state));
-    } catch (error) {
-        console.warn("Failed to persist state:", error);
+    if (!textStore2.isAvailable) {
+        try {
+            storage2.setItem(key, JSON.stringify(serializePersistedState(state, true)));
+        } catch (error) {
+            console.warn("Failed to persist state:", error);
+        }
+        return Promise.resolve();
     }
+    return enqueueSave(() => persistSnapshot(storage2, state, key, textStore2));
 }
 
-function clearPersistedState(storage2, key = STORAGE_KEY) {
+function clearPersistedState(storage2, options) {
+    const key = getStateKey(options);
+    const textStore2 = getTextStore(options);
     if (!storage2) {
-        return;
+        return Promise.resolve();
     }
-    try {
-        storage2.removeItem(key);
-    } catch (error) {
-        console.warn("Failed to clear persisted state:", error);
+    const clearLocalStorage = () => {
+        try {
+            storage2.removeItem(key);
+        } catch (error) {
+            console.warn("Failed to clear persisted state:", error);
+        }
+    };
+    if (!textStore2.isAvailable) {
+        clearLocalStorage();
+        return Promise.resolve();
     }
+    return enqueueSave(async () => {
+        try {
+            await Promise.all([ textStore2.delete(getPersistedTextKey(key, "left")), textStore2.delete(getPersistedTextKey(key, "right")) ]);
+        } catch (error) {
+            console.warn("Failed to clear persisted state from IndexedDB:", error);
+        }
+        clearLocalStorage();
+    });
 }
 
 function createPersistScheduler(options) {
-    const {storage: storage2, getState: getState, key: key = STORAGE_KEY, delayMs: delayMs = 200} = options;
+    const {storage: storage2, getState: getState, key: key = STORAGE_KEY, delayMs: delayMs = 200, textStore: textStore2} = options;
     let timer = null;
-    const saveNow = () => {
-        savePersistedState(storage2, getState(), key);
-    };
+    const saveNow = () => savePersistedState(storage2, getState(), {
+        key: key,
+        textStore: textStore2
+    });
     const schedule = () => {
         if (timer) {
             clearTimeout(timer);
         }
         timer = setTimeout(() => {
             timer = null;
-            saveNow();
+            void saveNow();
         }, delayMs);
     };
     const flush = () => {
@@ -193644,7 +194158,7 @@ function createPersistScheduler(options) {
             clearTimeout(timer);
             timer = null;
         }
-        saveNow();
+        void saveNow();
     };
     const cancel = () => {
         if (timer) {
@@ -193813,7 +194327,11 @@ function getStorage() {
 
 const storage = getStorage();
 
-const persistedState = loadPersistedState(storage);
+const textStore = createIndexedDbTextStore();
+
+const persistedState = await loadPersistedState(storage, {
+    textStore: textStore
+});
 
 let persistScheduler = null;
 
@@ -193846,7 +194364,9 @@ function scheduleWorkspacePersist() {
         workspacePersistTimer = null;
         persistWorkspacePaneState("left");
         persistWorkspacePaneState("right");
-        const result = setWorkspaceAnchors(storage, workspaceState, workspaceState.selectedId, getCurrentAnchorState());
+        const result = setWorkspaceAnchors(storage, workspaceState, workspaceState.selectedId, getCurrentAnchorState(), {
+            textStore: textStore
+        });
         if (result.ok) {
             workspaceState = result.state;
         }
@@ -194063,7 +194583,9 @@ document.addEventListener("keydown", interceptWorkspaceToggleShortcut, {
     capture: true
 });
 
-let workspaceState = loadWorkspaces(storage);
+let workspaceState = await loadWorkspaces(storage, {
+    textStore: textStore
+});
 
 const emptyWorkspaceAnchors = {
     manualAnchors: [],
@@ -194256,14 +194778,18 @@ function loadFavoriteListsForWorkspace(workspaceId) {
 function persistCurrentWorkspaceState() {
     persistWorkspacePaneState("left");
     persistWorkspacePaneState("right");
-    const result = setWorkspaceAnchors(storage, workspaceState, workspaceState.selectedId, getCurrentAnchorState());
+    const result = setWorkspaceAnchors(storage, workspaceState, workspaceState.selectedId, getCurrentAnchorState(), {
+        textStore: textStore
+    });
     if (result.ok) {
         workspaceState = result.state;
     }
 }
 
 function persistWorkspacePaneState(side) {
-    const result = setWorkspacePaneState(storage, workspaceState, workspaceState.selectedId, side, collectWorkspacePaneSnapshot(side));
+    const result = setWorkspacePaneState(storage, workspaceState, workspaceState.selectedId, side, collectWorkspacePaneSnapshot(side), {
+        textStore: textStore
+    });
     if (result.ok) {
         workspaceState = result.state;
     }
@@ -194320,11 +194846,15 @@ function switchWorkspaceById(id, options) {
     if (options?.focusItem) {
         focusedWorkspaceId = id;
     }
-    let result = setWorkspacePaneState(storage, workspaceState, workspaceState.selectedId, "left", collectWorkspacePaneSnapshot("left"));
+    let result = setWorkspacePaneState(storage, workspaceState, workspaceState.selectedId, "left", collectWorkspacePaneSnapshot("left"), {
+        textStore: textStore
+    });
     if (result.ok) {
         workspaceState = result.state;
     }
-    result = setWorkspacePaneState(storage, workspaceState, workspaceState.selectedId, "right", collectWorkspacePaneSnapshot("right"));
+    result = setWorkspacePaneState(storage, workspaceState, workspaceState.selectedId, "right", collectWorkspacePaneSnapshot("right"), {
+        textStore: textStore
+    });
     if (result.ok) {
         workspaceState = result.state;
     }
@@ -194369,7 +194899,9 @@ function switchWorkspaceById(id, options) {
         return;
     }
     workspaceState = nextState;
-    saveWorkspaces(storage, workspaceState);
+    void saveWorkspaces(storage, workspaceState, {
+        textStore: textStore
+    });
     renderWorkspacePanel({
         focusItemId: options?.focusItem ? id : null
     });
@@ -194378,7 +194910,9 @@ function switchWorkspaceById(id, options) {
 }
 
 function handleWorkspaceRename(id, rawName) {
-    const result = renameWorkspace(storage, workspaceState, id, rawName);
+    const result = renameWorkspace(storage, workspaceState, id, rawName, {
+        textStore: textStore
+    });
     if (!result.ok) {
         const message = result.reason === "empty" ? "名前を入力してください" : result.reason === "length" ? `名前は${WORKSPACE_NAME_LIMIT}文字以内です` : "名前を変更できません";
         toast.show(message, "error");
@@ -194575,6 +195109,8 @@ if (selectedWorkspace) {
             activeFile: selectedWorkspace.leftActiveFile ?? null,
             cursor: selectedWorkspace.leftCursor ?? null,
             scrollTop: selectedWorkspace.leftScrollTop ?? null
+        }, {
+            textStore: textStore
         });
         if (result.ok) {
             workspaceState = result.state;
@@ -194588,6 +195124,8 @@ if (selectedWorkspace) {
             activeFile: selectedWorkspace.rightActiveFile ?? null,
             cursor: selectedWorkspace.rightCursor ?? null,
             scrollTop: selectedWorkspace.rightScrollTop ?? null
+        }, {
+            textStore: textStore
         });
         if (result.ok) {
             workspaceState = result.state;
@@ -195610,7 +196148,9 @@ paneSides.forEach(side => {
 
 workspaceCreate.addEventListener("click", () => {
     persistCurrentWorkspaceState();
-    const result = createWorkspace(storage, workspaceState, "Workspace");
+    const result = createWorkspace(storage, workspaceState, "Workspace", {
+        textStore: textStore
+    });
     if (!result.ok) {
         if (result.reason === "limit") {
             toast.show("最大10件です", "error");
@@ -195657,7 +196197,9 @@ workspaceList.addEventListener("click", event => {
     }
     if (action.type === "remove") {
         persistCurrentWorkspaceState();
-        const result = removeWorkspaceWithConfirm(storage, workspaceState, action.id, window.confirm);
+        const result = removeWorkspaceWithConfirm(storage, workspaceState, action.id, window.confirm, {
+            textStore: textStore
+        });
         if (!result.ok) {
             if (result.reason === "last") {
                 toast.show("最後の1件は削除できません", "error");
@@ -195718,7 +196260,9 @@ workspaceList.addEventListener("focusout", event => {
 });
 
 bindWorkspaceDragHandlers(workspaceList, move => {
-    const result = reorderWorkspaces(storage, workspaceState, move.from, move.to);
+    const result = reorderWorkspaces(storage, workspaceState, move.from, move.to, {
+        textStore: textStore
+    });
     if (!result.ok) {
         return;
     }
@@ -195843,7 +196387,8 @@ function getPersistedStateSnapshot() {
 
 persistScheduler = createPersistScheduler({
     storage: storage,
-    getState: getPersistedStateSnapshot
+    getState: getPersistedStateSnapshot,
+    textStore: textStore
 });
 
 function preventWindowDrop(event) {
@@ -196124,6 +196669,8 @@ if (!hasWorkspaceAnchors && persistedState?.anchors?.length) {
             manualAnchors: persistedState.anchors.map(anchor => ({
                 ...anchor
             }))
+        }, {
+            textStore: textStore
         });
         if (migrated.ok) {
             workspaceState = migrated.state;
@@ -197243,7 +197790,9 @@ function clearAllPanes() {
         mode: "all"
     };
     cancelPersist();
-    clearPersistedState(storage);
+    void clearPersistedState(storage, {
+        textStore: textStore
+    });
     withPersistSuppressed(() => {
         clearEditorsForUndo([ leftEditor, rightEditor ], targetEditor);
         leftSegments.length = 0;

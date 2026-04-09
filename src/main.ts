@@ -150,6 +150,7 @@ import {
   loadPersistedState,
   type PersistedState,
 } from "./storage/persistedState";
+import { createIndexedDbTextStore } from "./storage/textStore";
 import { clearPaneSummary } from "./storage/paneSummary";
 import {
   formatFileLoadError,
@@ -192,7 +193,8 @@ function getStorage(): Storage | null {
 }
 
 const storage = getStorage();
-const persistedState = loadPersistedState(storage);
+const textStore = createIndexedDbTextStore();
+const persistedState = await loadPersistedState(storage, { textStore });
 let persistScheduler: ReturnType<typeof createPersistScheduler> | null = null;
 let persistSuppressed = false;
 let suppressRecalc = false;
@@ -226,6 +228,7 @@ function scheduleWorkspacePersist() {
       workspaceState,
       workspaceState.selectedId,
       getCurrentAnchorState(),
+      { textStore },
     );
     if (result.ok) {
       workspaceState = result.state;
@@ -386,7 +389,7 @@ document.addEventListener("keydown", interceptWorkspaceToggleShortcut, {
   capture: true,
 });
 
-let workspaceState: WorkspacesState = loadWorkspaces(storage);
+let workspaceState: WorkspacesState = await loadWorkspaces(storage, { textStore });
 
 const emptyWorkspaceAnchors: WorkspaceAnchorState = {
   manualAnchors: [],
@@ -615,6 +618,7 @@ function persistCurrentWorkspaceState() {
     workspaceState,
     workspaceState.selectedId,
     getCurrentAnchorState(),
+    { textStore },
   );
   if (result.ok) {
     workspaceState = result.state;
@@ -628,6 +632,7 @@ function persistWorkspacePaneState(side: "left" | "right") {
     workspaceState.selectedId,
     side,
     collectWorkspacePaneSnapshot(side),
+    { textStore },
   );
   if (result.ok) {
     workspaceState = result.state;
@@ -693,6 +698,7 @@ function switchWorkspaceById(
     workspaceState.selectedId,
     "left",
     collectWorkspacePaneSnapshot("left"),
+    { textStore },
   );
   if (result.ok) {
     workspaceState = result.state;
@@ -703,6 +709,7 @@ function switchWorkspaceById(
     workspaceState.selectedId,
     "right",
     collectWorkspacePaneSnapshot("right"),
+    { textStore },
   );
   if (result.ok) {
     workspaceState = result.state;
@@ -756,7 +763,7 @@ function switchWorkspaceById(
     return;
   }
   workspaceState = nextState;
-  saveWorkspaces(storage, workspaceState);
+  void saveWorkspaces(storage, workspaceState, { textStore });
   renderWorkspacePanel({
     focusItemId: options?.focusItem ? id : null,
   });
@@ -765,7 +772,7 @@ function switchWorkspaceById(
 }
 
 function handleWorkspaceRename(id: string, rawName: string) {
-  const result = renameWorkspace(storage, workspaceState, id, rawName);
+  const result = renameWorkspace(storage, workspaceState, id, rawName, { textStore });
   if (!result.ok) {
     const message =
       result.reason === "empty"
@@ -1125,6 +1132,7 @@ if (selectedWorkspace) {
         cursor: selectedWorkspace.leftCursor ?? null,
         scrollTop: selectedWorkspace.leftScrollTop ?? null,
       },
+      { textStore },
     );
     if (result.ok) {
       workspaceState = result.state;
@@ -1148,6 +1156,7 @@ if (selectedWorkspace) {
         cursor: selectedWorkspace.rightCursor ?? null,
         scrollTop: selectedWorkspace.rightScrollTop ?? null,
       },
+      { textStore },
     );
     if (result.ok) {
       workspaceState = result.state;
@@ -2297,7 +2306,7 @@ paneSides.forEach((side) => {
 
 workspaceCreate.addEventListener("click", () => {
   persistCurrentWorkspaceState();
-  const result = createWorkspace(storage, workspaceState, "Workspace");
+  const result = createWorkspace(storage, workspaceState, "Workspace", { textStore });
   if (!result.ok) {
     if (result.reason === "limit") {
       toast.show("最大10件です", "error");
@@ -2341,6 +2350,7 @@ workspaceList.addEventListener("click", (event) => {
       workspaceState,
       action.id,
       window.confirm,
+      { textStore },
     );
     if (!result.ok) {
       if (result.reason === "last") {
@@ -2411,6 +2421,7 @@ bindWorkspaceDragHandlers(workspaceList, (move) => {
     workspaceState,
     move.from,
     move.to,
+    { textStore },
   );
   if (!result.ok) {
     return;
@@ -2570,6 +2581,7 @@ function getPersistedStateSnapshot(): PersistedState {
 persistScheduler = createPersistScheduler({
   storage,
   getState: getPersistedStateSnapshot,
+  textStore,
 });
 
 function preventWindowDrop(event: DragEvent) {
@@ -2840,10 +2852,16 @@ let initialWorkspaceAnchors =
 if (!hasWorkspaceAnchors && persistedState?.anchors?.length) {
   const selected = getSelectedWorkspace(workspaceState);
   if (selected) {
-    const migrated = setWorkspaceAnchors(storage, workspaceState, selected.id, {
-      ...emptyWorkspaceAnchors,
-      manualAnchors: persistedState.anchors.map((anchor) => ({ ...anchor })),
-    });
+    const migrated = setWorkspaceAnchors(
+      storage,
+      workspaceState,
+      selected.id,
+      {
+        ...emptyWorkspaceAnchors,
+        manualAnchors: persistedState.anchors.map((anchor) => ({ ...anchor })),
+      },
+      { textStore },
+    );
     if (migrated.ok) {
       workspaceState = migrated.state;
       initialWorkspaceAnchors =
@@ -4240,7 +4258,7 @@ function clearAllPanes(): void {
     mode: "all",
   };
   cancelPersist();
-  clearPersistedState(storage);
+  void clearPersistedState(storage, { textStore });
   withPersistSuppressed(() => {
     clearEditorsForUndo([leftEditor, rightEditor], targetEditor);
     leftSegments.length = 0;

@@ -33,6 +33,27 @@ describe("diff alignment for large shifts", () => {
 
     expect(equals).toContain("UNIQ");
   });
+
+  [10000, 30000].forEach((lineCount) => {
+    it(`handles a ${lineCount}-line unmatched block without changing the edit order`, () => {
+      const left = Array.from({ length: lineCount }, (_, i) => `LEFT-${i}`);
+      const right = Array.from({ length: 47 }, (_, i) => `RIGHT-${i}`);
+
+      const ops = diffLinesFromLines(left, right);
+
+      expect(ops).toHaveLength(left.length + right.length);
+      expect(ops.slice(0, left.length).every((op, index) =>
+        op.type === "delete" &&
+        op.leftLine === left[index] &&
+        op.leftLineNo === index,
+      )).toBe(true);
+      expect(ops.slice(left.length).every((op, index) =>
+        op.type === "insert" &&
+        op.rightLine === right[index] &&
+        op.rightLineNo === index,
+      )).toBe(true);
+    });
+  });
 });
 
 describe("diff alignment with anchors", () => {

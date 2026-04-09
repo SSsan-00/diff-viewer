@@ -6,6 +6,7 @@ import {
   loadWorkspaces,
   renameWorkspace,
   reorderWorkspaces,
+  saveWorkspaces,
   setWorkspacePaneState,
   setWorkspaceAnchors,
   setWorkspaceTexts,
@@ -14,12 +15,28 @@ import {
   WORKSPACE_NAME_LIMIT,
   type WorkspacesState,
 } from "./workspaces";
+import type { TextStore } from "./textStore";
 
 function createStorage() {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     url: "https://example.test",
   });
   return dom.window.localStorage;
+}
+
+function createTextStore(): TextStore & { texts: Map<string, string> } {
+  const texts = new Map<string, string>();
+  return {
+    isAvailable: true,
+    texts,
+    get: async (key) => texts.get(key) ?? null,
+    set: async (key, value) => {
+      texts.set(key, value);
+    },
+    delete: async (key) => {
+      texts.delete(key);
+    },
+  };
 }
 
 function createState(names: string[]): WorkspacesState {
@@ -41,16 +58,16 @@ function createState(names: string[]): WorkspacesState {
 }
 
 describe("workspaces storage", () => {
-  it("creates a default workspace when storage is empty", () => {
+  it("creates a default workspace when storage is empty", async () => {
     const storage = createStorage();
-    const state = loadWorkspaces(storage);
+    const state = await loadWorkspaces(storage);
     expect(state.workspaces.length).toBe(1);
     expect(state.selectedId).toBe(state.workspaces[0]?.id);
   });
 
-  it("enforces name length limit on create", () => {
+  it("enforces name length limit on create", async () => {
     const storage = createStorage();
-    const state = loadWorkspaces(storage);
+    const state = await loadWorkspaces(storage);
     const tooLong = "a".repeat(WORKSPACE_NAME_LIMIT + 1);
     const result = createWorkspace(storage, state, tooLong);
     expect(result.ok).toBe(false);
@@ -59,9 +76,9 @@ describe("workspaces storage", () => {
     }
   });
 
-  it("enforces the max workspace limit", () => {
+  it("enforces the max workspace limit", async () => {
     const storage = createStorage();
-    const base = loadWorkspaces(storage);
+    const base = await loadWorkspaces(storage);
     let state: WorkspacesState = base;
     for (let i = 0; i < WORKSPACE_LIMIT - 1; i += 1) {
       const result = createWorkspace(storage, state, `Workspace ${i + 1}`);
@@ -76,9 +93,9 @@ describe("workspaces storage", () => {
     }
   });
 
-  it("prevents deleting the last workspace", () => {
+  it("prevents deleting the last workspace", async () => {
     const storage = createStorage();
-    const state = loadWorkspaces(storage);
+    const state = await loadWorkspaces(storage);
     const result = deleteWorkspace(storage, state, state.selectedId);
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -117,13 +134,13 @@ describe("workspaces storage", () => {
     }
   });
 
-  it("stores pane texts per workspace", () => {
+  it("stores pane texts per workspace", async () => {
     const storage = createStorage();
     const state = createState(["Alpha", "Beta"]);
     const updated = setWorkspaceTexts(storage, state, "ws-0", "left-a", "right-a");
     expect(updated.ok).toBe(true);
     if (updated.ok) {
-      const stored = loadWorkspaces(storage);
+      const stored = await loadWorkspaces(storage);
       const alpha = stored.workspaces.find((item) => item.id === "ws-0");
       const beta = stored.workspaces.find((item) => item.id === "ws-1");
       expect(alpha?.leftText).toBe("left-a");
@@ -133,7 +150,7 @@ describe("workspaces storage", () => {
     }
   });
 
-  it("stores pane metadata per workspace", () => {
+  it("stores pane metadata per workspace", async () => {
     const storage = createStorage();
     const state = createState(["Alpha", "Beta"]);
     const segments = [
@@ -148,7 +165,7 @@ describe("workspaces storage", () => {
     });
     expect(updated.ok).toBe(true);
     if (updated.ok) {
-      const stored = loadWorkspaces(storage);
+      const stored = await loadWorkspaces(storage);
       const alpha = stored.workspaces.find((item) => item.id === "ws-0");
       const beta = stored.workspaces.find((item) => item.id === "ws-1");
       expect(alpha?.leftText).toBe("left-a");
@@ -160,7 +177,7 @@ describe("workspaces storage", () => {
     }
   });
 
-  it("stores anchors per workspace", () => {
+  it("stores anchors per workspace", async () => {
     const storage = createStorage();
     const state = createState(["Alpha", "Beta"]);
     const result = setWorkspaceAnchors(storage, state, "ws-1", {
@@ -173,12 +190,95 @@ describe("workspaces storage", () => {
     });
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const stored = loadWorkspaces(storage);
+      const stored = await loadWorkspaces(storage);
       const beta = stored.workspaces.find((item) => item.id === "ws-1");
       const alpha = stored.workspaces.find((item) => item.id === "ws-0");
       expect(beta?.anchors.manualAnchors).toHaveLength(1);
       expect(beta?.anchors.selectedAnchorKey).toBe("manual:1:2");
       expect(alpha?.anchors.manualAnchors).toHaveLength(0);
     }
+  });
+
+  it("does not throw when workspace persistence fails", () => {
+    const storage = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error("quota");
+      },
+      removeItem: () => undefined,
+    } as Storage;
+
+    expect(() => loadWorkspaces(storage)).not.toThrow();
+
+    const state = createState(["Alpha"]);
+    expect(() =>
+      setWorkspacePaneState(storage, state, "ws-0", "left", {
+        text: "large text",
+        segments: [],
+        activeFile: null,
+        cursor: null,
+        scrollTop: null,
+      }),
+    ).not.toThrow();
+  });
+
+  it("migrates inline workspace text into the text store when available", async () => {
+    const storage = createStorage();
+    const textStore = createTextStore();
+    const state = createState(["Alpha"]);
+    const updated = setWorkspacePaneState(storage, state, "ws-0", "left", {
+      text: "legacy left",
+      segments: [],
+      activeFile: null,
+      cursor: null,
+      scrollTop: null,
+    });
+
+    expect(updated.ok).toBe(true);
+
+    const restored = await loadWorkspaces(storage, { textStore });
+    const raw = JSON.parse(storage.getItem(storage.key(0) ?? "") ?? "{}");
+    const alpha = restored.workspaces.find((item) => item.id === "ws-0");
+
+    expect(alpha?.leftText).toBe("legacy left");
+    expect(raw.workspaces[0].leftText).toBe("");
+    expect(textStore.texts.size).toBeGreaterThan(0);
+  });
+
+  it("prefers inline workspace text over stale text-store data after fallback persistence", async () => {
+    const storage = createStorage();
+    const staleTextStore = createTextStore();
+    const fallbackTextStore: TextStore = {
+      isAvailable: true,
+      get: staleTextStore.get,
+      set: async () => {
+        throw new Error("idb write failed");
+      },
+      delete: staleTextStore.delete,
+    };
+    const state = createState(["Alpha"]);
+
+    staleTextStore.texts.set("diffViewer.workspaces:text:ws-0:left", "stale left");
+    staleTextStore.texts.set("diffViewer.workspaces:text:ws-0:right", "stale right");
+
+    const updated = setWorkspaceTexts(
+      storage,
+      state,
+      "ws-0",
+      "fresh left",
+      "fresh right",
+      { textStore: fallbackTextStore },
+    );
+
+    expect(updated.ok).toBe(true);
+    if (updated.ok) {
+      await saveWorkspaces(storage, updated.state, { textStore: fallbackTextStore });
+    }
+
+    const restored = await loadWorkspaces(storage, { textStore: staleTextStore });
+    const alpha = restored.workspaces.find((item) => item.id === "ws-0");
+
+    expect(alpha?.leftText).toBe("fresh left");
+    expect(alpha?.rightText).toBe("fresh right");
   });
 });

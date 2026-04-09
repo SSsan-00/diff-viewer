@@ -7,12 +7,28 @@ import {
   savePersistedState,
   type PersistedState,
 } from "./persistedState";
+import type { TextStore } from "./textStore";
 
 function createStorage() {
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     url: "https://example.test",
   });
   return dom.window.localStorage;
+}
+
+function createTextStore(): TextStore & { texts: Map<string, string> } {
+  const texts = new Map<string, string>();
+  return {
+    isAvailable: true,
+    texts,
+    get: async (key) => texts.get(key) ?? null,
+    set: async (key, value) => {
+      texts.set(key, value);
+    },
+    delete: async (key) => {
+      texts.delete(key);
+    },
+  };
 }
 
 function createState(overrides: Partial<PersistedState> = {}): PersistedState {
@@ -41,7 +57,7 @@ describe("persisted state", () => {
     vi.useRealTimers();
   });
 
-  it("saves and restores text and ui state", () => {
+  it("saves and restores text and ui state", async () => {
     const storage = createStorage();
     let state = createState();
 
@@ -52,9 +68,9 @@ describe("persisted state", () => {
     });
 
     scheduler.schedule();
-    vi.runAllTimers();
+    await vi.runAllTimersAsync();
 
-    const restored = loadPersistedState(storage, STORAGE_KEY);
+    const restored = await loadPersistedState(storage, { key: STORAGE_KEY });
     expect(restored).toBeTruthy();
     expect(restored?.leftText).toBe("left content");
     expect(restored?.rightText).toBe("right content");
@@ -64,10 +80,10 @@ describe("persisted state", () => {
     expect(restored?.anchors.length).toBe(1);
   });
 
-  it("keeps cleared pane content after save", () => {
+  it("keeps cleared pane content after save", async () => {
     const storage = createStorage();
     let state = createState();
-    savePersistedState(storage, state);
+    await savePersistedState(storage, state);
 
     state = createState({ leftText: "", rightText: "right content" });
     const scheduler = createPersistScheduler({
@@ -76,10 +92,57 @@ describe("persisted state", () => {
       delayMs: 10,
     });
     scheduler.schedule();
-    vi.runAllTimers();
+    await vi.runAllTimersAsync();
 
-    const restored = loadPersistedState(storage, STORAGE_KEY);
+    const restored = await loadPersistedState(storage, { key: STORAGE_KEY });
     expect(restored?.leftText).toBe("");
     expect(restored?.rightText).toBe("right content");
+  });
+
+  it("migrates inline text into the text store when available", async () => {
+    const storage = createStorage();
+    const textStore = createTextStore();
+    const state = createState({ leftText: "legacy left", rightText: "legacy right" });
+
+    await savePersistedState(storage, state);
+
+    const restored = await loadPersistedState(storage, { key: STORAGE_KEY, textStore });
+    const raw = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+
+    expect(restored?.leftText).toBe("legacy left");
+    expect(restored?.rightText).toBe("legacy right");
+    expect(raw.leftText).toBe("");
+    expect(raw.rightText).toBe("");
+    expect(textStore.texts.size).toBe(2);
+  });
+
+  it("prefers inline text over stale text-store data after fallback persistence", async () => {
+    const storage = createStorage();
+    const staleTextStore = createTextStore();
+    const fallbackTextStore: TextStore = {
+      isAvailable: true,
+      get: staleTextStore.get,
+      set: async () => {
+        throw new Error("idb write failed");
+      },
+      delete: staleTextStore.delete,
+    };
+
+    staleTextStore.texts.set(`${STORAGE_KEY}:text:left`, "stale left");
+    staleTextStore.texts.set(`${STORAGE_KEY}:text:right`, "stale right");
+
+    await savePersistedState(
+      storage,
+      createState({ leftText: "fresh left", rightText: "fresh right" }),
+      { key: STORAGE_KEY, textStore: fallbackTextStore },
+    );
+
+    const restored = await loadPersistedState(storage, {
+      key: STORAGE_KEY,
+      textStore: staleTextStore,
+    });
+
+    expect(restored?.leftText).toBe("fresh left");
+    expect(restored?.rightText).toBe("fresh right");
   });
 });

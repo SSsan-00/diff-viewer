@@ -1,6 +1,10 @@
 import type { Anchor } from "../diffEngine/anchors";
 import type { FileEncoding } from "../file/decode";
 import type { LineSegment } from "../file/lineNumbering";
+import {
+  createUnavailableTextStore,
+  type TextStore,
+} from "./textStore";
 
 export const STORAGE_KEY = "diff-viewer:state";
 export const STORAGE_VERSION = 1;
@@ -20,6 +24,23 @@ export type PersistedState = {
 };
 
 type StorageLike = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+type TextStorageMode = "inline" | "indexeddb";
+type SerializedPersistedState = PersistedState & {
+  textStorage: TextStorageMode;
+};
+
+type PersistedStateOptions = {
+  key?: string;
+  textStore?: TextStore;
+};
+
+let saveQueue: Promise<void> = Promise.resolve();
+
+function enqueueSave(task: () => Promise<void>): Promise<void> {
+  const pending = saveQueue.then(task, task);
+  saveQueue = pending.catch(() => undefined);
+  return pending;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -85,10 +106,103 @@ function normalizeEncoding(value: unknown, fallback: FileEncoding): FileEncoding
   return fallback;
 }
 
-export function loadPersistedState(
+function normalizeTextStorageMode(value: unknown): TextStorageMode | null {
+  return value === "inline" || value === "indexeddb" ? value : null;
+}
+
+function getTextStore(options?: PersistedStateOptions): TextStore {
+  return options?.textStore ?? createUnavailableTextStore();
+}
+
+function getStateKey(options?: PersistedStateOptions): string {
+  return options?.key ?? STORAGE_KEY;
+}
+
+function getPersistedTextKey(key: string, side: "left" | "right"): string {
+  return `${key}:text:${side}`;
+}
+
+function serializePersistedState(
+  state: PersistedState,
+  includeInlineText: boolean,
+): SerializedPersistedState {
+  return {
+    ...state,
+    leftText: includeInlineText ? state.leftText : "",
+    rightText: includeInlineText ? state.rightText : "",
+    textStorage: includeInlineText ? "inline" : "indexeddb",
+  };
+}
+
+async function writePersistedTexts(
+  state: PersistedState,
+  key: string,
+  textStore: TextStore,
+): Promise<void> {
+  const leftKey = getPersistedTextKey(key, "left");
+  const rightKey = getPersistedTextKey(key, "right");
+  await Promise.all([
+    state.leftText.length > 0
+      ? textStore.set(leftKey, state.leftText)
+      : textStore.delete(leftKey),
+    state.rightText.length > 0
+      ? textStore.set(rightKey, state.rightText)
+      : textStore.delete(rightKey),
+  ]);
+}
+
+async function readPersistedTexts(
+  state: PersistedState,
+  key: string,
+  textStore: TextStore,
+): Promise<PersistedState> {
+  const [leftText, rightText] = await Promise.all([
+    textStore.get(getPersistedTextKey(key, "left")),
+    textStore.get(getPersistedTextKey(key, "right")),
+  ]);
+  return {
+    ...state,
+    leftText: leftText ?? state.leftText,
+    rightText: rightText ?? state.rightText,
+  };
+}
+
+async function persistSnapshot(
   storage: StorageLike | null,
-  key = STORAGE_KEY,
-): PersistedState | null {
+  state: PersistedState,
+  key: string,
+  textStore: TextStore,
+): Promise<void> {
+  if (!storage) {
+    return;
+  }
+  if (!textStore.isAvailable) {
+    try {
+      storage.setItem(key, JSON.stringify(serializePersistedState(state, true)));
+    } catch (error) {
+      console.warn("Failed to persist state:", error);
+    }
+    return;
+  }
+  try {
+    await writePersistedTexts(state, key, textStore);
+    storage.setItem(key, JSON.stringify(serializePersistedState(state, false)));
+  } catch (error) {
+    console.warn("Failed to persist state with IndexedDB:", error);
+    try {
+      storage.setItem(key, JSON.stringify(serializePersistedState(state, true)));
+    } catch (storageError) {
+      console.warn("Failed to persist state:", storageError);
+    }
+  }
+}
+
+export async function loadPersistedState(
+  storage: StorageLike | null,
+  options?: PersistedStateOptions,
+): Promise<PersistedState | null> {
+  const key = getStateKey(options);
+  const textStore = getTextStore(options);
   if (!storage) {
     return null;
   }
@@ -101,14 +215,13 @@ export function loadPersistedState(
     if (!isRecord(parsed) || parsed.version !== STORAGE_VERSION) {
       return null;
     }
-    const leftEncoding = normalizeEncoding(parsed.leftEncoding, "auto");
-    const rightEncoding = normalizeEncoding(parsed.rightEncoding, "auto");
-    return {
+    const textStorageMode = normalizeTextStorageMode(parsed.textStorage);
+    const state: PersistedState = {
       version: STORAGE_VERSION,
       leftText: toStringOrEmpty(parsed.leftText),
       rightText: toStringOrEmpty(parsed.rightText),
-      leftEncoding,
-      rightEncoding,
+      leftEncoding: normalizeEncoding(parsed.leftEncoding, "auto"),
+      rightEncoding: normalizeEncoding(parsed.rightEncoding, "auto"),
       scrollSync: toBoolean(parsed.scrollSync, true),
       foldEnabled: toBoolean(parsed.foldEnabled, false),
       anchorPanelCollapsed: toBoolean(parsed.anchorPanelCollapsed, false),
@@ -116,6 +229,26 @@ export function loadPersistedState(
       leftSegments: normalizeSegments(parsed.leftSegments),
       rightSegments: normalizeSegments(parsed.rightSegments),
     };
+    if (!textStore.isAvailable) {
+      return state;
+    }
+    const hasInlineText = state.leftText.length > 0 || state.rightText.length > 0;
+    if (textStorageMode === "inline" || (textStorageMode === null && hasInlineText)) {
+      await persistSnapshot(storage, state, key, textStore);
+      return state;
+    }
+    let hydrated = state;
+    let hydratedFromTextStore = false;
+    try {
+      hydrated = await readPersistedTexts(state, key, textStore);
+      hydratedFromTextStore = true;
+    } catch (error) {
+      console.warn("Failed to hydrate persisted state from IndexedDB:", error);
+    }
+    if (hydratedFromTextStore && textStorageMode !== "indexeddb") {
+      await persistSnapshot(storage, hydrated, key, textStore);
+    }
+    return hydrated;
   } catch (error) {
     console.warn("Failed to parse persisted state:", error);
     return null;
@@ -125,30 +258,55 @@ export function loadPersistedState(
 export function savePersistedState(
   storage: StorageLike | null,
   state: PersistedState,
-  key = STORAGE_KEY,
-): void {
+  options?: PersistedStateOptions,
+): Promise<void> {
+  const key = getStateKey(options);
+  const textStore = getTextStore(options);
   if (!storage) {
-    return;
+    return Promise.resolve();
   }
-  try {
-    storage.setItem(key, JSON.stringify(state));
-  } catch (error) {
-    console.warn("Failed to persist state:", error);
+  if (!textStore.isAvailable) {
+    try {
+      storage.setItem(key, JSON.stringify(serializePersistedState(state, true)));
+    } catch (error) {
+      console.warn("Failed to persist state:", error);
+    }
+    return Promise.resolve();
   }
+  return enqueueSave(() => persistSnapshot(storage, state, key, textStore));
 }
 
 export function clearPersistedState(
   storage: StorageLike | null,
-  key = STORAGE_KEY,
-): void {
+  options?: PersistedStateOptions,
+): Promise<void> {
+  const key = getStateKey(options);
+  const textStore = getTextStore(options);
   if (!storage) {
-    return;
+    return Promise.resolve();
   }
-  try {
-    storage.removeItem(key);
-  } catch (error) {
-    console.warn("Failed to clear persisted state:", error);
+  const clearLocalStorage = () => {
+    try {
+      storage.removeItem(key);
+    } catch (error) {
+      console.warn("Failed to clear persisted state:", error);
+    }
+  };
+  if (!textStore.isAvailable) {
+    clearLocalStorage();
+    return Promise.resolve();
   }
+  return enqueueSave(async () => {
+    try {
+      await Promise.all([
+        textStore.delete(getPersistedTextKey(key, "left")),
+        textStore.delete(getPersistedTextKey(key, "right")),
+      ]);
+    } catch (error) {
+      console.warn("Failed to clear persisted state from IndexedDB:", error);
+    }
+    clearLocalStorage();
+  });
 }
 
 type PersistSchedulerOptions = {
@@ -156,6 +314,7 @@ type PersistSchedulerOptions = {
   getState: () => PersistedState;
   key?: string;
   delayMs?: number;
+  textStore?: TextStore;
 };
 
 export function createPersistScheduler(options: PersistSchedulerOptions): {
@@ -163,12 +322,20 @@ export function createPersistScheduler(options: PersistSchedulerOptions): {
   flush: () => void;
   cancel: () => void;
 } {
-  const { storage, getState, key = STORAGE_KEY, delayMs = 200 } = options;
+  const {
+    storage,
+    getState,
+    key = STORAGE_KEY,
+    delayMs = 200,
+    textStore,
+  } = options;
   let timer: ReturnType<typeof setTimeout> | null = null;
 
-  const saveNow = () => {
-    savePersistedState(storage, getState(), key);
-  };
+  const saveNow = () =>
+    savePersistedState(storage, getState(), {
+      key,
+      textStore,
+    });
 
   const schedule = () => {
     if (timer) {
@@ -176,7 +343,7 @@ export function createPersistScheduler(options: PersistSchedulerOptions): {
     }
     timer = setTimeout(() => {
       timer = null;
-      saveNow();
+      void saveNow();
     }, delayMs);
   };
 
@@ -185,7 +352,7 @@ export function createPersistScheduler(options: PersistSchedulerOptions): {
       clearTimeout(timer);
       timer = null;
     }
-    saveNow();
+    void saveNow();
   };
 
   const cancel = () => {
