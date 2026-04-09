@@ -269,6 +269,68 @@ describe("writeTextToFileHandle", () => {
       }),
     ).rejects.toThrow("shift_jis");
   });
+
+  it("does not partially write when an unsupported character is present", async () => {
+    const written: number[][] = [];
+    const handle = {
+      name: "left.txt",
+      async createWritable() {
+        return {
+          async write(data: BufferSource) {
+            written.push(Array.from(new Uint8Array(data as ArrayBufferLike)));
+          },
+          async close() {
+            return undefined;
+          },
+        };
+      },
+    };
+
+    await expect(
+      writeTextToFileHandle(handle, "あ🙂い", {
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      }),
+    ).rejects.toThrow("shift_jis");
+
+    expect(written).toEqual([]);
+  });
+
+  it("aborts the writable stream when a write fails", async () => {
+    const written: number[][] = [];
+    let aborted = false;
+    let closed = false;
+    const handle = {
+      name: "left.txt",
+      async createWritable() {
+        return {
+          async write(data: BufferSource) {
+            written.push(Array.from(new Uint8Array(data as ArrayBufferLike)));
+            throw new Error("disk full");
+          },
+          async abort() {
+            aborted = true;
+          },
+          async close() {
+            closed = true;
+          },
+        };
+      },
+    };
+
+    await expect(
+      writeTextToFileHandle(handle, "a\nb", {
+        resolvedEncoding: "utf-8",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      }),
+    ).rejects.toThrow("disk full");
+
+    expect(written).toEqual([[0x61, 0x0a, 0x62]]);
+    expect(aborted).toBe(true);
+    expect(closed).toBe(false);
+  });
 });
 
 describe("saveTextWithPaneTarget", () => {
@@ -357,5 +419,36 @@ describe("saveTextWithPaneTarget", () => {
     );
 
     expect(written).toEqual([0xa4, 0xa2, 0x0a, 0xa4, 0xa4]);
+  });
+
+  it("keeps large Shift_JIS saves byte-identical across chunk boundaries", async () => {
+    const written: number[] = [];
+    const sourceText = "あ".repeat(9000);
+    const targetMeta = describeDecodedFileForWriteback(toBuffer([0x82, 0xa0]), "shift_jis");
+
+    await saveTextWithPaneTarget(
+      {
+        handle: {
+          name: "large-sjis.txt",
+          async createWritable() {
+            return {
+              async write(data: BufferSource) {
+                written.push(...Array.from(new Uint8Array(data as ArrayBufferLike)));
+              },
+              async close() {
+                return undefined;
+              },
+            };
+          },
+        },
+        fileName: "large-sjis.txt",
+        ...targetMeta,
+      },
+      sourceText,
+    );
+
+    expect(written).toHaveLength(sourceText.length * 2);
+    expect(written.slice(0, 6)).toEqual([0x82, 0xa0, 0x82, 0xa0, 0x82, 0xa0]);
+    expect(written.slice(-6)).toEqual([0x82, 0xa0, 0x82, 0xa0, 0x82, 0xa0]);
   });
 });
