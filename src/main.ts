@@ -21,6 +21,18 @@ import {
   buildDecodedFiles,
   type FileBytes,
 } from "./file/decodedFiles";
+import {
+  collectDroppedFiles,
+  describeDecodedFileForWriteback,
+  getPaneWriteAvailability,
+  pickFilesWithHandles,
+  supportsFileSystemAccess,
+  writeTextToFileHandle,
+  type FileLineEnding,
+  type FileSystemAccessWindow,
+  type ReadableWritableFileHandle,
+  type ResolvedFileEncoding,
+} from "./file/writeback";
 import { reorderRazorPairs } from "./file/fileOrder";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
@@ -323,6 +335,8 @@ const leftFileInput = getRequiredElement<HTMLInputElement>("#left-file");
 const rightFileInput = getRequiredElement<HTMLInputElement>("#right-file");
 const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button");
 const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
+const leftSaveFileButton = getRequiredElement<HTMLButtonElement>("#left-save-file");
+const rightSaveFileButton = getRequiredElement<HTMLButtonElement>("#right-save-file");
 const highlightToggleButton = document.querySelector<HTMLButtonElement>(
   "#highlight-toggle-button",
 );
@@ -668,8 +682,8 @@ function applyWorkspaceState(
         applyText: true,
       });
       refreshSyntaxHighlight();
-      leftFileBytes.length = 0;
-      rightFileBytes.length = 0;
+      clearPaneSourceState("left");
+      clearPaneSourceState("right");
       clearPaneMessage(leftMessage);
       clearPaneMessage(rightMessage);
       clearPaneSummary(storage, "left");
@@ -744,8 +758,8 @@ function switchWorkspaceById(
           applyText: false,
         });
         refreshSyntaxHighlight();
-        leftFileBytes.length = 0;
-        rightFileBytes.length = 0;
+        clearPaneSourceState("left");
+        clearPaneSourceState("right");
         clearPaneMessage(leftMessage);
         clearPaneMessage(rightMessage);
         clearPaneSummary(storage, "left");
@@ -1284,6 +1298,34 @@ const leftFileBytes: FileBytes[] = [];
 const rightFileBytes: FileBytes[] = [];
 let suppressLeftFileBytesClear = false;
 let suppressRightFileBytesClear = false;
+type PaneSaveTarget = {
+  handle: ReadableWritableFileHandle;
+  fileName: string;
+  resolvedEncoding: ResolvedFileEncoding;
+  includeUtf8Bom: boolean;
+  lineEnding: FileLineEnding;
+};
+const paneSaveTargets: Record<"left" | "right", PaneSaveTarget | null> = {
+  left: null,
+  right: null,
+};
+const paneSavePending: Record<"left" | "right", boolean> = {
+  left: false,
+  right: false,
+};
+
+function clonePaneSaveTarget(target: PaneSaveTarget | null): PaneSaveTarget | null {
+  if (!target) {
+    return null;
+  }
+  return {
+    handle: target.handle,
+    fileName: target.fileName,
+    resolvedEncoding: target.resolvedEncoding,
+    includeUtf8Bom: target.includeUtf8Bom,
+    lineEnding: target.lineEnding,
+  };
+}
 
 function withProgrammaticEdit(
   side: "left" | "right",
@@ -1535,6 +1577,8 @@ function restoreClearUndoState(): void {
     applyWorkspacePaneSnapshot("left", clearUndoState.left.pane, { applyText: false });
     applyWorkspacePaneSnapshot("right", clearUndoState.right.pane, { applyText: false });
   }
+  setPaneSaveTarget("left", clearUndoState.left.saveTarget);
+  setPaneSaveTarget("right", clearUndoState.right.saveTarget);
   restoreAnchorsFromSnapshot(clearUndoState.snapshot);
   clearUndoState.status = "restored";
 }
@@ -1543,6 +1587,7 @@ function clearAfterRedoPane(side: "left" | "right"): void {
   const segments = getPaneSegments(side);
   const editor = getPaneEditor(side);
   segments.length = 0;
+  clearPaneSourceState(side);
   updateLineNumbers(editor, segments);
   updateFileCards(side, []);
   setGoToLineSelection(side, null, { persist: false });
@@ -1568,6 +1613,8 @@ function clearAfterRedo(): void {
   }
   leftSegments.length = 0;
   rightSegments.length = 0;
+  clearPaneSourceState("left");
+  clearPaneSourceState("right");
   updateLineNumbers(leftEditor, leftSegments);
   updateLineNumbers(rightEditor, rightSegments);
   updateFileCards("left", []);
@@ -1960,7 +2007,7 @@ leftEditor.onDidChangeModelContent((event) => {
   }
   updateSegmentsForChanges(leftSegments, event.changes);
   updateLineNumbers(leftEditor, leftSegments);
-  leftFileBytes.length = 0;
+  clearPaneRawFiles("left");
   schedulePersistAll();
   scheduleRecalc();
 });
@@ -1970,7 +2017,7 @@ rightEditor.onDidChangeModelContent((event) => {
   }
   updateSegmentsForChanges(rightSegments, event.changes);
   updateLineNumbers(rightEditor, rightSegments);
-  rightFileBytes.length = 0;
+  clearPaneRawFiles("right");
   schedulePersistAll();
   scheduleRecalc();
 });
@@ -2057,11 +2104,11 @@ async function appendFilesToEditor(
   segments: LineSegment[],
   rawFiles: FileBytes[],
   side: "left" | "right",
-) {
+): Promise<boolean> {
   const fileList = reorderRazorPairs(Array.from(files));
   if (fileList.length === 0) {
     setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
-    return;
+    return false;
   }
 
   let currentFileName = "";
@@ -2100,7 +2147,7 @@ async function appendFilesToEditor(
     }
     const detail = formatFileLoadError(error, currentFileName);
     setPaneMessage(messageTarget, detail, true);
-    return;
+    return false;
   }
 
   clearPaneMessage(messageTarget);
@@ -2110,6 +2157,7 @@ async function appendFilesToEditor(
     setGoToLineSelection(side, loadedNames[0] ?? null);
   }
   runPostLoadTasks([recalcDiff, schedulePersist, scheduleWorkspacePersist]);
+  return true;
 }
 
 function bindDropZone(
@@ -2148,28 +2196,67 @@ function bindDropZone(
     event.stopPropagation();
     zone.classList.remove("is-dragover");
 
-    const files = event.dataTransfer?.files;
     if (
       event.dataTransfer?.types.includes("application/x-favorite-path") ||
       event.dataTransfer?.types.includes("application/x-workspace")
     ) {
       return;
     }
-    if (!files || files.length === 0) {
-      setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
-      return;
-    }
+    const dataTransfer = event.dataTransfer;
+    void (async () => {
+      const dropped = await collectDroppedFiles(dataTransfer);
+      if (dropped.length === 0) {
+        setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
+        return;
+      }
 
-    const encoding = encodingSelect.value as FileEncoding;
-    void appendFilesToEditor(
-      files,
-      encoding,
-      editor,
-      messageTarget,
-      segments,
-      rawFiles,
-      side,
-    );
+      const encoding = encodingSelect.value as FileEncoding;
+      const loaded = await appendFilesToEditor(
+        dropped.map(({ file }) => file),
+        encoding,
+        editor,
+        messageTarget,
+        segments,
+        rawFiles,
+        side,
+      );
+      if (!loaded) {
+        return;
+      }
+
+      const singleDropped = dropped[0];
+      if (
+        dropped.length === 1 &&
+        getPaneFileCount(side) === 1 &&
+        singleDropped?.handle
+      ) {
+        try {
+          const target = await buildPaneSaveTarget(
+            singleDropped.handle,
+            singleDropped.file,
+            encoding,
+          );
+          setPaneSaveTarget(side, target);
+        } catch (error) {
+          if (shouldLogFileLoadError(error)) {
+            console.error(error);
+          } else {
+            console.warn("Dropped file writeback metadata could not be prepared.");
+          }
+          clearPaneSaveTarget(side);
+        }
+        return;
+      }
+
+      clearPaneSaveTarget(side);
+    })().catch((error) => {
+      if (shouldLogFileLoadError(error)) {
+        console.error(error);
+      } else {
+        console.warn("Dropped file load failed without details.");
+      }
+      setPaneMessage(messageTarget, formatFileLoadError(error), true);
+    });
   });
 }
 
@@ -2186,6 +2273,7 @@ const paneBindings = {
     fileCards: leftFileCards,
     fileInput: leftFileInput,
     fileButton: leftFileButton,
+    saveButton: leftSaveFileButton,
   },
   right: {
     pane: rightPane,
@@ -2197,6 +2285,7 @@ const paneBindings = {
     fileCards: rightFileCards,
     fileInput: rightFileInput,
     fileButton: rightFileButton,
+    saveButton: rightSaveFileButton,
   },
 } as const;
 const paneEntries = Object.entries(paneBindings) as [
@@ -2204,6 +2293,186 @@ const paneEntries = Object.entries(paneBindings) as [
   (typeof paneBindings)["left"],
 ][];
 const paneSides = paneEntries.map(([side]) => side);
+const hasFileSystemAccess = supportsFileSystemAccess(window as FileSystemAccessWindow);
+
+function getPaneFileCount(side: "left" | "right"): number {
+  return listLoadedFileNames(paneBindings[side].segments).length;
+}
+
+function updatePaneSaveButton(side: "left" | "right"): void {
+  const button = paneBindings[side].saveButton;
+  button.textContent = "保存";
+  if (paneSavePending[side]) {
+    button.disabled = true;
+    button.title = "保存中です。";
+    button.setAttribute("aria-busy", "true");
+    return;
+  }
+
+  const target = paneSaveTargets[side];
+  const availability = getPaneWriteAvailability({
+    hasFileSystemAccess,
+    fileCount: getPaneFileCount(side),
+    selectedEncoding: paneBindings[side].encodingSelect.value as FileEncoding,
+    target,
+  });
+  button.disabled = !availability.enabled;
+  button.removeAttribute("aria-busy");
+  if (availability.enabled && target) {
+    button.title = `${target.fileName} を保存`;
+    return;
+  }
+  button.title = availability.reason ?? "";
+}
+
+function setPaneSaveTarget(
+  side: "left" | "right",
+  target: PaneSaveTarget | null,
+): void {
+  paneSaveTargets[side] = clonePaneSaveTarget(target);
+  updatePaneSaveButton(side);
+}
+
+function clearPaneSaveTarget(side: "left" | "right"): void {
+  paneSaveTargets[side] = null;
+  updatePaneSaveButton(side);
+}
+
+function clearPaneRawFiles(side: "left" | "right"): void {
+  paneBindings[side].rawFiles.length = 0;
+}
+
+function clearPaneSourceState(side: "left" | "right"): void {
+  clearPaneRawFiles(side);
+  clearPaneSaveTarget(side);
+}
+
+function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException) {
+    return error.name === "AbortError";
+  }
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "name" in error &&
+    (error as { name?: unknown }).name === "AbortError"
+  );
+}
+
+async function buildPaneSaveTarget(
+  handle: ReadableWritableFileHandle,
+  file: File,
+  encoding: FileEncoding,
+): Promise<PaneSaveTarget> {
+  const metadata = describeDecodedFileForWriteback(await file.arrayBuffer(), encoding);
+  return {
+    handle,
+    fileName: file.name,
+    resolvedEncoding: metadata.resolvedEncoding,
+    includeUtf8Bom: metadata.includeUtf8Bom,
+    lineEnding: metadata.lineEnding,
+  };
+}
+
+async function openPaneFiles(side: "left" | "right"): Promise<void> {
+  const config = paneBindings[side];
+  if (!hasFileSystemAccess) {
+    config.fileInput.click();
+    return;
+  }
+
+  try {
+    const picked = await pickFilesWithHandles(window as FileSystemAccessWindow, {
+      multiple: true,
+    });
+    if (picked.files.length === 0) {
+      return;
+    }
+
+    const encoding = config.encodingSelect.value as FileEncoding;
+    const loaded = await appendFilesToEditor(
+      picked.files,
+      encoding,
+      config.editor,
+      config.message,
+      config.segments,
+      config.rawFiles,
+      side,
+    );
+    if (!loaded) {
+      return;
+    }
+
+    if (picked.files.length === 1 && getPaneFileCount(side) === 1) {
+      try {
+        const target = await buildPaneSaveTarget(
+          picked.handles[0],
+          picked.files[0],
+          encoding,
+        );
+        setPaneSaveTarget(side, target);
+      } catch (error) {
+        if (shouldLogFileLoadError(error)) {
+          console.error(error);
+        } else {
+          console.warn("File writeback metadata could not be prepared.");
+        }
+        clearPaneSaveTarget(side);
+      }
+      return;
+    }
+
+    clearPaneSaveTarget(side);
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    if (shouldLogFileLoadError(error)) {
+      console.error(error);
+    } else {
+      console.warn("File picker failed without details.");
+    }
+    toast.show("ファイルを開けませんでした", "error");
+  }
+}
+
+async function savePaneToFile(side: "left" | "right"): Promise<void> {
+  if (paneSavePending[side]) {
+    return;
+  }
+  const target = paneSaveTargets[side];
+  const availability = getPaneWriteAvailability({
+    hasFileSystemAccess,
+    fileCount: getPaneFileCount(side),
+    selectedEncoding: paneBindings[side].encodingSelect.value as FileEncoding,
+    target,
+  });
+  if (!availability.enabled || !target) {
+    toast.show(availability.reason ?? "保存できませんでした。", "error");
+    updatePaneSaveButton(side);
+    return;
+  }
+
+  paneSavePending[side] = true;
+  updatePaneSaveButton(side);
+  try {
+    await writeTextToFileHandle(target.handle, paneBindings[side].editor.getValue(), {
+      resolvedEncoding: target.resolvedEncoding,
+      includeUtf8Bom: target.includeUtf8Bom,
+      lineEnding: target.lineEnding,
+    });
+    toast.show(`${target.fileName} を保存しました。`);
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    console.error(error);
+    toast.show(`${target.fileName} を保存できませんでした。`, "error");
+  } finally {
+    paneSavePending[side] = false;
+    updatePaneSaveButton(side);
+  }
+}
 
 const initialWorkspace = getSelectedWorkspace(workspaceState);
 if (initialWorkspace) {
@@ -2510,7 +2779,6 @@ paneSides.forEach((side) => {
 
 function bindFilePicker(
   input: HTMLInputElement,
-  button: HTMLButtonElement,
   editor: monaco.editor.IStandaloneCodeEditor,
   messageTarget: HTMLDivElement,
   encodingSelect: HTMLSelectElement,
@@ -2518,25 +2786,19 @@ function bindFilePicker(
   rawFiles: FileBytes[],
   side: "left" | "right",
 ) {
-  button.addEventListener("click", () => {
-    input.click();
-  });
-
   input.addEventListener("change", () => {
     const files = input.files;
     if (!files || files.length === 0) {
       return;
     }
     const encoding = encodingSelect.value as FileEncoding;
-    void appendFilesToEditor(
-      files,
-      encoding,
-      editor,
-      messageTarget,
-      segments,
-      rawFiles,
-      side,
-    );
+    void appendFilesToEditor(files, encoding, editor, messageTarget, segments, rawFiles, side)
+      .then((loaded) => {
+        if (!loaded) {
+          return;
+        }
+        clearPaneSaveTarget(side);
+      });
     input.value = "";
   });
 }
@@ -2544,7 +2806,6 @@ function bindFilePicker(
 paneEntries.forEach(([side, config]) => {
   bindFilePicker(
     config.fileInput,
-    config.fileButton,
     config.editor,
     config.message,
     config.encodingSelect,
@@ -2552,12 +2813,20 @@ paneEntries.forEach(([side, config]) => {
     config.rawFiles,
     side,
   );
+  config.fileButton.addEventListener("click", () => {
+    void openPaneFiles(side);
+  });
+  config.saveButton.addEventListener("click", () => {
+    void savePaneToFile(side);
+  });
+  updatePaneSaveButton(side);
 });
 
 paneEntries.forEach(([side, config]) => {
   config.encodingSelect.addEventListener("change", () => {
     const encoding = config.encodingSelect.value as FileEncoding;
     applyDecodedFiles(side, config.editor, config.segments, config.rawFiles, encoding);
+    updatePaneSaveButton(side);
   });
 });
 
@@ -2676,8 +2945,12 @@ window.addEventListener(
     }
 
     const fileOpenHandled = handleFileOpenShortcut(event, {
-      openLeft: () => leftFileInput.click(),
-      openRight: () => rightFileInput.click(),
+      openLeft: () => {
+        void openPaneFiles("left");
+      },
+      openRight: () => {
+        void openPaneFiles("right");
+      },
       getLastFocused: () => lastFocusedSide,
     });
     if (fileOpenHandled) {
@@ -2910,6 +3183,7 @@ type ClearUndoPaneState = {
   beforeVersionId: number | null;
   afterVersionId: number | null;
   pane: WorkspacePaneState;
+  saveTarget: PaneSaveTarget | null;
 };
 
 type ClearUndoState = {
@@ -4012,11 +4286,13 @@ function buildPaneClearOptions(
           beforeVersionId: getEditorAlternativeVersionId(leftEditor),
           afterVersionId: null,
           pane: collectWorkspacePaneSnapshot("left"),
+          saveTarget: clonePaneSaveTarget(paneSaveTargets.left),
         },
         right: {
           beforeVersionId: getEditorAlternativeVersionId(rightEditor),
           afterVersionId: null,
           pane: collectWorkspacePaneSnapshot("right"),
+          saveTarget: clonePaneSaveTarget(paneSaveTargets.right),
         },
         status: "armed",
         mode: "pane",
@@ -4032,6 +4308,7 @@ function buildPaneClearOptions(
         }
       }
       resetAllAnchorsAndDecorations();
+      clearPaneSourceState(side);
       updateFileCards(side, []);
       clearPaneMessage(config.message);
       clearPaneSummary(storage, side);
@@ -4248,11 +4525,13 @@ function clearAllPanes(): void {
       beforeVersionId: getEditorAlternativeVersionId(leftEditor),
       afterVersionId: null,
       pane: collectWorkspacePaneSnapshot("left"),
+      saveTarget: clonePaneSaveTarget(paneSaveTargets.left),
     },
     right: {
       beforeVersionId: getEditorAlternativeVersionId(rightEditor),
       afterVersionId: null,
       pane: collectWorkspacePaneSnapshot("right"),
+      saveTarget: clonePaneSaveTarget(paneSaveTargets.right),
     },
     status: "armed",
     mode: "all",
@@ -4263,6 +4542,8 @@ function clearAllPanes(): void {
     clearEditorsForUndo([leftEditor, rightEditor], targetEditor);
     leftSegments.length = 0;
     rightSegments.length = 0;
+    clearPaneSourceState("left");
+    clearPaneSourceState("right");
     resetAllAnchorsAndDecorations();
     updateFileCards("left", []);
     updateFileCards("right", []);

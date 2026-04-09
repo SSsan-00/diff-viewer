@@ -206,6 +206,8 @@ describe("pane action layout", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
 
+    const leftSave = doc.querySelector("#left-save-file");
+    const rightSave = doc.querySelector("#right-save-file");
     const leftCopy = doc.querySelector("#left-copy");
     const rightCopy = doc.querySelector("#right-copy");
     const leftClear = doc.querySelector("#left-clear");
@@ -221,6 +223,12 @@ describe("pane action layout", () => {
       doc.querySelectorAll("#right-pane .pane-actions > *"),
     );
 
+    expect(leftSave).toBeTruthy();
+    expect(rightSave).toBeTruthy();
+    expect((leftSave as HTMLButtonElement | null)?.disabled).toBe(true);
+    expect((rightSave as HTMLButtonElement | null)?.disabled).toBe(true);
+    expect(leftSave?.textContent?.trim()).toBe("保存");
+    expect(rightSave?.textContent?.trim()).toBe("保存");
     expect(leftCopy).toBeTruthy();
     expect(rightCopy).toBeTruthy();
     expect(leftCopy?.textContent?.trim()).toBe("ソースコピー");
@@ -231,6 +239,8 @@ describe("pane action layout", () => {
     expect(rightBar).toBeTruthy();
     expect(leftBar?.classList.contains("favorite-paths-list")).toBe(true);
     expect(rightBar?.classList.contains("favorite-paths-list")).toBe(true);
+    expect(leftActions.indexOf(leftSave!)).toBeLessThan(leftActions.indexOf(leftCopy!));
+    expect(rightActions.indexOf(rightSave!)).toBeLessThan(rightActions.indexOf(rightCopy!));
     expect(leftActions.indexOf(leftCopy!)).toBeLessThan(leftActions.indexOf(leftClear!));
     expect(rightActions.indexOf(rightCopy!)).toBeLessThan(rightActions.indexOf(rightClear!));
   });

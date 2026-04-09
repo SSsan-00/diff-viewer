@@ -233,6 +233,15 @@ export const APP_TEMPLATE = `
           </div>
           <div class="pane-actions">
             <button
+              id="left-save-file"
+              class="button button-subtle pane-save"
+              type="button"
+              disabled
+              aria-label="左のファイルを保存"
+            >
+              保存
+            </button>
+            <button
               id="left-copy"
               class="button button-subtle pane-copy"
               type="button"
@@ -354,6 +363,15 @@ export const APP_TEMPLATE = `
             </div>
           </div>
           <div class="pane-actions">
+            <button
+              id="right-save-file"
+              class="button button-subtle pane-save"
+              type="button"
+              disabled
+              aria-label="右のファイルを保存"
+            >
+              保存
+            </button>
             <button
               id="right-copy"
               class="button button-subtle pane-copy"
