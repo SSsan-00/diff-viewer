@@ -52,6 +52,10 @@ export type PaneWriteTarget = {
   lineEnding: FileLineEnding;
 };
 
+export type WritablePaneWriteTarget = Omit<PaneWriteTarget, "handle"> & {
+  handle: WritableFileHandle;
+};
+
 export type PaneWriteAvailability = {
   enabled: boolean;
   reason: string | null;
@@ -496,4 +500,15 @@ export async function writeTextToFileHandle(
     }
     throw error;
   }
+}
+
+export async function saveTextWithPaneTarget(
+  target: WritablePaneWriteTarget,
+  text: string,
+): Promise<void> {
+  await writeTextToFileHandle(target.handle, text, {
+    resolvedEncoding: target.resolvedEncoding,
+    includeUtf8Bom: target.includeUtf8Bom,
+    lineEnding: target.lineEnding,
+  });
 }

@@ -4,6 +4,7 @@ import {
   describeDecodedFileForWriteback,
   encodeUtf8TextForWriteback,
   getPaneWriteAvailability,
+  saveTextWithPaneTarget,
   writeTextToFileHandle,
 } from "./writeback";
 
@@ -267,5 +268,94 @@ describe("writeTextToFileHandle", () => {
         lineEnding: "\n",
       }),
     ).rejects.toThrow("shift_jis");
+  });
+});
+
+describe("saveTextWithPaneTarget", () => {
+  it("preserves UTF-8 BOM and CRLF on the save-button path", async () => {
+    const original = toBuffer([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a, 0x62]);
+    const targetMeta = describeDecodedFileForWriteback(original, "auto");
+    const written: number[] = [];
+
+    await saveTextWithPaneTarget(
+      {
+        handle: {
+          name: "utf8.txt",
+          async createWritable() {
+            return {
+              async write(data: BufferSource) {
+                written.push(...Array.from(new Uint8Array(data as ArrayBufferLike)));
+              },
+              async close() {
+                return undefined;
+              },
+            };
+          },
+        },
+        fileName: "utf8.txt",
+        ...targetMeta,
+      },
+      "a\nb",
+    );
+
+    expect(written).toEqual([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a, 0x62]);
+  });
+
+  it("preserves Shift_JIS bytes on the save-button path", async () => {
+    const original = toBuffer([0x82, 0xa0, 0x0d, 0x0a, 0xb2]);
+    const targetMeta = describeDecodedFileForWriteback(original, "shift_jis");
+    const written: number[] = [];
+
+    await saveTextWithPaneTarget(
+      {
+        handle: {
+          name: "sjis.txt",
+          async createWritable() {
+            return {
+              async write(data: BufferSource) {
+                written.push(...Array.from(new Uint8Array(data as ArrayBufferLike)));
+              },
+              async close() {
+                return undefined;
+              },
+            };
+          },
+        },
+        fileName: "sjis.txt",
+        ...targetMeta,
+      },
+      "あ\nｲ",
+    );
+
+    expect(written).toEqual([0x82, 0xa0, 0x0d, 0x0a, 0xb2]);
+  });
+
+  it("preserves EUC-JP bytes on the save-button path", async () => {
+    const original = toBuffer([0xa4, 0xa2, 0x0a, 0xa4, 0xa4]);
+    const targetMeta = describeDecodedFileForWriteback(original, "euc-jp");
+    const written: number[] = [];
+
+    await saveTextWithPaneTarget(
+      {
+        handle: {
+          name: "euc.txt",
+          async createWritable() {
+            return {
+              async write(data: BufferSource) {
+                written.push(...Array.from(new Uint8Array(data as ArrayBufferLike)));
+              },
+              async close() {
+                return undefined;
+              },
+            };
+          },
+        },
+        fileName: "euc.txt",
+        ...targetMeta,
+      },
+      "あ\nい",
+    );
+
+    expect(written).toEqual([0xa4, 0xa2, 0x0a, 0xa4, 0xa4]);
   });
 });

@@ -26,8 +26,8 @@ import {
   describeDecodedFileForWriteback,
   getPaneWriteAvailability,
   pickFilesWithHandles,
+  saveTextWithPaneTarget,
   supportsFileSystemAccess,
-  writeTextToFileHandle,
   type FileLineEnding,
   type FileSystemAccessWindow,
   type ReadableWritableFileHandle,
@@ -2456,11 +2456,7 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
   paneSavePending[side] = true;
   updatePaneSaveButton(side);
   try {
-    await writeTextToFileHandle(target.handle, paneBindings[side].editor.getValue(), {
-      resolvedEncoding: target.resolvedEncoding,
-      includeUtf8Bom: target.includeUtf8Bom,
-      lineEnding: target.lineEnding,
-    });
+    await saveTextWithPaneTarget(target, paneBindings[side].editor.getValue());
     toast.show(`${target.fileName} を保存しました。`);
   } catch (error) {
     if (isAbortError(error)) {

@@ -190539,6 +190539,14 @@ async function writeTextToFileHandle(handle, text2, options) {
     }
 }
 
+async function saveTextWithPaneTarget(target, text2) {
+    await writeTextToFileHandle(target.handle, text2, {
+        resolvedEncoding: target.resolvedEncoding,
+        includeUtf8Bom: target.includeUtf8Bom,
+        lineEnding: target.lineEnding
+    });
+}
+
 function getBaseName(name, suffix) {
     return name.slice(0, -suffix.length);
 }
@@ -196629,11 +196637,7 @@ async function savePaneToFile(side) {
     paneSavePending[side] = true;
     updatePaneSaveButton(side);
     try {
-        await writeTextToFileHandle(target.handle, paneBindings[side].editor.getValue(), {
-            resolvedEncoding: target.resolvedEncoding,
-            includeUtf8Bom: target.includeUtf8Bom,
-            lineEnding: target.lineEnding
-        });
+        await saveTextWithPaneTarget(target, paneBindings[side].editor.getValue());
         toast.show(`${target.fileName} を保存しました。`);
     } catch (error) {
         if (isAbortError(error)) {
