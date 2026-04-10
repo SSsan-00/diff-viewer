@@ -11,8 +11,20 @@ const HIGHLIGHT_ICON_SVG = highlightIconSvgRaw
   .replace(/\sstyle="[^"]*"/g, "")
   .trim();
 
-export const APP_TEMPLATE = `
-  <div class="app">
+export type AppTemplateOptions = {
+  writebackEnabled?: boolean;
+};
+
+export function createAppTemplate(options: AppTemplateOptions = {}): string {
+  const writebackEnabled = options.writebackEnabled ?? false;
+  const saveButtonHiddenAttrs = writebackEnabled
+    ? ""
+    : `
+              hidden
+              aria-hidden="true"`;
+
+  return `
+  <div class="app" data-writeback="${writebackEnabled ? "on" : "off"}">
     <header class="toolbar">
       <div class="toolbar-left">
         <div class="workspace">
@@ -236,7 +248,7 @@ export const APP_TEMPLATE = `
               id="left-save-file"
               class="button button-subtle pane-save"
               type="button"
-              disabled
+              disabled${saveButtonHiddenAttrs}
               aria-label="左のファイルを保存"
             >
               保存
@@ -367,7 +379,7 @@ export const APP_TEMPLATE = `
               id="right-save-file"
               class="button button-subtle pane-save"
               type="button"
-              disabled
+              disabled${saveButtonHiddenAttrs}
               aria-label="右のファイルを保存"
             >
               保存
@@ -486,3 +498,6 @@ export const APP_TEMPLATE = `
     <div id="toast-root" class="toast-root" aria-live="polite"></div>
   </div>
 `;
+}
+
+export const APP_TEMPLATE = createAppTemplate();

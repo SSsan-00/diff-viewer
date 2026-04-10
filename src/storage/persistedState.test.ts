@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { JSDOM } from "jsdom";
+import { getDiffBlockStarts } from "../diffEngine/diffBlocks";
+import { diffLines } from "../diffEngine/diffLines";
+import { pairReplace } from "../diffEngine/pairReplace";
 import {
   STORAGE_KEY,
   createPersistScheduler,
@@ -111,9 +114,55 @@ describe("persisted state", () => {
 
     expect(restored?.leftText).toBe("legacy left");
     expect(restored?.rightText).toBe("legacy right");
+    expect(raw.leftText).toBe("legacy left");
+    expect(raw.rightText).toBe("legacy right");
+    expect(raw.textStorage).toBe("indexeddb");
+    expect(textStore.texts.size).toBe(2);
+  });
+
+  it("restores small text from localStorage fallback when IndexedDB text is missing", async () => {
+    const storage = createStorage();
+    const textStore = createTextStore();
+
+    await savePersistedState(
+      storage,
+      createState({ leftText: "left fallback", rightText: "right fallback" }),
+      { key: STORAGE_KEY, textStore },
+    );
+    textStore.texts.clear();
+
+    const restored = await loadPersistedState(storage, {
+      key: STORAGE_KEY,
+      textStore,
+    });
+
+    expect(restored?.leftText).toBe("left fallback");
+    expect(restored?.rightText).toBe("right fallback");
+    expect(
+      getDiffBlockStarts(
+        pairReplace(diffLines(restored?.leftText ?? "", restored?.rightText ?? "")),
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("does not keep large text inline in localStorage fallback", async () => {
+    const storage = createStorage();
+    const textStore = createTextStore();
+    const largeText = "line\n".repeat(60000);
+
+    await savePersistedState(
+      storage,
+      createState({ leftText: largeText, rightText: largeText }),
+      { key: STORAGE_KEY, textStore },
+    );
+
+    const raw = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+
     expect(raw.leftText).toBe("");
     expect(raw.rightText).toBe("");
-    expect(textStore.texts.size).toBe(2);
+    expect(raw.textStorage).toBe("indexeddb");
+    expect(textStore.texts.get(`${STORAGE_KEY}:text:left`)).toBe(largeText);
+    expect(textStore.texts.get(`${STORAGE_KEY}:text:right`)).toBe(largeText);
   });
 
   it("prefers inline text over stale text-store data after fallback persistence", async () => {

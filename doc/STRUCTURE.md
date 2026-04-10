@@ -42,6 +42,8 @@
 ### src/
 
 - `src/main.ts` アプリ起点。Monaco 初期化、ショートカット/フォーカス管理、差分再計算、アンカー描画、読み込み/保存を統合。`src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` を束ねる。
+- `src/appMode.ts` URL パラメータから保存あり/保存なし画面の起動モードを解決する。export: `resolveAppMode`。
+- `src/appMode.test.ts` 保存あり/保存なしモード解決のテスト。
 - `src/style.css` 画面全体のレイアウト/配色/差分ハイライト/アンカー/境界表示のスタイル。ワークスペース/パス登録UIのパネルも定義する。`src/main.ts` から読み込む。
 - `src/licenses.ts` 依存ライセンス本文データ。export: `THIRD_PARTY_LICENSES`（`src/main.ts` から参照）。
 - `src/smoke.test.ts` Vitest の起動確認用スモークテスト。
@@ -99,10 +101,12 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/file/postLoad.test.ts` post-load 実行のテスト。
 - `src/file/language.ts` ファイル名から Monaco の言語IDを推定し、ペイン単位の言語を決定。exports: `detectLanguageFromFileName`, `inferPaneLanguage`。
 - `src/file/language.test.ts` 拡張子→言語推定のテスト。
+- `src/file/writeback.ts` 単一ファイル書き戻しの可否判定、File System Access API 経由の読み込みハンドル取得、文字コード/改行/BOMを維持した保存処理を担当。exports: `pickFilesWithHandles`, `collectDroppedFiles`, `getPaneWriteAvailability`, `saveTextWithPaneTarget` ほか。
+- `src/file/writeback.test.ts` 保存可否、UTF-8/Shift_JIS/EUC-JP の安全な書き戻し、破損防止のテスト。
 
 ### src/ui/
 
-- `src/ui/template.ts` アプリの HTML テンプレート定義。export: `APP_TEMPLATE`。
+- `src/ui/template.ts` アプリの HTML テンプレート定義。保存あり/保存なし画面のテンプレート切替を含む。exports: `createAppTemplate`, `APP_TEMPLATE`。
 - `src/ui/template.test.ts` テンプレート内の UI 配置テスト。
 - `src/ui/paneClear.ts` ペイン別クリアボタンのバインド。exports: `clearPaneState`, `bindPaneClearButton`。
 - `src/ui/paneClear.test.ts` クリア挙動のテスト。
@@ -219,9 +223,9 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 - `src/storage/favoritePaths.ts` パス登録の永続化（左右別 + ワークスペース別キー・上限10件・ロード時補正・旧キー移行）。exports: `loadFavoritePaths`, `addFavoritePath`, `removeFavoritePath`, `moveFavoritePath` ほか。
 - `src/storage/favoritePaths.test.ts` パス登録保存のテスト。
-- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト/segments/選択/カーソル/スクロール・アンカー状態）。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`, `setWorkspaceTexts`, `setWorkspacePaneState`, `setWorkspaceAnchors`。
+- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト/segments/選択/カーソル/スクロール・アンカー状態）。本文は IndexedDB を主ストアとし、小さい本文は localStorage に復元用フォールバックも残す。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`, `setWorkspaceTexts`, `setWorkspacePaneState`, `setWorkspaceAnchors`。
 - `src/storage/workspaces.test.ts` ワークスペース保存のテスト。
-- `src/storage/persistedState.ts` LocalStorage 保存/復元とスケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
+- `src/storage/persistedState.ts` UI状態の localStorage 保存/復元と本文の IndexedDB 保存、復元用フォールバック、スケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。
 - `src/storage/paneSummary.ts` 読み込み完了サマリの保存/復元。exports: `loadPaneSummary`, `savePaneSummary`, `clearPaneSummary`。
 - `src/storage/paneSummary.test.ts` サマリ保存/復元のテスト。

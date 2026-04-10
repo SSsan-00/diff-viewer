@@ -1,8 +1,32 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
-import { APP_TEMPLATE } from "./template";
+import { APP_TEMPLATE, createAppTemplate } from "./template";
 
 describe("pane action layout", () => {
+  it("renders no-save controls by default", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    expect(doc.querySelector(".app")?.getAttribute("data-writeback")).toBe("off");
+    expect(doc.querySelector<HTMLButtonElement>("#left-save-file")?.hidden).toBe(true);
+    expect(doc.querySelector<HTMLButtonElement>("#right-save-file")?.hidden).toBe(true);
+  });
+
+  it("can render a writeback screen with save controls visible", () => {
+    const dom = new JSDOM(createAppTemplate({ writebackEnabled: true }));
+    const doc = dom.window.document;
+    const leftSave = doc.querySelector<HTMLButtonElement>("#left-save-file");
+    const rightSave = doc.querySelector<HTMLButtonElement>("#right-save-file");
+
+    expect(doc.querySelector(".app")?.getAttribute("data-writeback")).toBe("on");
+    expect(leftSave).toBeTruthy();
+    expect(rightSave).toBeTruthy();
+    expect(leftSave?.hidden).toBe(false);
+    expect(rightSave?.hidden).toBe(false);
+    expect(leftSave?.hasAttribute("aria-hidden")).toBe(false);
+    expect(rightSave?.hasAttribute("aria-hidden")).toBe(false);
+  });
+
   it("removes recalc button and adds export report button in toolbar", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;

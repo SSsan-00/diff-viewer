@@ -1,6 +1,7 @@
 import "./style.css";
 import "monaco-editor/min/vs/editor/editor.main.css";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
+import { resolveAppMode } from "./appMode";
 import { setupMonacoWorkers } from "./monaco/monacoWorkers";
 import { registerBasicLanguages } from "./monaco/basicLanguages";
 import { diffLines } from "./diffEngine/diffLines";
@@ -45,7 +46,7 @@ import {
 } from "./diffEngine/anchors";
 import { normalizeText } from "./diffEngine/normalize";
 import { THIRD_PARTY_LICENSES } from "./licenses";
-import { APP_TEMPLATE } from "./ui/template";
+import { createAppTemplate } from "./ui/template";
 import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
 import {
   bindPaneClearButton,
@@ -275,7 +276,11 @@ if (!app) {
   throw new Error("App container is missing.");
 }
 
-app.innerHTML = APP_TEMPLATE;
+const appMode = resolveAppMode(window.location);
+const writebackEnabled = appMode.writebackEnabled;
+app.innerHTML = createAppTemplate({
+  writebackEnabled,
+});
 setupAnchorPanelToggle(document, {
   initialCollapsed: persistedState?.anchorPanelCollapsed ?? false,
   onToggle: () => schedulePersist(),
@@ -2204,7 +2209,12 @@ function bindDropZone(
     }
     const dataTransfer = event.dataTransfer;
     void (async () => {
-      const dropped = await collectDroppedFiles(dataTransfer);
+      const dropped = writebackEnabled
+        ? await collectDroppedFiles(dataTransfer)
+        : Array.from(dataTransfer?.files ?? []).map((file) => ({
+            file,
+            handle: null,
+          }));
       if (dropped.length === 0) {
         setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
         return;
@@ -2302,6 +2312,12 @@ function getPaneFileCount(side: "left" | "right"): number {
 function updatePaneSaveButton(side: "left" | "right"): void {
   const button = paneBindings[side].saveButton;
   button.textContent = "保存";
+  if (!writebackEnabled) {
+    button.disabled = true;
+    button.title = "保存機能はこの画面では無効です。";
+    button.removeAttribute("aria-busy");
+    return;
+  }
   if (paneSavePending[side]) {
     button.disabled = true;
     button.title = "保存中です。";
@@ -2376,7 +2392,7 @@ async function buildPaneSaveTarget(
 
 async function openPaneFiles(side: "left" | "right"): Promise<void> {
   const config = paneBindings[side];
-  if (!hasFileSystemAccess) {
+  if (!writebackEnabled || !hasFileSystemAccess) {
     config.fileInput.click();
     return;
   }
@@ -2437,6 +2453,11 @@ async function openPaneFiles(side: "left" | "right"): Promise<void> {
 }
 
 async function savePaneToFile(side: "left" | "right"): Promise<void> {
+  if (!writebackEnabled) {
+    toast.show("保存機能はこの画面では無効です。", "error");
+    updatePaneSaveButton(side);
+    return;
+  }
   if (paneSavePending[side]) {
     return;
   }

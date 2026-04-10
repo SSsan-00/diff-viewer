@@ -63,6 +63,7 @@ export type WorkspaceResult =
   | { ok: false; reason: WorkspaceError; state: WorkspacesState };
 
 const STORAGE_KEY = "diffViewer.workspaces";
+const INLINE_TEXT_FALLBACK_CHAR_LIMIT = 200_000;
 
 type WorkspaceStorageOptions = {
   textStore?: TextStore;
@@ -314,16 +315,26 @@ function getWorkspaceTextKey(
 function serializeState(
   state: WorkspacesState,
   includeInlineTexts: boolean,
+  textStorage: TextStorageMode = includeInlineTexts ? "inline" : "indexeddb",
 ): SerializedWorkspacesState {
   return {
     selectedId: state.selectedId,
-    textStorage: includeInlineTexts ? "inline" : "indexeddb",
+    textStorage,
     workspaces: state.workspaces.map((workspace) => ({
       ...workspace,
       leftText: includeInlineTexts ? workspace.leftText : "",
       rightText: includeInlineTexts ? workspace.rightText : "",
     })),
   };
+}
+
+function shouldKeepInlineTextFallback(state: WorkspacesState): boolean {
+  const totalChars = state.workspaces.reduce(
+    (sum, workspace) =>
+      sum + workspace.leftText.length + workspace.rightText.length,
+    0,
+  );
+  return totalChars <= INLINE_TEXT_FALLBACK_CHAR_LIMIT;
 }
 
 async function hydrateWorkspaceTexts(
@@ -396,7 +407,16 @@ async function persistSnapshot(
       writeWorkspaceTexts(state, textStore),
       deleteWorkspaceTexts(options?.deletedWorkspaceIds ?? [], textStore),
     ]);
-    storage.setItem(STORAGE_KEY, JSON.stringify(serializeState(state, false)));
+    storage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(
+        serializeState(
+          state,
+          shouldKeepInlineTextFallback(state),
+          "indexeddb",
+        ),
+      ),
+    );
   } catch (error) {
     console.warn("Failed to persist workspaces with IndexedDB:", error);
     try {

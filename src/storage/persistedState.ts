@@ -8,6 +8,7 @@ import {
 
 export const STORAGE_KEY = "diff-viewer:state";
 export const STORAGE_VERSION = 1;
+const INLINE_TEXT_FALLBACK_CHAR_LIMIT = 200_000;
 
 export type PersistedState = {
   version: 1;
@@ -125,13 +126,18 @@ function getPersistedTextKey(key: string, side: "left" | "right"): string {
 function serializePersistedState(
   state: PersistedState,
   includeInlineText: boolean,
+  textStorage: TextStorageMode = includeInlineText ? "inline" : "indexeddb",
 ): SerializedPersistedState {
   return {
     ...state,
     leftText: includeInlineText ? state.leftText : "",
     rightText: includeInlineText ? state.rightText : "",
-    textStorage: includeInlineText ? "inline" : "indexeddb",
+    textStorage,
   };
+}
+
+function shouldKeepInlineTextFallback(state: PersistedState): boolean {
+  return state.leftText.length + state.rightText.length <= INLINE_TEXT_FALLBACK_CHAR_LIMIT;
 }
 
 async function writePersistedTexts(
@@ -186,7 +192,16 @@ async function persistSnapshot(
   }
   try {
     await writePersistedTexts(state, key, textStore);
-    storage.setItem(key, JSON.stringify(serializePersistedState(state, false)));
+    storage.setItem(
+      key,
+      JSON.stringify(
+        serializePersistedState(
+          state,
+          shouldKeepInlineTextFallback(state),
+          "indexeddb",
+        ),
+      ),
+    );
   } catch (error) {
     console.warn("Failed to persist state with IndexedDB:", error);
     try {

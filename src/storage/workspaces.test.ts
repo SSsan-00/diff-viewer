@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
+import { getDiffBlockStarts } from "../diffEngine/diffBlocks";
+import { diffLines } from "../diffEngine/diffLines";
+import { pairReplace } from "../diffEngine/pairReplace";
 import {
   createWorkspace,
   deleteWorkspace,
@@ -241,8 +244,68 @@ describe("workspaces storage", () => {
     const alpha = restored.workspaces.find((item) => item.id === "ws-0");
 
     expect(alpha?.leftText).toBe("legacy left");
-    expect(raw.workspaces[0].leftText).toBe("");
+    expect(raw.workspaces[0].leftText).toBe("legacy left");
+    expect(raw.textStorage).toBe("indexeddb");
     expect(textStore.texts.size).toBeGreaterThan(0);
+  });
+
+  it("restores small workspace text from localStorage fallback when IndexedDB text is missing", async () => {
+    const storage = createStorage();
+    const textStore = createTextStore();
+    const state = createState(["Alpha"]);
+
+    await saveWorkspaces(
+      storage,
+      {
+        ...state,
+        workspaces: state.workspaces.map((workspace) => ({
+          ...workspace,
+          leftText: "left fallback",
+          rightText: "right fallback",
+        })),
+      },
+      { textStore },
+    );
+    textStore.texts.clear();
+
+    const restored = await loadWorkspaces(storage, { textStore });
+    const alpha = restored.workspaces.find((item) => item.id === "ws-0");
+
+    expect(alpha?.leftText).toBe("left fallback");
+    expect(alpha?.rightText).toBe("right fallback");
+    expect(
+      getDiffBlockStarts(
+        pairReplace(diffLines(alpha?.leftText ?? "", alpha?.rightText ?? "")),
+      ).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("does not keep large workspace text inline in localStorage fallback", async () => {
+    const storage = createStorage();
+    const textStore = createTextStore();
+    const largeText = "line\n".repeat(60000);
+    const state = createState(["Alpha"]);
+
+    await saveWorkspaces(
+      storage,
+      {
+        ...state,
+        workspaces: state.workspaces.map((workspace) => ({
+          ...workspace,
+          leftText: largeText,
+          rightText: largeText,
+        })),
+      },
+      { textStore },
+    );
+
+    const raw = JSON.parse(storage.getItem(storage.key(0) ?? "") ?? "{}");
+
+    expect(raw.workspaces[0].leftText).toBe("");
+    expect(raw.workspaces[0].rightText).toBe("");
+    expect(raw.textStorage).toBe("indexeddb");
+    expect(textStore.texts.get("diffViewer.workspaces:text:ws-0:left")).toBe(largeText);
+    expect(textStore.texts.get("diffViewer.workspaces:text:ws-0:right")).toBe(largeText);
   });
 
   it("prefers inline workspace text over stale text-store data after fallback persistence", async () => {
