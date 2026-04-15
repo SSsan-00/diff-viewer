@@ -514,6 +514,20 @@ function extractFunctionName(line: string): string | null {
   return null;
 }
 
+function extractMemberAccessName(line: string): string | null {
+  const normalized = line
+    .trimStart()
+    .replace(/\$/g, "")
+    .replace(/\s+/g, " ");
+  const match = normalized.match(
+    /(?:\b[A-Za-z_][A-Za-z0-9_]*\s*(?:\.|->)\s*)+([A-Za-z_][A-Za-z0-9_]*)\b/,
+  );
+  if (!match) {
+    return null;
+  }
+  return match[1].toLowerCase();
+}
+
 function detectCategory(line: string): LineCategory {
   const normalized = normalizeLine(line);
   const hasDeclarationKeyword = Array.from(DECLARATION_KEYWORDS).some((keyword) =>
@@ -542,6 +556,11 @@ function pickPrimaryId(
   const funcName = extractFunctionName(line);
   if (funcName && !MODIFIER_KEYWORDS.has(funcName)) {
     return funcName;
+  }
+
+  const memberAccessName = extractMemberAccessName(line);
+  if (memberAccessName && !MODIFIER_KEYWORDS.has(memberAccessName)) {
+    return memberAccessName;
   }
 
   const primaryCandidates = identifiers.filter(

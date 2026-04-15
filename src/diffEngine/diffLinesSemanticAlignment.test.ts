@@ -19,6 +19,15 @@ function findReplace(ops: PairedOp[], left: string, right: string): boolean {
   );
 }
 
+function findReplaceOp(ops: PairedOp[], left: string, right: string): PairedOp | undefined {
+  return ops.find(
+    (op) =>
+      op.type === "replace" &&
+      (op.leftLine ?? "").includes(left) &&
+      (op.rightLine ?? "").includes(right),
+  );
+}
+
 function findEqual(ops: PairedOp[], left: string, right: string): boolean {
   return ops.some(
     (op) =>
@@ -238,6 +247,76 @@ describe("semantic alignment across languages", () => {
 
     const ops = toPairedOps(left, right);
     expect(findReplace(ops, "test($x)", "test(x)")).toBe(true);
+  });
+
+  it("aligns member close calls across php and dotted notation", () => {
+    const left = ["$wbook->close;"];
+    const right = ["wbook.close();"];
+
+    const ops = toPairedOps(left, right);
+    const replace = findReplaceOp(ops, "$wbook->close", "wbook.close()");
+
+    expect(replace).toBeDefined();
+    expect(findEqual(ops, "$wbook->close", "wbook.close()")).toBe(false);
+
+    const inline = diffInline(replace?.leftLine ?? "", replace?.rightLine ?? "");
+    expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
+  });
+
+  it("keeps close-call replace alignment stable even when anchors are added elsewhere", () => {
+    const left = [
+      "header",
+      "$wbook->close;",
+      "$sheet->close;",
+      "footer",
+    ];
+    const right = [
+      "header",
+      "wbook.close();",
+      "sheet.close();",
+      "footer",
+    ];
+    const anchors: Anchor[] = [
+      { leftLineNo: 0, rightLineNo: 0 },
+      { leftLineNo: 3, rightLineNo: 3 },
+    ];
+
+    const off = toPairedOps(left, right);
+    const on = diffWithAnchors(left.join("\n"), right.join("\n"), anchors);
+
+    const offWorkbook = findReplaceOp(off, "$wbook->close", "wbook.close()");
+    const offSheet = findReplaceOp(off, "$sheet->close", "sheet.close()");
+    const onWorkbook = findReplaceOp(on, "$wbook->close", "wbook.close()");
+    const onSheet = findReplaceOp(on, "$sheet->close", "sheet.close()");
+
+    expect(offWorkbook).toBeDefined();
+    expect(offSheet).toBeDefined();
+    expect(onWorkbook).toBeDefined();
+    expect(onSheet).toBeDefined();
+
+    const offWorkbookInline = diffInline(
+      offWorkbook?.leftLine ?? "",
+      offWorkbook?.rightLine ?? "",
+    );
+    const onWorkbookInline = diffInline(
+      onWorkbook?.leftLine ?? "",
+      onWorkbook?.rightLine ?? "",
+    );
+    const offSheetInline = diffInline(
+      offSheet?.leftLine ?? "",
+      offSheet?.rightLine ?? "",
+    );
+    const onSheetInline = diffInline(
+      onSheet?.leftLine ?? "",
+      onSheet?.rightLine ?? "",
+    );
+
+    expect(offWorkbookInline.leftRanges.length + offWorkbookInline.rightRanges.length).toBeGreaterThan(0);
+    expect(onWorkbookInline.leftRanges.length + onWorkbookInline.rightRanges.length).toBeGreaterThan(0);
+    expect(offSheetInline.leftRanges.length + offSheetInline.rightRanges.length).toBeGreaterThan(0);
+    expect(onSheetInline.leftRanges.length + onSheetInline.rightRanges.length).toBeGreaterThan(0);
+    expect(onWorkbookInline).toEqual(offWorkbookInline);
+    expect(onSheetInline).toEqual(offSheetInline);
   });
 
   it("aligns SQL construction across languages", () => {
@@ -999,6 +1078,14 @@ describe("semantic alignment across languages", () => {
 
     const ops = toPairedOps(left, right);
     expect(findReplace(ops, "test()", "test2()")).toBe(false);
+  });
+
+  it("does not align member access lines when the member names differ", () => {
+    const left = ["$wbook->close;"];
+    const right = ["wbook.closeAll();"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "$wbook->close", "wbook.closeAll()")).toBe(false);
   });
 
   it("does not align far apart similar function names across separate blocks", () => {

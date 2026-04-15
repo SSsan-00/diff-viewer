@@ -54,6 +54,19 @@ describe("dark theme readability tokens", () => {
     expect(fileBadge?.[0]).toContain("var(--file-badge-1-bg)");
   });
 
+  it("keeps manual anchor line highlight subtle in light and dark themes", () => {
+    const css = loadCss();
+    const lightAnchorLine = css.match(/\.monaco-editor\s+\.diff-anchor-line\s*\{[^}]*\}/s);
+    const darkAnchorLine = css.match(
+      /\[data-theme="dark"\]\s+\.monaco-editor\s+\.diff-anchor-line\s*\{[^}]*\}/s,
+    );
+
+    expect(lightAnchorLine).toBeTruthy();
+    expect(darkAnchorLine).toBeTruthy();
+    expect(lightAnchorLine?.[0]).toContain("background-color: rgba(63, 110, 208, 0.12)");
+    expect(darkAnchorLine?.[0]).toContain("background-color: rgba(115, 165, 255, 0.18)");
+  });
+
   it("includes reduced-motion styles for the theme switch", () => {
     const css = loadCss();
     const reducedMotion = css.match(/prefers-reduced-motion:\s*reduce[\s\S]*?\}/s);
