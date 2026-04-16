@@ -8,6 +8,7 @@ import { diffLines } from "./diffEngine/diffLines";
 import { pairReplace } from "./diffEngine/pairReplace";
 import { diffInlineWithAppendLiteral } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
+import { normalizeReplaceOpsForDisplay } from "./diffEngine/replaceVisibility";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
 import { type FileEncoding } from "./file/decode";
@@ -4175,6 +4176,11 @@ function recalcDiff() {
   } else {
     pairedOps = pairReplace(diffLines(leftText, rightText, { ignoreLeadingFileWhitespace }));
   }
+  pairedOps = normalizeReplaceOpsForDisplay(pairedOps, {
+    ignoreLeadingFileWhitespace,
+    leftLeadingFileWhitespaceEligible,
+    rightLeadingFileWhitespaceEligible,
+  });
 
   const opsSignature = buildPairedOpsSignature(pairedOps);
   const segmentSignature = `${buildSegmentsSignature(leftSegments)}\n---\n${buildSegmentsSignature(rightSegments)}`;
