@@ -7,6 +7,7 @@ import {
   STORAGE_KEY,
   createPersistScheduler,
   loadPersistedState,
+  saveInlinePersistedStateSnapshot,
   savePersistedState,
   type PersistedState,
 } from "./persistedState";
@@ -163,6 +164,37 @@ describe("persisted state", () => {
     expect(raw.textStorage).toBe("indexeddb");
     expect(textStore.texts.get(`${STORAGE_KEY}:text:left`)).toBe(largeText);
     expect(textStore.texts.get(`${STORAGE_KEY}:text:right`)).toBe(largeText);
+  });
+
+  it("writes a full inline emergency snapshot so the latest text can be restored after pagehide", async () => {
+    const storage = createStorage();
+    const textStore = createTextStore();
+    const largeText = "line\n".repeat(60000);
+
+    await savePersistedState(
+      storage,
+      createState({ leftText: largeText, rightText: "right fallback" }),
+      { key: STORAGE_KEY, textStore },
+    );
+    textStore.texts.clear();
+
+    saveInlinePersistedStateSnapshot(
+      storage,
+      createState({ leftText: largeText, rightText: "right fallback" }),
+      { key: STORAGE_KEY },
+    );
+
+    const raw = JSON.parse(storage.getItem(STORAGE_KEY) ?? "{}");
+    const restored = await loadPersistedState(storage, {
+      key: STORAGE_KEY,
+      textStore,
+    });
+
+    expect(raw.textStorage).toBe("inline");
+    expect(raw.leftText).toBe(largeText);
+    expect(raw.rightText).toBe("right fallback");
+    expect(restored?.leftText).toBe(largeText);
+    expect(restored?.rightText).toBe("right fallback");
   });
 
   it("prefers inline text over stale text-store data after fallback persistence", async () => {

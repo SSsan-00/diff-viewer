@@ -291,6 +291,22 @@ export function savePersistedState(
   return enqueueSave(() => persistSnapshot(storage, state, key, textStore));
 }
 
+export function saveInlinePersistedStateSnapshot(
+  storage: StorageLike | null,
+  state: PersistedState,
+  options?: PersistedStateOptions,
+): void {
+  const key = getStateKey(options);
+  if (!storage) {
+    return;
+  }
+  try {
+    storage.setItem(key, JSON.stringify(serializePersistedState(state, true, "inline")));
+  } catch (error) {
+    console.warn("Failed to persist state:", error);
+  }
+}
+
 export function clearPersistedState(
   storage: StorageLike | null,
   options?: PersistedStateOptions,

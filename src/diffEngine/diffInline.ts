@@ -250,7 +250,16 @@ export type DiffInlineWithAppendLiteralOptions = {
 function shouldIgnoreLeadingFileWhitespaceInInlineDiff(
   options: DiffInlineWithAppendLiteralOptions,
 ): boolean {
-  return options.ignoreLeadingFileWhitespace === true;
+  if (options.ignoreLeadingFileWhitespace !== true) {
+    return false;
+  }
+  if (options.leftLeadingFileWhitespaceEligible === false) {
+    return false;
+  }
+  if (options.rightLeadingFileWhitespaceEligible === false) {
+    return false;
+  }
+  return true;
 }
 
 export function diffInlineWithAppendLiteral(

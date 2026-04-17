@@ -1563,7 +1563,7 @@ body {
 }
 
 .monaco-editor .diff-anchor-line {
-  background-color: rgba(63, 110, 208, 0.08);
+  background-color: rgba(63, 110, 208, 0.04);
 }
 
 .monaco-editor .diff-anchor-glyph {
@@ -2537,7 +2537,7 @@ body {
 
 
 [data-theme="dark"] .monaco-editor .diff-anchor-line {
-  background-color: rgba(115, 165, 255, 0.12);
+  background-color: rgba(115, 165, 255, 0.06);
 }
 
 [data-theme="dark"] .monaco-editor .diff-anchor-glyph {

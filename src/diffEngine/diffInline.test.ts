@@ -130,6 +130,28 @@ describe("diffInline", () => {
     expect(on.leftRanges.some((range) => range.start === 0)).toBe(false);
   });
 
+  it("keeps leading whitespace diffs visible when file-level ignore is ineligible", () => {
+    const result = diffInlineWithAppendLiteral("  value = 1;", "value = 1;", {
+      ignoreLeadingFileWhitespace: true,
+      leftLeadingFileWhitespaceEligible: false,
+      rightLeadingFileWhitespaceEligible: true,
+    });
+
+    expect(result.leftRanges.some((range) => range.start === 0)).toBe(true);
+  });
+
+  it("keeps AppendLine wrapper indentation diffs visible when file-level ignore is ineligible", () => {
+    const left = '        sb.AppendLine("<!doctype html>");';
+    const right = 'sb.AppendLine("<!doctype html>");';
+    const result = diffInlineWithAppendLiteral(left, right, {
+      ignoreLeadingFileWhitespace: true,
+      leftLeadingFileWhitespaceEligible: false,
+      rightLeadingFileWhitespaceEligible: false,
+    });
+
+    expect(result.leftRanges.some((range) => range.start === 0)).toBe(true);
+  });
+
   it("highlights SQL date formatting differences", () => {
     const result = diffInline(
       "$sql .= \", to_char(date, 'yyyy/mm/dd')\";",

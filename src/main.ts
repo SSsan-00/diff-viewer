@@ -162,8 +162,13 @@ import {
   clearPersistedState,
   createPersistScheduler,
   loadPersistedState,
+  saveInlinePersistedStateSnapshot,
   type PersistedState,
 } from "./storage/persistedState";
+import {
+  isSegmentLayoutValid,
+  resolveStartupWorkspaceRestore,
+} from "./storage/startupRestore";
 import { createIndexedDbTextStore } from "./storage/textStore";
 import { clearPaneSummary } from "./storage/paneSummary";
 import {
@@ -1090,92 +1095,39 @@ export { config, greet, add, sumList };
 `;
 
 const selectedWorkspace = getSelectedWorkspace(workspaceState);
-const hasWorkspaceText = workspaceState.workspaces.some(
-  (workspace) => workspace.leftText.length > 0 || workspace.rightText.length > 0,
-);
+const startupRestore = resolveStartupWorkspaceRestore({
+  workspaceState,
+  persistedState,
+  emptyAnchorState: emptyWorkspaceAnchors,
+});
 const seedLeft = persistedState?.leftText || leftSample;
 const seedRight = persistedState?.rightText || rightSample;
-let leftInitial = selectedWorkspace?.leftText ?? "";
-let rightInitial = selectedWorkspace?.rightText ?? "";
-let leftInitialSegments = cloneSegments(selectedWorkspace?.leftSegments ?? []);
-let rightInitialSegments = cloneSegments(selectedWorkspace?.rightSegments ?? []);
-const leftSegmentsValid = isSegmentLayoutValid(leftInitialSegments, leftInitial);
-const rightSegmentsValid = isSegmentLayoutValid(rightInitialSegments, rightInitial);
-
-if (!leftSegmentsValid) {
-  leftInitialSegments = [];
-}
-if (!rightSegmentsValid) {
-  rightInitialSegments = [];
-}
-
-if (!hasWorkspaceText && selectedWorkspace) {
-  if (!leftInitial) {
-    leftInitial = seedLeft;
-  }
-  if (!rightInitial) {
-    rightInitial = seedRight;
-  }
-}
-
-if (
-  leftInitialSegments.length === 0 &&
-  persistedState?.leftSegments?.length &&
-  isSegmentLayoutValid(persistedState.leftSegments, leftInitial)
-) {
-  leftInitialSegments = cloneSegments(persistedState.leftSegments);
-}
-if (
-  rightInitialSegments.length === 0 &&
-  persistedState?.rightSegments?.length &&
-  isSegmentLayoutValid(persistedState.rightSegments, rightInitial)
-) {
-  rightInitialSegments = cloneSegments(persistedState.rightSegments);
-}
+const leftInitial = startupRestore.leftPane.text || seedLeft;
+const rightInitial = startupRestore.rightPane.text || seedRight;
+const leftInitialSegments = cloneSegments(startupRestore.leftPane.segments);
+const rightInitialSegments = cloneSegments(startupRestore.rightPane.segments);
 
 if (selectedWorkspace) {
-  const shouldUpdateLeft =
-    selectedWorkspace.leftText !== leftInitial ||
-    !leftSegmentsValid ||
-    ((selectedWorkspace.leftSegments ?? []).length === 0 &&
-      leftInitialSegments.length > 0);
-  if (shouldUpdateLeft) {
+  if (startupRestore.shouldPersistLeftPane) {
     const result = setWorkspacePaneState(
       storage,
       workspaceState,
       selectedWorkspace.id,
       "left",
-      {
-        text: leftInitial,
-        segments: leftInitialSegments,
-        activeFile: selectedWorkspace.leftActiveFile ?? null,
-        cursor: selectedWorkspace.leftCursor ?? null,
-        scrollTop: selectedWorkspace.leftScrollTop ?? null,
-      },
+      startupRestore.leftPane,
       { textStore },
     );
     if (result.ok) {
       workspaceState = result.state;
     }
   }
-  const shouldUpdateRight =
-    selectedWorkspace.rightText !== rightInitial ||
-    !rightSegmentsValid ||
-    ((selectedWorkspace.rightSegments ?? []).length === 0 &&
-      rightInitialSegments.length > 0);
-  if (shouldUpdateRight) {
+  if (startupRestore.shouldPersistRightPane) {
     const result = setWorkspacePaneState(
       storage,
       workspaceState,
       selectedWorkspace.id,
       "right",
-      {
-        text: rightInitial,
-        segments: rightInitialSegments,
-        activeFile: selectedWorkspace.rightActiveFile ?? null,
-        cursor: selectedWorkspace.rightCursor ?? null,
-        scrollTop: selectedWorkspace.rightScrollTop ?? null,
-      },
+      startupRestore.rightPane,
       { textStore },
     );
     if (result.ok) {
@@ -2066,29 +2018,6 @@ function applyDecodedFiles(
   schedulePersistAll();
 }
 
-function isSegmentLayoutValid(segments: LineSegment[], text: string): boolean {
-  if (segments.length === 0) {
-    return true;
-  }
-  const lineCount = normalizeText(text).split("\n").length;
-  let lastEnd = 0;
-  for (const segment of segments) {
-    if (
-      segment.startLine < 1 ||
-      segment.lineCount < 1 ||
-      segment.fileIndex < 1
-    ) {
-      return false;
-    }
-    const end = segment.startLine + segment.lineCount - 1;
-    if (end < segment.startLine || end < lastEnd) {
-      return false;
-    }
-    lastEnd = Math.max(lastEnd, end);
-  }
-  return lastEnd <= lineCount;
-}
-
 function applyEncodingSelection(
   select: HTMLSelectElement,
   value: FileEncoding | undefined,
@@ -2871,6 +2800,24 @@ persistScheduler = createPersistScheduler({
   textStore,
 });
 
+function flushStateForLifecycle(): void {
+  cancelWorkspacePersist();
+  persistWorkspacePaneState("left");
+  persistWorkspacePaneState("right");
+  const anchorResult = setWorkspaceAnchors(
+    storage,
+    workspaceState,
+    workspaceState.selectedId,
+    getCurrentAnchorState(),
+    { textStore },
+  );
+  if (anchorResult.ok) {
+    workspaceState = anchorResult.state;
+  }
+  persistScheduler?.flush();
+  saveInlinePersistedStateSnapshot(storage, getPersistedStateSnapshot());
+}
+
 function preventWindowDrop(event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
@@ -2878,6 +2825,14 @@ function preventWindowDrop(event: DragEvent) {
 
 window.addEventListener("dragover", preventWindowDrop);
 window.addEventListener("drop", preventWindowDrop);
+window.addEventListener("pagehide", () => {
+  flushStateForLifecycle();
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") {
+    flushStateForLifecycle();
+  }
+});
 window.addEventListener(
   "keydown",
   (event) => {
@@ -3134,23 +3089,16 @@ let foldRanges: FoldRange[] = [];
 let leftFoldZoneIds: string[] = [];
 let rightFoldZoneIds: string[] = [];
 const expandedFoldStarts = new Set<number>();
-const hasWorkspaceAnchors = workspaceState.workspaces.some(
-  (workspace) => workspace.anchors.manualAnchors.length > 0,
-);
-let initialWorkspaceAnchors =
-  getSelectedWorkspace(workspaceState)?.anchors ?? emptyWorkspaceAnchors;
+let initialWorkspaceAnchors = startupRestore.initialAnchors;
 
-if (!hasWorkspaceAnchors && persistedState?.anchors?.length) {
+if (startupRestore.shouldPersistAnchors) {
   const selected = getSelectedWorkspace(workspaceState);
   if (selected) {
     const migrated = setWorkspaceAnchors(
       storage,
       workspaceState,
       selected.id,
-      {
-        ...emptyWorkspaceAnchors,
-        manualAnchors: persistedState.anchors.map((anchor) => ({ ...anchor })),
-      },
+      startupRestore.initialAnchors,
       { textStore },
     );
     if (migrated.ok) {

@@ -63,8 +63,8 @@ describe("dark theme readability tokens", () => {
 
     expect(lightAnchorLine).toBeTruthy();
     expect(darkAnchorLine).toBeTruthy();
-    expect(lightAnchorLine?.[0]).toContain("background-color: rgba(63, 110, 208, 0.08)");
-    expect(darkAnchorLine?.[0]).toContain("background-color: rgba(115, 165, 255, 0.12)");
+    expect(lightAnchorLine?.[0]).toContain("background-color: rgba(63, 110, 208, 0.04)");
+    expect(darkAnchorLine?.[0]).toContain("background-color: rgba(115, 165, 255, 0.06)");
   });
 
   it("includes reduced-motion styles for the theme switch", () => {
