@@ -17,14 +17,22 @@ describe("pane action layout", () => {
     const doc = dom.window.document;
     const leftSave = doc.querySelector<HTMLButtonElement>("#left-save-file");
     const rightSave = doc.querySelector<HTMLButtonElement>("#right-save-file");
+    const leftReload = doc.querySelector<HTMLButtonElement>("#left-reload-file");
+    const rightReload = doc.querySelector<HTMLButtonElement>("#right-reload-file");
 
     expect(doc.querySelector(".app")?.getAttribute("data-writeback")).toBe("on");
     expect(leftSave).toBeTruthy();
     expect(rightSave).toBeTruthy();
+    expect(leftReload).toBeTruthy();
+    expect(rightReload).toBeTruthy();
     expect(leftSave?.hidden).toBe(false);
     expect(rightSave?.hidden).toBe(false);
+    expect(leftReload?.hidden).toBe(false);
+    expect(rightReload?.hidden).toBe(false);
     expect(leftSave?.hasAttribute("aria-hidden")).toBe(false);
     expect(rightSave?.hasAttribute("aria-hidden")).toBe(false);
+    expect(leftReload?.hasAttribute("aria-hidden")).toBe(false);
+    expect(rightReload?.hasAttribute("aria-hidden")).toBe(false);
   });
 
   it("removes recalc button and adds export report button in toolbar", () => {
@@ -232,6 +240,8 @@ describe("pane action layout", () => {
 
     const leftSave = doc.querySelector("#left-save-file");
     const rightSave = doc.querySelector("#right-save-file");
+    const leftReload = doc.querySelector("#left-reload-file");
+    const rightReload = doc.querySelector("#right-reload-file");
     const leftCopy = doc.querySelector("#left-copy");
     const rightCopy = doc.querySelector("#right-copy");
     const leftClear = doc.querySelector("#left-clear");
@@ -253,6 +263,12 @@ describe("pane action layout", () => {
     expect((rightSave as HTMLButtonElement | null)?.disabled).toBe(true);
     expect(leftSave?.textContent?.trim()).toBe("保存");
     expect(rightSave?.textContent?.trim()).toBe("保存");
+    expect(leftReload).toBeTruthy();
+    expect(rightReload).toBeTruthy();
+    expect((leftReload as HTMLButtonElement | null)?.disabled).toBe(true);
+    expect((rightReload as HTMLButtonElement | null)?.disabled).toBe(true);
+    expect(leftReload?.textContent?.trim()).toBe("再読み込み");
+    expect(rightReload?.textContent?.trim()).toBe("再読み込み");
     expect(leftCopy).toBeTruthy();
     expect(rightCopy).toBeTruthy();
     expect(leftCopy?.textContent?.trim()).toBe("ソースコピー");
@@ -263,8 +279,10 @@ describe("pane action layout", () => {
     expect(rightBar).toBeTruthy();
     expect(leftBar?.classList.contains("favorite-paths-list")).toBe(true);
     expect(rightBar?.classList.contains("favorite-paths-list")).toBe(true);
-    expect(leftActions.indexOf(leftSave!)).toBeLessThan(leftActions.indexOf(leftCopy!));
-    expect(rightActions.indexOf(rightSave!)).toBeLessThan(rightActions.indexOf(rightCopy!));
+    expect(leftActions.indexOf(leftSave!)).toBeLessThan(leftActions.indexOf(leftReload!));
+    expect(rightActions.indexOf(rightSave!)).toBeLessThan(rightActions.indexOf(rightReload!));
+    expect(leftActions.indexOf(leftReload!)).toBeLessThan(leftActions.indexOf(leftCopy!));
+    expect(rightActions.indexOf(rightReload!)).toBeLessThan(rightActions.indexOf(rightCopy!));
     expect(leftActions.indexOf(leftCopy!)).toBeLessThan(leftActions.indexOf(leftClear!));
     expect(rightActions.indexOf(rightCopy!)).toBeLessThan(rightActions.indexOf(rightClear!));
   });

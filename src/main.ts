@@ -28,12 +28,13 @@ import {
   describeDecodedFileForWriteback,
   getPaneWriteAvailability,
   pickFilesWithHandles,
+  readCurrentFileFromPaneTarget,
+  requestFileHandlePermission,
   saveTextWithPaneTarget,
   supportsFileSystemAccess,
-  type FileLineEnding,
   type FileSystemAccessWindow,
+  type PaneSaveTarget,
   type ReadableWritableFileHandle,
-  type ResolvedFileEncoding,
 } from "./file/writeback";
 import { reorderRazorPairs } from "./file/fileOrder";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
@@ -170,6 +171,12 @@ import {
   resolveStartupWorkspaceRestore,
 } from "./storage/startupRestore";
 import { createIndexedDbTextStore } from "./storage/textStore";
+import {
+  clearPaneSaveTarget as clearStoredPaneSaveTarget,
+  createIndexedDbPaneSaveTargetStore,
+  loadPaneSaveTarget,
+  savePaneSaveTarget,
+} from "./storage/paneSaveTargets";
 import { clearPaneSummary } from "./storage/paneSummary";
 import {
   formatFileLoadError,
@@ -348,6 +355,8 @@ const leftFileButton = getRequiredElement<HTMLButtonElement>("#left-file-button"
 const rightFileButton = getRequiredElement<HTMLButtonElement>("#right-file-button");
 const leftSaveFileButton = getRequiredElement<HTMLButtonElement>("#left-save-file");
 const rightSaveFileButton = getRequiredElement<HTMLButtonElement>("#right-save-file");
+const leftReloadFileButton = getRequiredElement<HTMLButtonElement>("#left-reload-file");
+const rightReloadFileButton = getRequiredElement<HTMLButtonElement>("#right-reload-file");
 const highlightToggleButton = document.querySelector<HTMLButtonElement>(
   "#highlight-toggle-button",
 );
@@ -693,13 +702,14 @@ function applyWorkspaceState(
         applyText: true,
       });
       refreshSyntaxHighlight();
-      clearPaneSourceState("left");
-      clearPaneSourceState("right");
+      clearPaneSourceState("left", { persistSaveTarget: false });
+      clearPaneSourceState("right", { persistSaveTarget: false });
       clearPaneMessage(leftMessage);
       clearPaneMessage(rightMessage);
       clearPaneSummary(storage, "left");
       clearPaneSummary(storage, "right");
       applyWorkspaceAnchors(selected.anchors);
+      void restorePaneSaveTargetsForWorkspace(nextState.selectedId);
       anchorUndoState = null;
       recalcScheduler.runNow();
       schedulePersistAll();
@@ -1256,18 +1266,15 @@ const leftFileBytes: FileBytes[] = [];
 const rightFileBytes: FileBytes[] = [];
 let suppressLeftFileBytesClear = false;
 let suppressRightFileBytesClear = false;
-type PaneSaveTarget = {
-  handle: ReadableWritableFileHandle;
-  fileName: string;
-  resolvedEncoding: ResolvedFileEncoding;
-  includeUtf8Bom: boolean;
-  lineEnding: FileLineEnding;
-};
 const paneSaveTargets: Record<"left" | "right", PaneSaveTarget | null> = {
   left: null,
   right: null,
 };
 const paneSavePending: Record<"left" | "right", boolean> = {
+  left: false,
+  right: false,
+};
+const paneReloadPending: Record<"left" | "right", boolean> = {
   left: false,
   right: false,
 };
@@ -2214,6 +2221,7 @@ const paneBindings = {
     fileInput: leftFileInput,
     fileButton: leftFileButton,
     saveButton: leftSaveFileButton,
+    reloadButton: leftReloadFileButton,
   },
   right: {
     pane: rightPane,
@@ -2226,6 +2234,7 @@ const paneBindings = {
     fileInput: rightFileInput,
     fileButton: rightFileButton,
     saveButton: rightSaveFileButton,
+    reloadButton: rightReloadFileButton,
   },
 } as const;
 const paneEntries = Object.entries(paneBindings) as [
@@ -2234,6 +2243,7 @@ const paneEntries = Object.entries(paneBindings) as [
 ][];
 const paneSides = paneEntries.map(([side]) => side);
 const hasFileSystemAccess = supportsFileSystemAccess(window as FileSystemAccessWindow);
+const paneSaveTargetStore = createIndexedDbPaneSaveTargetStore();
 
 function getPaneFileCount(side: "left" | "right"): number {
   return listLoadedFileNames(paneBindings[side].segments).length;
@@ -2271,26 +2281,87 @@ function updatePaneSaveButton(side: "left" | "right"): void {
   button.title = availability.reason ?? "";
 }
 
+function updatePaneReloadButton(side: "left" | "right"): void {
+  const button = paneBindings[side].reloadButton;
+  button.textContent = "再読み込み";
+  if (!writebackEnabled) {
+    button.disabled = true;
+    button.title = "保存機能はこの画面では無効です。";
+    button.removeAttribute("aria-busy");
+    return;
+  }
+  if (paneReloadPending[side]) {
+    button.disabled = true;
+    button.title = "再読み込み中です。";
+    button.setAttribute("aria-busy", "true");
+    return;
+  }
+  const target = paneSaveTargets[side];
+  if (getPaneFileCount(side) !== 1) {
+    button.disabled = true;
+    button.removeAttribute("aria-busy");
+    button.title = "単一ファイル比較のときだけ再読み込みできます。";
+    return;
+  }
+  if (!target?.handle) {
+    button.disabled = true;
+    button.removeAttribute("aria-busy");
+    button.title = "ファイル選択ボタンから開いた単一ファイルだけ再読み込みできます。";
+    return;
+  }
+  button.disabled = false;
+  button.removeAttribute("aria-busy");
+  button.title = `${target.fileName} を再読み込み`;
+}
+
+function persistPaneSaveTarget(side: "left" | "right"): void {
+  if (!writebackEnabled || !paneSaveTargetStore.isAvailable) {
+    return;
+  }
+  const target = paneSaveTargets[side];
+  const task = target
+    ? savePaneSaveTarget(paneSaveTargetStore, workspaceState.selectedId, side, target)
+    : clearStoredPaneSaveTarget(paneSaveTargetStore, workspaceState.selectedId, side);
+  task.catch((error) => {
+    console.warn("Failed to persist pane save target:", error);
+  });
+}
+
 function setPaneSaveTarget(
   side: "left" | "right",
   target: PaneSaveTarget | null,
+  options?: { persist?: boolean },
 ): void {
   paneSaveTargets[side] = clonePaneSaveTarget(target);
   updatePaneSaveButton(side);
+  updatePaneReloadButton(side);
+  if (options?.persist !== false) {
+    persistPaneSaveTarget(side);
+  }
 }
 
-function clearPaneSaveTarget(side: "left" | "right"): void {
+function clearPaneSaveTarget(
+  side: "left" | "right",
+  options?: { persist?: boolean },
+): void {
   paneSaveTargets[side] = null;
   updatePaneSaveButton(side);
+  updatePaneReloadButton(side);
+  if (options?.persist !== false) {
+    persistPaneSaveTarget(side);
+  }
 }
 
 function clearPaneRawFiles(side: "left" | "right"): void {
   paneBindings[side].rawFiles.length = 0;
 }
 
-function clearPaneSourceState(side: "left" | "right"): void {
+function clearPaneSourceState(
+  side: "left" | "right",
+  options?: { persistSaveTarget?: boolean },
+): void {
   clearPaneRawFiles(side);
-  clearPaneSaveTarget(side);
+  clearPaneSaveTarget(side, { persist: options?.persistSaveTarget });
 }
 
 function isAbortError(error: unknown): boolean {
@@ -2407,6 +2478,11 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
   paneSavePending[side] = true;
   updatePaneSaveButton(side);
   try {
+    const permitted = await requestFileHandlePermission(target.handle, "readwrite");
+    if (!permitted) {
+      toast.show(`${target.fileName} の保存権限がありません。`, "error");
+      return;
+    }
     await saveTextWithPaneTarget(target, paneBindings[side].editor.getValue());
     toast.show(`${target.fileName} を保存しました。`);
   } catch (error) {
@@ -2421,6 +2497,107 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
   }
 }
 
+async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
+  if (!writebackEnabled) {
+    toast.show("保存機能はこの画面では無効です。", "error");
+    updatePaneReloadButton(side);
+    return;
+  }
+  if (paneReloadPending[side]) {
+    return;
+  }
+  const target = paneSaveTargets[side];
+  if (!target || getPaneFileCount(side) !== 1) {
+    toast.show("再読み込みできる単一ファイルがありません。", "error");
+    updatePaneReloadButton(side);
+    return;
+  }
+
+  paneReloadPending[side] = true;
+  updatePaneReloadButton(side);
+  try {
+    const permitted = await requestFileHandlePermission(target.handle, "read");
+    if (!permitted) {
+      toast.show(`${target.fileName} の読み込み権限がありません。`, "error");
+      return;
+    }
+    const config = paneBindings[side];
+    const encoding = config.encodingSelect.value as FileEncoding;
+    const reloaded = await readCurrentFileFromPaneTarget(target, encoding);
+    const nextRawFiles: FileBytes[] = [{
+      name: reloaded.file.name,
+      bytes: reloaded.bytes,
+    }];
+    const decoded = buildDecodedFiles(nextRawFiles, encoding);
+
+    withProgrammaticEdit(side, () => {
+      config.editor.setValue(decoded.text);
+    });
+    config.rawFiles.length = 0;
+    config.rawFiles.push(...nextRawFiles);
+    config.segments.length = 0;
+    config.segments.push(...decoded.segments);
+    updateLineNumbers(config.editor, config.segments);
+    applyIndentOptions(config.editor);
+    const fileNames = listLoadedFileNames(config.segments);
+    updateFileCards(side, fileNames);
+    if (!goToLineSelection[side] || !fileNames.includes(goToLineSelection[side] ?? "")) {
+      setGoToLineSelection(side, fileNames[0] ?? null);
+    }
+    clearPaneMessage(config.message);
+    clearPaneSummary(storage, side);
+    setPaneSaveTarget(side, reloaded.target);
+    refreshSyntaxHighlight();
+    recalcDiff();
+    schedulePersistAll();
+    toast.show(`${reloaded.file.name} を再読み込みしました。`);
+  } catch (error) {
+    if (isAbortError(error)) {
+      return;
+    }
+    console.error(error);
+    toast.show(`${target.fileName} を再読み込みできませんでした。`, "error");
+  } finally {
+    paneReloadPending[side] = false;
+    updatePaneReloadButton(side);
+  }
+}
+
+async function restorePaneSaveTargetForWorkspace(
+  side: "left" | "right",
+  workspaceId: string,
+): Promise<void> {
+  if (!writebackEnabled || !paneSaveTargetStore.isAvailable) {
+    return;
+  }
+  try {
+    const target = await loadPaneSaveTarget(paneSaveTargetStore, workspaceId, side);
+    if (workspaceState.selectedId !== workspaceId) {
+      return;
+    }
+    if (!target) {
+      updatePaneReloadButton(side);
+      return;
+    }
+    const fileNames = listLoadedFileNames(paneBindings[side].segments);
+    if (fileNames.length !== 1 || fileNames[0] !== target.fileName) {
+      await clearStoredPaneSaveTarget(paneSaveTargetStore, workspaceId, side);
+      clearPaneSaveTarget(side, { persist: false });
+      return;
+    }
+    setPaneSaveTarget(side, target, { persist: false });
+  } catch (error) {
+    console.warn("Failed to restore pane save target:", error);
+    clearPaneSaveTarget(side, { persist: false });
+  }
+}
+
+async function restorePaneSaveTargetsForWorkspace(workspaceId: string): Promise<void> {
+  await Promise.all(
+    paneSides.map((side) => restorePaneSaveTargetForWorkspace(side, workspaceId)),
+  );
+}
+
 const initialWorkspace = getSelectedWorkspace(workspaceState);
 if (initialWorkspace) {
   paneSides.forEach((side) => {
@@ -2428,6 +2605,7 @@ if (initialWorkspace) {
       applyText: false,
     });
   });
+  void restorePaneSaveTargetsForWorkspace(workspaceState.selectedId);
 }
 refreshSyntaxHighlight();
 paneSides.forEach((side) => renderFavoriteList(side));
@@ -2766,7 +2944,11 @@ paneEntries.forEach(([side, config]) => {
   config.saveButton.addEventListener("click", () => {
     void savePaneToFile(side);
   });
+  config.reloadButton.addEventListener("click", () => {
+    void reloadPaneFromFile(side);
+  });
   updatePaneSaveButton(side);
+  updatePaneReloadButton(side);
 });
 
 paneEntries.forEach(([side, config]) => {
@@ -2774,6 +2956,7 @@ paneEntries.forEach(([side, config]) => {
     const encoding = config.encodingSelect.value as FileEncoding;
     applyDecodedFiles(side, config.editor, config.segments, config.rawFiles, encoding);
     updatePaneSaveButton(side);
+    updatePaneReloadButton(side);
   });
 });
 

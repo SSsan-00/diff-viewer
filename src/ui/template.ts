@@ -254,6 +254,15 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
               保存
             </button>
             <button
+              id="left-reload-file"
+              class="button button-subtle pane-reload"
+              type="button"
+              disabled${saveButtonHiddenAttrs}
+              aria-label="左のファイルを再読み込み"
+            >
+              再読み込み
+            </button>
+            <button
               id="left-copy"
               class="button button-subtle pane-copy"
               type="button"
@@ -383,6 +392,15 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
               aria-label="右のファイルを保存"
             >
               保存
+            </button>
+            <button
+              id="right-reload-file"
+              class="button button-subtle pane-reload"
+              type="button"
+              disabled${saveButtonHiddenAttrs}
+              aria-label="右のファイルを再読み込み"
+            >
+              再読み込み
             </button>
             <button
               id="right-copy"

@@ -5,6 +5,8 @@ export type FileLineEnding = "\n" | "\r\n" | "\r";
 
 export type PaneWriteHandle = {
   name?: string;
+  queryPermission?: (descriptor?: { mode?: "read" | "readwrite" }) => Promise<PermissionState>;
+  requestPermission?: (descriptor?: { mode?: "read" | "readwrite" }) => Promise<PermissionState>;
 };
 
 export type WritableFileStream = {
@@ -54,6 +56,10 @@ export type PaneWriteTarget = {
 
 export type WritablePaneWriteTarget = Omit<PaneWriteTarget, "handle"> & {
   handle: WritableFileHandle;
+};
+
+export type PaneSaveTarget = Omit<PaneWriteTarget, "handle"> & {
+  handle: ReadableWritableFileHandle;
 };
 
 export type PaneWriteAvailability = {
@@ -385,6 +391,20 @@ export function supportsFileSystemAccess(
   return typeof win.showOpenFilePicker === "function";
 }
 
+export async function requestFileHandlePermission(
+  handle: PaneWriteHandle,
+  mode: "read" | "readwrite",
+): Promise<boolean> {
+  if (!handle.queryPermission || !handle.requestPermission) {
+    return true;
+  }
+  const descriptor = { mode };
+  if (await handle.queryPermission(descriptor) === "granted") {
+    return true;
+  }
+  return (await handle.requestPermission(descriptor)) === "granted";
+}
+
 export async function collectDroppedFiles(
   dataTransfer: DropDataTransfer | null | undefined,
 ): Promise<DroppedFileItem[]> {
@@ -511,4 +531,29 @@ export async function saveTextWithPaneTarget(
     includeUtf8Bom: target.includeUtf8Bom,
     lineEnding: target.lineEnding,
   });
+}
+
+export async function readCurrentFileFromPaneTarget(
+  target: PaneSaveTarget,
+  encoding: FileEncoding,
+): Promise<{
+  file: File;
+  bytes: Uint8Array;
+  target: PaneSaveTarget;
+}> {
+  const file = await target.handle.getFile();
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  const metadata = describeDecodedFileForWriteback(buffer, encoding);
+  return {
+    file,
+    bytes,
+    target: {
+      handle: target.handle,
+      fileName: file.name,
+      resolvedEncoding: metadata.resolvedEncoding,
+      includeUtf8Bom: metadata.includeUtf8Bom,
+      lineEnding: metadata.lineEnding,
+    },
+  };
 }

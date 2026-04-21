@@ -4,6 +4,8 @@ import {
   describeDecodedFileForWriteback,
   encodeUtf8TextForWriteback,
   getPaneWriteAvailability,
+  readCurrentFileFromPaneTarget,
+  requestFileHandlePermission,
   saveTextWithPaneTarget,
   writeTextToFileHandle,
 } from "./writeback";
@@ -109,6 +111,42 @@ describe("getPaneWriteAvailability", () => {
 
     expect(availability.enabled).toBe(false);
     expect(availability.reason).toContain("元の文字コード");
+  });
+});
+
+describe("requestFileHandlePermission", () => {
+  it("requests readwrite permission when the restored handle is only promptable", async () => {
+    const calls: string[] = [];
+    const handle = {
+      async queryPermission(descriptor: { mode?: string }) {
+        calls.push(`query:${descriptor.mode}`);
+        return "prompt" as PermissionState;
+      },
+      async requestPermission(descriptor: { mode?: string }) {
+        calls.push(`request:${descriptor.mode}`);
+        return "granted" as PermissionState;
+      },
+    };
+
+    await expect(requestFileHandlePermission(handle, "readwrite")).resolves.toBe(true);
+    expect(calls).toEqual(["query:readwrite", "request:readwrite"]);
+  });
+
+  it("does not request permission when it is already granted", async () => {
+    const calls: string[] = [];
+    const handle = {
+      async queryPermission(descriptor: { mode?: string }) {
+        calls.push(`query:${descriptor.mode}`);
+        return "granted" as PermissionState;
+      },
+      async requestPermission(descriptor: { mode?: string }) {
+        calls.push(`request:${descriptor.mode}`);
+        return "denied" as PermissionState;
+      },
+    };
+
+    await expect(requestFileHandlePermission(handle, "read")).resolves.toBe(true);
+    expect(calls).toEqual(["query:read"]);
   });
 });
 
@@ -450,5 +488,49 @@ describe("saveTextWithPaneTarget", () => {
     expect(written).toHaveLength(sourceText.length * 2);
     expect(written.slice(0, 6)).toEqual([0x82, 0xa0, 0x82, 0xa0, 0x82, 0xa0]);
     expect(written.slice(-6)).toEqual([0x82, 0xa0, 0x82, 0xa0, 0x82, 0xa0]);
+  });
+});
+
+describe("readCurrentFileFromPaneTarget", () => {
+  it("reads the current external file content and refreshes writeback metadata", async () => {
+    const handle = {
+      name: "reload.txt",
+      async getFile() {
+        return new File(["external\r\nchange"], "reload.txt");
+      },
+      async createWritable() {
+        return {
+          async write(_data: BufferSource) {
+            return undefined;
+          },
+          async close() {
+            return undefined;
+          },
+        };
+      },
+    };
+
+    const result = await readCurrentFileFromPaneTarget(
+      {
+        handle,
+        fileName: "reload.txt",
+        resolvedEncoding: "utf-8",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+      "auto",
+    );
+
+    expect(result.file.name).toBe("reload.txt");
+    expect(Array.from(result.bytes)).toEqual(
+      Array.from(new TextEncoder().encode("external\r\nchange")),
+    );
+    expect(result.target).toMatchObject({
+      handle,
+      fileName: "reload.txt",
+      resolvedEncoding: "utf-8",
+      includeUtf8Bom: false,
+      lineEnding: "\r\n",
+    });
   });
 });
