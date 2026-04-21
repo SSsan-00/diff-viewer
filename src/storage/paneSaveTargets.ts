@@ -4,8 +4,8 @@ export type PaneSide = "left" | "right";
 
 export type PaneSaveTargetStore = {
   isAvailable: boolean;
-  get: (key: string) => Promise<PaneSaveTarget | null>;
-  set: (key: string, value: PaneSaveTarget) => Promise<void>;
+  get: (key: string) => Promise<PaneSaveTarget | PaneSaveTarget[] | null>;
+  set: (key: string, value: PaneSaveTarget | PaneSaveTarget[]) => Promise<void>;
   delete: (key: string) => Promise<void>;
 };
 
@@ -69,15 +69,17 @@ export function createIndexedDbPaneSaveTargetStore(
 
   return {
     isAvailable: true,
-    async get(key: string): Promise<PaneSaveTarget | null> {
+    async get(key: string): Promise<PaneSaveTarget | PaneSaveTarget[] | null> {
       const database = await getDb();
       const transaction = database.transaction(STORE_NAME, "readonly");
       const store = transaction.objectStore(STORE_NAME);
       const result = await requestToPromise(store.get(key));
       await transactionDone(transaction);
-      return result && typeof result === "object" ? result as PaneSaveTarget : null;
+      return result && typeof result === "object"
+        ? result as PaneSaveTarget | PaneSaveTarget[]
+        : null;
     },
-    async set(key: string, value: PaneSaveTarget): Promise<void> {
+    async set(key: string, value: PaneSaveTarget | PaneSaveTarget[]): Promise<void> {
       const database = await getDb();
       const transaction = database.transaction(STORE_NAME, "readwrite");
       transaction.objectStore(STORE_NAME).put(value, key);
@@ -92,8 +94,28 @@ export function createIndexedDbPaneSaveTargetStore(
   };
 }
 
+function normalizePaneSaveTargets(
+  value: PaneSaveTarget | PaneSaveTarget[] | null,
+): PaneSaveTarget[] {
+  if (!value) {
+    return [];
+  }
+  return Array.isArray(value) ? value : [value];
+}
+
 export function createUnavailablePaneSaveTargetStore(): PaneSaveTargetStore {
   return unavailablePaneSaveTargetStore;
+}
+
+export async function loadPaneSaveTargets(
+  store: PaneSaveTargetStore,
+  workspaceId: string,
+  side: PaneSide,
+): Promise<PaneSaveTarget[]> {
+  if (!store.isAvailable) {
+    return [];
+  }
+  return normalizePaneSaveTargets(await store.get(getPaneSaveTargetKey(workspaceId, side)));
 }
 
 export function loadPaneSaveTarget(
@@ -104,7 +126,7 @@ export function loadPaneSaveTarget(
   if (!store.isAvailable) {
     return Promise.resolve(null);
   }
-  return store.get(getPaneSaveTargetKey(workspaceId, side));
+  return loadPaneSaveTargets(store, workspaceId, side).then((targets) => targets[0] ?? null);
 }
 
 export function savePaneSaveTarget(
@@ -113,10 +135,19 @@ export function savePaneSaveTarget(
   side: PaneSide,
   target: PaneSaveTarget,
 ): Promise<void> {
+  return savePaneSaveTargets(store, workspaceId, side, [target]);
+}
+
+export function savePaneSaveTargets(
+  store: PaneSaveTargetStore,
+  workspaceId: string,
+  side: PaneSide,
+  targets: readonly PaneSaveTarget[],
+): Promise<void> {
   if (!store.isAvailable) {
     return Promise.resolve();
   }
-  return store.set(getPaneSaveTargetKey(workspaceId, side), target);
+  return store.set(getPaneSaveTargetKey(workspaceId, side), [...targets]);
 }
 
 export function clearPaneSaveTarget(

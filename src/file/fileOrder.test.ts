@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { reorderRazorPairs } from "./fileOrder";
+import { pairFilesWithHandlesInDisplayOrder, reorderRazorPairs } from "./fileOrder";
 
 type Named = { name: string };
 
@@ -45,5 +45,20 @@ describe("reorderRazorPairs", () => {
     const result = reorderRazorPairs(files).map((file) => file.name);
 
     expect(result).toEqual(["A.cshtml", "B.cshtml.cs"]);
+  });
+
+  it("keeps file handles attached when display order is adjusted", () => {
+    const files: Named[] = [
+      { name: "View.cshtml" },
+      { name: "View.cshtml.cs" },
+    ];
+    const handles = [{ id: "view-handle" }, { id: "code-handle" }];
+
+    const result = pairFilesWithHandlesInDisplayOrder(files, handles);
+
+    expect(result).toEqual([
+      { file: files[1], handle: handles[1] },
+      { file: files[0], handle: handles[0] },
+    ]);
   });
 });

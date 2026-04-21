@@ -30,14 +30,18 @@ import {
   pickFilesWithHandles,
   readCurrentFileFromPaneTarget,
   requestFileHandlePermission,
-  saveTextWithPaneTarget,
   supportsFileSystemAccess,
+  writeBytesToFileHandle,
   type FileSystemAccessWindow,
   type PaneSaveTarget,
   type ReadableFileHandle,
   type ReadableWritableFileHandle,
 } from "./file/writeback";
-import { reorderRazorPairs } from "./file/fileOrder";
+import {
+  areChangesWithinSingleFileSegments,
+  buildMultiFileWritePlan,
+} from "./file/multiFileEditModel";
+import { pairFilesWithHandlesInDisplayOrder, reorderRazorPairs } from "./file/fileOrder";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
   addAnchor,
@@ -175,8 +179,8 @@ import { createIndexedDbTextStore } from "./storage/textStore";
 import {
   clearPaneSaveTarget as clearStoredPaneSaveTarget,
   createIndexedDbPaneSaveTargetStore,
-  loadPaneSaveTarget,
-  savePaneSaveTarget,
+  loadPaneSaveTargets,
+  savePaneSaveTargets,
 } from "./storage/paneSaveTargets";
 import { clearPaneSummary } from "./storage/paneSummary";
 import {
@@ -1271,6 +1275,10 @@ const paneSaveTargets: Record<"left" | "right", PaneSaveTarget | null> = {
   left: null,
   right: null,
 };
+const paneSaveTargetLists: Record<"left" | "right", PaneSaveTarget[]> = {
+  left: [],
+  right: [],
+};
 const paneSavePending: Record<"left" | "right", boolean> = {
   left: false,
   right: false,
@@ -1293,10 +1301,45 @@ function clonePaneSaveTarget(target: PaneSaveTarget | null): PaneSaveTarget | nu
   };
 }
 
+function clonePaneSaveTargets(targets: readonly PaneSaveTarget[]): PaneSaveTarget[] {
+  return targets
+    .map((target) => clonePaneSaveTarget(target))
+    .filter((target): target is PaneSaveTarget => target !== null);
+}
+
 function isReadableWritableFileHandle(
   handle: ReadableFileHandle,
 ): handle is ReadableWritableFileHandle {
   return typeof (handle as { createWritable?: unknown }).createWritable === "function";
+}
+
+type WritablePaneSaveTarget = PaneSaveTarget & {
+  handle: ReadableWritableFileHandle;
+};
+
+function hasWritablePaneHandle(target: PaneSaveTarget): target is WritablePaneSaveTarget {
+  return isReadableWritableFileHandle(target.handle);
+}
+
+const paneBoundarySnapshots: Record<
+  "left" | "right",
+  { text: string; segments: LineSegment[] }
+> = {
+  left: { text: "", segments: [] },
+  right: { text: "", segments: [] },
+};
+
+function cloneSegmentsForSnapshot(segments: readonly LineSegment[]): LineSegment[] {
+  return segments.map((segment) => ({ ...segment }));
+}
+
+function commitPaneBoundarySnapshot(side: "left" | "right"): void {
+  const editor = side === "left" ? leftEditor : rightEditor;
+  const segments = side === "left" ? leftSegments : rightSegments;
+  paneBoundarySnapshots[side] = {
+    text: editor.getValue(),
+    segments: cloneSegmentsForSnapshot(segments),
+  };
 }
 
 function withProgrammaticEdit(
@@ -1415,6 +1458,7 @@ function applyWorkspacePaneSnapshot(
   );
   updateLineNumbers(editor, segments);
   applyIndentOptions(editor);
+  commitPaneBoundarySnapshot(side);
   const fileNames = listLoadedFileNames(segments);
   updateFileCards(side, fileNames);
   let activeFile = safeSnapshot.activeFile;
@@ -1549,8 +1593,8 @@ function restoreClearUndoState(): void {
     applyWorkspacePaneSnapshot("left", clearUndoState.left.pane, { applyText: false });
     applyWorkspacePaneSnapshot("right", clearUndoState.right.pane, { applyText: false });
   }
-  setPaneSaveTarget("left", clearUndoState.left.saveTarget);
-  setPaneSaveTarget("right", clearUndoState.right.saveTarget);
+  setPaneSaveTargets("left", clearUndoState.left.saveTargets);
+  setPaneSaveTargets("right", clearUndoState.right.saveTargets);
   restoreAnchorsFromSnapshot(clearUndoState.snapshot);
   clearUndoState.status = "restored";
 }
@@ -1977,8 +2021,20 @@ leftEditor.onDidChangeModelContent((event) => {
   if (suppressLeftFileBytesClear) {
     return;
   }
+  if (!areChangesWithinSingleFileSegments(leftSegments, event.changes)) {
+    const snapshot = paneBoundarySnapshots.left;
+    withProgrammaticEdit("left", () => {
+      leftEditor.setValue(snapshot.text);
+    });
+    leftSegments.length = 0;
+    leftSegments.push(...cloneSegmentsForSnapshot(snapshot.segments));
+    updateLineNumbers(leftEditor, leftSegments);
+    toast.show("ファイル境界をまたぐ編集はできません。", "error");
+    return;
+  }
   updateSegmentsForChanges(leftSegments, event.changes);
   updateLineNumbers(leftEditor, leftSegments);
+  commitPaneBoundarySnapshot("left");
   clearPaneRawFiles("left");
   schedulePersistAll();
   scheduleRecalc();
@@ -1987,8 +2043,20 @@ rightEditor.onDidChangeModelContent((event) => {
   if (suppressRightFileBytesClear) {
     return;
   }
+  if (!areChangesWithinSingleFileSegments(rightSegments, event.changes)) {
+    const snapshot = paneBoundarySnapshots.right;
+    withProgrammaticEdit("right", () => {
+      rightEditor.setValue(snapshot.text);
+    });
+    rightSegments.length = 0;
+    rightSegments.push(...cloneSegmentsForSnapshot(snapshot.segments));
+    updateLineNumbers(rightEditor, rightSegments);
+    toast.show("ファイル境界をまたぐ編集はできません。", "error");
+    return;
+  }
   updateSegmentsForChanges(rightSegments, event.changes);
   updateLineNumbers(rightEditor, rightSegments);
+  commitPaneBoundarySnapshot("right");
   clearPaneRawFiles("right");
   schedulePersistAll();
   scheduleRecalc();
@@ -2022,6 +2090,7 @@ function applyDecodedFiles(
   segments.push(...nextSegments);
   updateLineNumbers(editor, segments);
   applyIndentOptions(editor);
+  commitPaneBoundarySnapshot(side);
   const fileNames = listLoadedFileNames(segments);
   updateFileCards(side, fileNames);
   if (!goToLineSelection[side] || !fileNames.includes(goToLineSelection[side] ?? "")) {
@@ -2084,6 +2153,7 @@ async function appendFilesToEditor(
     segments.length = 0;
     segments.push(...nextSegments);
     updateLineNumbers(editor, segments);
+    commitPaneBoundarySnapshot(side);
     refreshSyntaxHighlight();
     const segmentNames = listLoadedFileNames(nextSegments);
     loadedNames =
@@ -2159,9 +2229,15 @@ function bindDropZone(
         return;
       }
 
+      const previousFileCount = getPaneFileCount(side);
+      const previousTargets = clonePaneSaveTargets(paneSaveTargetLists[side]);
+      const orderedDropped = pairFilesWithHandlesInDisplayOrder(
+        dropped.map((item) => item.file),
+        dropped.map((item) => item.handle),
+      );
       const encoding = encodingSelect.value as FileEncoding;
       const loaded = await appendFilesToEditor(
-        dropped.map(({ file }) => file),
+        orderedDropped.map((item) => item.file),
         encoding,
         editor,
         messageTarget,
@@ -2173,19 +2249,21 @@ function bindDropZone(
         return;
       }
 
-      const singleDropped = dropped[0];
+      const writableDropped = orderedDropped.filter(
+        (item): item is { file: File; handle: ReadableFileHandle } => item.handle !== null,
+      );
       if (
-        dropped.length === 1 &&
-        getPaneFileCount(side) === 1 &&
-        singleDropped?.handle
+        writableDropped.length === orderedDropped.length &&
+        previousTargets.length === previousFileCount &&
+        getPaneFileCount(side) === previousFileCount + orderedDropped.length
       ) {
         try {
-          const target = await buildPaneSaveTarget(
-            singleDropped.handle,
-            singleDropped.file,
-            encoding,
+          const nextTargets = await Promise.all(
+            writableDropped.map((item) =>
+              buildPaneSaveTarget(item.handle, item.file, encoding),
+            ),
           );
-          setPaneSaveTarget(side, target);
+          setPaneSaveTargets(side, previousTargets.concat(nextTargets));
         } catch (error) {
           if (shouldLogFileLoadError(error)) {
             console.error(error);
@@ -2251,6 +2329,54 @@ function getPaneFileCount(side: "left" | "right"): number {
   return listLoadedFileNames(paneBindings[side].segments).length;
 }
 
+function getPaneWriteAvailabilityForTargets(side: "left" | "right"): {
+  enabled: boolean;
+  reason: string | null;
+} {
+  const fileCount = getPaneFileCount(side);
+  const targets = paneSaveTargetLists[side];
+  if (fileCount <= 1) {
+    return getPaneWriteAvailability({
+      hasFileSystemAccess,
+      fileCount,
+      selectedEncoding: paneBindings[side].encodingSelect.value as FileEncoding,
+      target: paneSaveTargets[side],
+    });
+  }
+  if (!hasFileSystemAccess) {
+    return {
+      enabled: false,
+      reason: "このブラウザでは上書き保存に対応していません。",
+    };
+  }
+  if (targets.length !== fileCount) {
+    return {
+      enabled: false,
+      reason: "全ファイルの保存用ハンドルがある場合だけ保存できます。",
+    };
+  }
+  if (!targets.every((target) => isReadableWritableFileHandle(target.handle))) {
+    return {
+      enabled: false,
+      reason: "全ファイルの保存用ハンドルがある場合だけ保存できます。",
+    };
+  }
+  const selectedEncoding = paneBindings[side].encodingSelect.value as FileEncoding;
+  if (
+    selectedEncoding !== "auto" &&
+    targets.some((target) => target.resolvedEncoding !== selectedEncoding)
+  ) {
+    return {
+      enabled: false,
+      reason: "元の文字コード表示中のときだけ保存できます。",
+    };
+  }
+  return {
+    enabled: true,
+    reason: null,
+  };
+}
+
 function updatePaneSaveButton(side: "left" | "right"): void {
   const button = paneBindings[side].saveButton;
   button.textContent = "保存";
@@ -2267,17 +2393,15 @@ function updatePaneSaveButton(side: "left" | "right"): void {
     return;
   }
 
-  const target = paneSaveTargets[side];
-  const availability = getPaneWriteAvailability({
-    hasFileSystemAccess,
-    fileCount: getPaneFileCount(side),
-    selectedEncoding: paneBindings[side].encodingSelect.value as FileEncoding,
-    target,
-  });
+  const targets = paneSaveTargetLists[side];
+  const availability = getPaneWriteAvailabilityForTargets(side);
   button.disabled = !availability.enabled;
   button.removeAttribute("aria-busy");
-  if (availability.enabled && target) {
-    button.title = `${target.fileName} を保存`;
+  if (availability.enabled && targets.length > 0) {
+    button.title =
+      targets.length === 1
+        ? `${targets[0].fileName} を保存`
+        : `${targets.length}ファイルを保存`;
     return;
   }
   button.title = availability.reason ?? "";
@@ -2292,43 +2416,51 @@ function updatePaneReloadButton(side: "left" | "right"): void {
     button.setAttribute("aria-busy", "true");
     return;
   }
-  const target = paneSaveTargets[side];
-  if (getPaneFileCount(side) !== 1) {
+  const fileCount = getPaneFileCount(side);
+  const targets = paneSaveTargetLists[side];
+  if (fileCount === 0) {
     button.disabled = true;
     button.removeAttribute("aria-busy");
-    button.title = "単一ファイル比較のときだけ再読み込みできます。";
+    button.title = "再読み込みできるファイルがありません。";
     return;
   }
-  if (!target?.handle) {
+  if (targets.length !== fileCount || targets.some((target) => !target.handle)) {
     button.disabled = true;
     button.removeAttribute("aria-busy");
-    button.title = "ファイル選択ボタンから開いた単一ファイルだけ再読み込みできます。";
+    button.title = "ファイル選択ボタンから開いたファイルだけ再読み込みできます。";
     return;
   }
   button.disabled = false;
   button.removeAttribute("aria-busy");
-  button.title = `${target.fileName} を再読み込み`;
+  button.title =
+    targets.length === 1
+      ? `${targets[0].fileName} を再読み込み`
+      : `${targets.length}ファイルを再読み込み`;
 }
 
 function persistPaneSaveTarget(side: "left" | "right"): void {
   if (!paneSaveTargetStore.isAvailable) {
     return;
   }
-  const target = paneSaveTargets[side];
-  const task = target
-    ? savePaneSaveTarget(paneSaveTargetStore, workspaceState.selectedId, side, target)
+  const targets = paneSaveTargetLists[side];
+  const task = targets.length > 0
+    ? savePaneSaveTargets(paneSaveTargetStore, workspaceState.selectedId, side, targets)
     : clearStoredPaneSaveTarget(paneSaveTargetStore, workspaceState.selectedId, side);
   task.catch((error) => {
     console.warn("Failed to persist pane save target:", error);
   });
 }
 
-function setPaneSaveTarget(
+function setPaneSaveTargets(
   side: "left" | "right",
-  target: PaneSaveTarget | null,
+  targets: readonly PaneSaveTarget[],
   options?: { persist?: boolean },
 ): void {
-  paneSaveTargets[side] = clonePaneSaveTarget(target);
+  paneSaveTargetLists[side] = clonePaneSaveTargets(targets);
+  paneSaveTargets[side] =
+    paneSaveTargetLists[side].length === 1
+      ? clonePaneSaveTarget(paneSaveTargetLists[side][0])
+      : null;
   updatePaneSaveButton(side);
   updatePaneReloadButton(side);
   if (options?.persist !== false) {
@@ -2340,12 +2472,7 @@ function clearPaneSaveTarget(
   side: "left" | "right",
   options?: { persist?: boolean },
 ): void {
-  paneSaveTargets[side] = null;
-  updatePaneSaveButton(side);
-  updatePaneReloadButton(side);
-  if (options?.persist !== false) {
-    persistPaneSaveTarget(side);
-  }
+  setPaneSaveTargets(side, [], options);
 }
 
 function clearPaneRawFiles(side: "left" | "right"): void {
@@ -2358,6 +2485,7 @@ function clearPaneSourceState(
 ): void {
   clearPaneRawFiles(side);
   clearPaneSaveTarget(side, { persist: options?.persistSaveTarget });
+  commitPaneBoundarySnapshot(side);
 }
 
 function isAbortError(error: unknown): boolean {
@@ -2403,8 +2531,14 @@ async function openPaneFiles(side: "left" | "right"): Promise<void> {
     }
 
     const encoding = config.encodingSelect.value as FileEncoding;
-    const loaded = await appendFilesToEditor(
+    const previousFileCount = getPaneFileCount(side);
+    const previousTargets = clonePaneSaveTargets(paneSaveTargetLists[side]);
+    const pickedItems = pairFilesWithHandlesInDisplayOrder(
       picked.files,
+      picked.handles,
+    );
+    const loaded = await appendFilesToEditor(
+      pickedItems.map((item) => item.file),
       encoding,
       config.editor,
       config.message,
@@ -2416,14 +2550,17 @@ async function openPaneFiles(side: "left" | "right"): Promise<void> {
       return;
     }
 
-    if (picked.files.length === 1 && getPaneFileCount(side) === 1) {
+    if (
+      previousTargets.length === previousFileCount &&
+      getPaneFileCount(side) === previousFileCount + pickedItems.length
+    ) {
       try {
-        const target = await buildPaneSaveTarget(
-          picked.handles[0],
-          picked.files[0],
-          encoding,
+        const nextTargets = await Promise.all(
+          pickedItems.map((item) =>
+            buildPaneSaveTarget(item.handle, item.file, encoding),
+          ),
         );
-        setPaneSaveTarget(side, target);
+        setPaneSaveTargets(side, previousTargets.concat(nextTargets));
       } catch (error) {
         if (shouldLogFileLoadError(error)) {
           console.error(error);
@@ -2458,14 +2595,9 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
   if (paneSavePending[side]) {
     return;
   }
-  const target = paneSaveTargets[side];
-  const availability = getPaneWriteAvailability({
-    hasFileSystemAccess,
-    fileCount: getPaneFileCount(side),
-    selectedEncoding: paneBindings[side].encodingSelect.value as FileEncoding,
-    target,
-  });
-  if (!availability.enabled || !target) {
+  const targets = paneSaveTargetLists[side];
+  const availability = getPaneWriteAvailabilityForTargets(side);
+  if (!availability.enabled || targets.length === 0) {
     toast.show(availability.reason ?? "保存できませんでした。", "error");
     updatePaneSaveButton(side);
     return;
@@ -2474,26 +2606,37 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
   paneSavePending[side] = true;
   updatePaneSaveButton(side);
   try {
-    if (!isReadableWritableFileHandle(target.handle)) {
-      toast.show(`${target.fileName} は保存用の権限がありません。`, "error");
+    const writableTargets = targets.filter(hasWritablePaneHandle);
+    if (writableTargets.length !== targets.length) {
+      toast.show("保存用の権限がないファイルがあります。", "error");
       return;
     }
-    const permitted = await requestFileHandlePermission(target.handle, "readwrite");
-    if (!permitted) {
-      toast.show(`${target.fileName} の保存権限がありません。`, "error");
-      return;
-    }
-    await saveTextWithPaneTarget(
-      { ...target, handle: target.handle },
+    const writeItems = buildMultiFileWritePlan(
       paneBindings[side].editor.getValue(),
+      paneBindings[side].segments,
+      writableTargets,
     );
-    toast.show(`${target.fileName} を保存しました。`);
+    for (const { target } of writeItems) {
+      const permitted = await requestFileHandlePermission(target.handle, "readwrite");
+      if (!permitted) {
+        toast.show(`${target.fileName} の保存権限がありません。`, "error");
+        return;
+      }
+    }
+    for (const { target, bytes } of writeItems) {
+      await writeBytesToFileHandle(target.handle, bytes);
+    }
+    toast.show(
+      targets.length === 1
+        ? `${targets[0].fileName} を保存しました。`
+        : `${targets.length}ファイルを保存しました。`,
+    );
   } catch (error) {
     if (isAbortError(error)) {
       return;
     }
     console.error(error);
-    toast.show(`${target.fileName} を保存できませんでした。`, "error");
+    toast.show("ファイルを保存できませんでした。", "error");
   } finally {
     paneSavePending[side] = false;
     updatePaneSaveButton(side);
@@ -2504,9 +2647,9 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
   if (paneReloadPending[side]) {
     return;
   }
-  const target = paneSaveTargets[side];
-  if (!target || getPaneFileCount(side) !== 1) {
-    toast.show("再読み込みできる単一ファイルがありません。", "error");
+  const targets = paneSaveTargetLists[side];
+  if (targets.length === 0 || targets.length !== getPaneFileCount(side)) {
+    toast.show("再読み込みできるファイルがありません。", "error");
     updatePaneReloadButton(side);
     return;
   }
@@ -2514,18 +2657,22 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
   paneReloadPending[side] = true;
   updatePaneReloadButton(side);
   try {
-    const permitted = await requestFileHandlePermission(target.handle, "read");
-    if (!permitted) {
-      toast.show(`${target.fileName} の読み込み権限がありません。`, "error");
-      return;
+    for (const target of targets) {
+      const permitted = await requestFileHandlePermission(target.handle, "read");
+      if (!permitted) {
+        toast.show(`${target.fileName} の読み込み権限がありません。`, "error");
+        return;
+      }
     }
     const config = paneBindings[side];
     const encoding = config.encodingSelect.value as FileEncoding;
-    const reloaded = await readCurrentFileFromPaneTarget(target, encoding);
-    const nextRawFiles: FileBytes[] = [{
-      name: reloaded.file.name,
-      bytes: reloaded.bytes,
-    }];
+    const reloaded = await Promise.all(
+      targets.map((target) => readCurrentFileFromPaneTarget(target, encoding)),
+    );
+    const nextRawFiles: FileBytes[] = reloaded.map((item) => ({
+      name: item.file.name,
+      bytes: item.bytes,
+    }));
     const decoded = buildDecodedFiles(nextRawFiles, encoding);
 
     withProgrammaticEdit(side, () => {
@@ -2537,6 +2684,7 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
     config.segments.push(...decoded.segments);
     updateLineNumbers(config.editor, config.segments);
     applyIndentOptions(config.editor);
+    commitPaneBoundarySnapshot(side);
     const fileNames = listLoadedFileNames(config.segments);
     updateFileCards(side, fileNames);
     if (!goToLineSelection[side] || !fileNames.includes(goToLineSelection[side] ?? "")) {
@@ -2544,17 +2692,21 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
     }
     clearPaneMessage(config.message);
     clearPaneSummary(storage, side);
-    setPaneSaveTarget(side, reloaded.target);
+    setPaneSaveTargets(side, reloaded.map((item) => item.target));
     refreshSyntaxHighlight();
     recalcDiff();
     schedulePersistAll();
-    toast.show(`${reloaded.file.name} を再読み込みしました。`);
+    toast.show(
+      reloaded.length === 1
+        ? `${reloaded[0].file.name} を再読み込みしました。`
+        : `${reloaded.length}ファイルを再読み込みしました。`,
+    );
   } catch (error) {
     if (isAbortError(error)) {
       return;
     }
     console.error(error);
-    toast.show(`${target.fileName} を再読み込みできませんでした。`, "error");
+    toast.show("ファイルを再読み込みできませんでした。", "error");
   } finally {
     paneReloadPending[side] = false;
     updatePaneReloadButton(side);
@@ -2569,21 +2721,24 @@ async function restorePaneSaveTargetForWorkspace(
     return;
   }
   try {
-    const target = await loadPaneSaveTarget(paneSaveTargetStore, workspaceId, side);
+    const targets = await loadPaneSaveTargets(paneSaveTargetStore, workspaceId, side);
     if (workspaceState.selectedId !== workspaceId) {
       return;
     }
-    if (!target) {
+    if (targets.length === 0) {
       updatePaneReloadButton(side);
       return;
     }
     const fileNames = listLoadedFileNames(paneBindings[side].segments);
-    if (fileNames.length !== 1 || fileNames[0] !== target.fileName) {
+    if (
+      fileNames.length !== targets.length ||
+      fileNames.some((fileName, index) => fileName !== targets[index]?.fileName)
+    ) {
       await clearStoredPaneSaveTarget(paneSaveTargetStore, workspaceId, side);
       clearPaneSaveTarget(side, { persist: false });
       return;
     }
-    setPaneSaveTarget(side, target, { persist: false });
+    setPaneSaveTargets(side, targets, { persist: false });
   } catch (error) {
     console.warn("Failed to restore pane save target:", error);
     clearPaneSaveTarget(side, { persist: false });
@@ -3330,7 +3485,7 @@ type ClearUndoPaneState = {
   beforeVersionId: number | null;
   afterVersionId: number | null;
   pane: WorkspacePaneState;
-  saveTarget: PaneSaveTarget | null;
+  saveTargets: PaneSaveTarget[];
 };
 
 type ClearUndoState = {
@@ -4438,13 +4593,13 @@ function buildPaneClearOptions(
           beforeVersionId: getEditorAlternativeVersionId(leftEditor),
           afterVersionId: null,
           pane: collectWorkspacePaneSnapshot("left"),
-          saveTarget: clonePaneSaveTarget(paneSaveTargets.left),
+          saveTargets: clonePaneSaveTargets(paneSaveTargetLists.left),
         },
         right: {
           beforeVersionId: getEditorAlternativeVersionId(rightEditor),
           afterVersionId: null,
           pane: collectWorkspacePaneSnapshot("right"),
-          saveTarget: clonePaneSaveTarget(paneSaveTargets.right),
+          saveTargets: clonePaneSaveTargets(paneSaveTargetLists.right),
         },
         status: "armed",
         mode: "pane",
@@ -4677,13 +4832,13 @@ function clearAllPanes(): void {
       beforeVersionId: getEditorAlternativeVersionId(leftEditor),
       afterVersionId: null,
       pane: collectWorkspacePaneSnapshot("left"),
-      saveTarget: clonePaneSaveTarget(paneSaveTargets.left),
+      saveTargets: clonePaneSaveTargets(paneSaveTargetLists.left),
     },
     right: {
       beforeVersionId: getEditorAlternativeVersionId(rightEditor),
       afterVersionId: null,
       pane: collectWorkspacePaneSnapshot("right"),
-      saveTarget: clonePaneSaveTarget(paneSaveTargets.right),
+      saveTargets: clonePaneSaveTargets(paneSaveTargetLists.right),
     },
     status: "armed",
     mode: "all",

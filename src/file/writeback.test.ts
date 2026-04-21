@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPaneWriteBytes,
   collectDroppedFiles,
   describeDecodedFileForWriteback,
   encodeUtf8TextForWriteback,
@@ -8,6 +9,7 @@ import {
   readCurrentFileFromPaneTarget,
   requestFileHandlePermission,
   saveTextWithPaneTarget,
+  writeBytesToFileHandle,
   writeTextToFileHandle,
 } from "./writeback";
 
@@ -294,6 +296,16 @@ describe("pickFilesWithHandles", () => {
 });
 
 describe("writeTextToFileHandle", () => {
+  it("builds write bytes without touching the file handle", () => {
+    const bytes = buildPaneWriteBytes("あ\nｲ", {
+      resolvedEncoding: "shift_jis",
+      includeUtf8Bom: false,
+      lineEnding: "\r\n",
+    });
+
+    expect(Array.from(bytes)).toEqual([0x82, 0xa0, 0x0d, 0x0a, 0xb2]);
+  });
+
   it("writes UTF-8 bytes to the file handle", async () => {
     const written: number[] = [];
     let closed = false;
@@ -319,6 +331,27 @@ describe("writeTextToFileHandle", () => {
 
     expect(written).toEqual([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a, 0x62]);
     expect(closed).toBe(true);
+  });
+
+  it("writes prebuilt bytes without re-encoding them", async () => {
+    const written: number[] = [];
+    const handle = {
+      name: "left.txt",
+      async createWritable() {
+        return {
+          async write(data: BufferSource) {
+            written.push(...Array.from(new Uint8Array(data as ArrayBufferLike)));
+          },
+          async close() {
+            return undefined;
+          },
+        };
+      },
+    };
+
+    await writeBytesToFileHandle(handle, Uint8Array.from([0x82, 0xa0]));
+
+    expect(written).toEqual([0x82, 0xa0]);
   });
 
   it("writes Shift_JIS bytes to the file handle", async () => {
@@ -372,9 +405,11 @@ describe("writeTextToFileHandle", () => {
   });
 
   it("throws when the text cannot be represented in the target encoding", async () => {
+    let createWritableCalled = false;
     const handle = {
       name: "left.txt",
       async createWritable() {
+        createWritableCalled = true;
         return {
           async write(_data: BufferSource) {
             return undefined;
@@ -393,6 +428,7 @@ describe("writeTextToFileHandle", () => {
         lineEnding: "\n",
       }),
     ).rejects.toThrow("shift_jis");
+    expect(createWritableCalled).toBe(false);
   });
 
   it("does not partially write when an unsupported character is present", async () => {

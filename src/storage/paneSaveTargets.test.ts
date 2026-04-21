@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 import {
   clearPaneSaveTarget,
   loadPaneSaveTarget,
+  loadPaneSaveTargets,
   savePaneSaveTarget,
+  savePaneSaveTargets,
   type PaneSaveTargetStore,
 } from "./paneSaveTargets";
 import type { PaneSaveTarget } from "../file/writeback";
 
 function createMemoryStore(): PaneSaveTargetStore & {
-  values: Map<string, PaneSaveTarget>;
+  values: Map<string, PaneSaveTarget | PaneSaveTarget[]>;
 } {
-  const values = new Map<string, PaneSaveTarget>();
+  const values = new Map<string, PaneSaveTarget | PaneSaveTarget[]>();
   return {
     isAvailable: true,
     values,
@@ -32,16 +34,6 @@ function createTarget(fileName: string): PaneSaveTarget {
       name: fileName,
       async getFile() {
         return new File(["a"], fileName);
-      },
-      async createWritable() {
-        return {
-          async write(_data: BufferSource) {
-            return undefined;
-          },
-          async close() {
-            return undefined;
-          },
-        };
       },
     },
     fileName,
@@ -76,5 +68,19 @@ describe("pane save target storage", () => {
 
     expect(await loadPaneSaveTarget(store, "workspace-a", "left")).toBeNull();
     expect(await loadPaneSaveTarget(store, "workspace-a", "right")).toEqual(right);
+  });
+
+  it("stores and restores multiple pane targets in order", async () => {
+    const store = createMemoryStore();
+    const first = createTarget("first.txt");
+    const second = createTarget("second.txt");
+
+    await savePaneSaveTargets(store, "workspace-a", "left", [first, second]);
+
+    expect(await loadPaneSaveTargets(store, "workspace-a", "left")).toEqual([
+      first,
+      second,
+    ]);
+    expect(await loadPaneSaveTarget(store, "workspace-a", "left")).toEqual(first);
   });
 });

@@ -1,5 +1,10 @@
 type NamedFile = { name: string };
 
+export type FileHandlePair<TFile extends NamedFile, THandle> = {
+  file: TFile;
+  handle: THandle;
+};
+
 function getBaseName(name: string, suffix: string): string {
   return name.slice(0, -suffix.length);
 }
@@ -53,4 +58,16 @@ export function reorderRazorPairs<T extends NamedFile>(files: readonly T[]): T[]
   });
 
   return result;
+}
+
+export function pairFilesWithHandlesInDisplayOrder<TFile extends NamedFile, THandle>(
+  files: readonly TFile[],
+  handles: readonly THandle[],
+): FileHandlePair<TFile, THandle>[] {
+  const pairs = files.map((file, index) => ({
+    name: file.name,
+    file,
+    handle: handles[index],
+  }));
+  return reorderRazorPairs(pairs).map(({ file, handle }) => ({ file, handle }));
 }

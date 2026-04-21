@@ -466,6 +466,36 @@ export async function pickFilesWithHandles(
   return { handles, files };
 }
 
+export function buildPaneWriteBytes(
+  text: string,
+  options: {
+    resolvedEncoding: ResolvedFileEncoding;
+    includeUtf8Bom: boolean;
+    lineEnding: FileLineEnding;
+  },
+): Uint8Array {
+  if (options.resolvedEncoding === "utf-8") {
+    return encodeUtf8TextForWriteback(text, {
+      includeUtf8Bom: options.includeUtf8Bom,
+      lineEnding: options.lineEnding,
+    });
+  }
+
+  const normalized = normalizeLineEndingsForWriteback(text, options.lineEnding);
+  const map = getLegacyEncodeMap(options.resolvedEncoding);
+  const bytes: number[] = [];
+
+  for (const char of normalized) {
+    const encoded = map.get(char);
+    if (!encoded) {
+      throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${char}`);
+    }
+    bytes.push(...encoded);
+  }
+
+  return Uint8Array.from(bytes);
+}
+
 export async function writeTextToFileHandle(
   handle: WritableFileHandle,
   text: string,
@@ -475,44 +505,18 @@ export async function writeTextToFileHandle(
     lineEnding: FileLineEnding;
   },
 ): Promise<void> {
+  const bytes = buildPaneWriteBytes(text, options);
+  await writeBytesToFileHandle(handle, bytes);
+}
+
+export async function writeBytesToFileHandle(
+  handle: WritableFileHandle,
+  bytes: Uint8Array,
+): Promise<void> {
   const writable = await handle.createWritable();
   try {
-    if (options.resolvedEncoding === "utf-8") {
-      await writable.write(
-        encodeUtf8TextForWriteback(text, {
-          includeUtf8Bom: options.includeUtf8Bom,
-          lineEnding: options.lineEnding,
-        }),
-      );
-      await writable.close();
-      return;
-    }
-
-    const normalized = normalizeLineEndingsForWriteback(text, options.lineEnding);
-    const map = getLegacyEncodeMap(options.resolvedEncoding);
-
-    for (const char of normalized) {
-      if (!map.has(char)) {
-        throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${char}`);
-      }
-    }
-
-    let chunk: number[] = [];
-    let chunkByteLength = 0;
-
-    for (const char of normalized) {
-      const encoded = map.get(char)!;
-      if (chunkByteLength > 0 && chunkByteLength + encoded.length > WRITE_CHUNK_BYTE_LIMIT) {
-        await writable.write(Uint8Array.from(chunk));
-        chunk = [];
-        chunkByteLength = 0;
-      }
-      chunk.push(...encoded);
-      chunkByteLength += encoded.length;
-    }
-
-    if (chunkByteLength > 0) {
-      await writable.write(Uint8Array.from(chunk));
+    for (let offset = 0; offset < bytes.length; offset += WRITE_CHUNK_BYTE_LIMIT) {
+      await writable.write(bytes.slice(offset, offset + WRITE_CHUNK_BYTE_LIMIT));
     }
     await writable.close();
   } catch (error) {
