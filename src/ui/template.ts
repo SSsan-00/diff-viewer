@@ -257,7 +257,7 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
               id="left-reload-file"
               class="button button-subtle pane-reload"
               type="button"
-              disabled${saveButtonHiddenAttrs}
+              disabled
               aria-label="左のファイルを再読み込み"
             >
               再読み込み
@@ -397,7 +397,7 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
               id="right-reload-file"
               class="button button-subtle pane-reload"
               type="button"
-              disabled${saveButtonHiddenAttrs}
+              disabled
               aria-label="右のファイルを再読み込み"
             >
               再読み込み

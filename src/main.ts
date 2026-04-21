@@ -34,6 +34,7 @@ import {
   supportsFileSystemAccess,
   type FileSystemAccessWindow,
   type PaneSaveTarget,
+  type ReadableFileHandle,
   type ReadableWritableFileHandle,
 } from "./file/writeback";
 import { reorderRazorPairs } from "./file/fileOrder";
@@ -1292,6 +1293,12 @@ function clonePaneSaveTarget(target: PaneSaveTarget | null): PaneSaveTarget | nu
   };
 }
 
+function isReadableWritableFileHandle(
+  handle: ReadableFileHandle,
+): handle is ReadableWritableFileHandle {
+  return typeof (handle as { createWritable?: unknown }).createWritable === "function";
+}
+
 function withProgrammaticEdit(
   side: "left" | "right",
   action: () => void,
@@ -2146,12 +2153,7 @@ function bindDropZone(
     }
     const dataTransfer = event.dataTransfer;
     void (async () => {
-      const dropped = writebackEnabled
-        ? await collectDroppedFiles(dataTransfer)
-        : Array.from(dataTransfer?.files ?? []).map((file) => ({
-            file,
-            handle: null,
-          }));
+      const dropped = await collectDroppedFiles(dataTransfer);
       if (dropped.length === 0) {
         setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
         return;
@@ -2284,12 +2286,6 @@ function updatePaneSaveButton(side: "left" | "right"): void {
 function updatePaneReloadButton(side: "left" | "right"): void {
   const button = paneBindings[side].reloadButton;
   button.textContent = "再読み込み";
-  if (!writebackEnabled) {
-    button.disabled = true;
-    button.title = "保存機能はこの画面では無効です。";
-    button.removeAttribute("aria-busy");
-    return;
-  }
   if (paneReloadPending[side]) {
     button.disabled = true;
     button.title = "再読み込み中です。";
@@ -2315,7 +2311,7 @@ function updatePaneReloadButton(side: "left" | "right"): void {
 }
 
 function persistPaneSaveTarget(side: "left" | "right"): void {
-  if (!writebackEnabled || !paneSaveTargetStore.isAvailable) {
+  if (!paneSaveTargetStore.isAvailable) {
     return;
   }
   const target = paneSaveTargets[side];
@@ -2377,7 +2373,7 @@ function isAbortError(error: unknown): boolean {
 }
 
 async function buildPaneSaveTarget(
-  handle: ReadableWritableFileHandle,
+  handle: ReadableFileHandle,
   file: File,
   encoding: FileEncoding,
 ): Promise<PaneSaveTarget> {
@@ -2393,7 +2389,7 @@ async function buildPaneSaveTarget(
 
 async function openPaneFiles(side: "left" | "right"): Promise<void> {
   const config = paneBindings[side];
-  if (!writebackEnabled || !hasFileSystemAccess) {
+  if (!hasFileSystemAccess) {
     config.fileInput.click();
     return;
   }
@@ -2478,12 +2474,19 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
   paneSavePending[side] = true;
   updatePaneSaveButton(side);
   try {
+    if (!isReadableWritableFileHandle(target.handle)) {
+      toast.show(`${target.fileName} は保存用の権限がありません。`, "error");
+      return;
+    }
     const permitted = await requestFileHandlePermission(target.handle, "readwrite");
     if (!permitted) {
       toast.show(`${target.fileName} の保存権限がありません。`, "error");
       return;
     }
-    await saveTextWithPaneTarget(target, paneBindings[side].editor.getValue());
+    await saveTextWithPaneTarget(
+      { ...target, handle: target.handle },
+      paneBindings[side].editor.getValue(),
+    );
     toast.show(`${target.fileName} を保存しました。`);
   } catch (error) {
     if (isAbortError(error)) {
@@ -2498,11 +2501,6 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
 }
 
 async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
-  if (!writebackEnabled) {
-    toast.show("保存機能はこの画面では無効です。", "error");
-    updatePaneReloadButton(side);
-    return;
-  }
   if (paneReloadPending[side]) {
     return;
   }
@@ -2567,7 +2565,7 @@ async function restorePaneSaveTargetForWorkspace(
   side: "left" | "right",
   workspaceId: string,
 ): Promise<void> {
-  if (!writebackEnabled || !paneSaveTargetStore.isAvailable) {
+  if (!paneSaveTargetStore.isAvailable) {
     return;
   }
   try {

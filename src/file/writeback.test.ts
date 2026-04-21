@@ -4,6 +4,7 @@ import {
   describeDecodedFileForWriteback,
   encodeUtf8TextForWriteback,
   getPaneWriteAvailability,
+  pickFilesWithHandles,
   readCurrentFileFromPaneTarget,
   requestFileHandlePermission,
   saveTextWithPaneTarget,
@@ -12,6 +13,22 @@ import {
 
 function toBuffer(bytes: number[]): ArrayBuffer {
   return new Uint8Array(bytes).buffer;
+}
+
+function createWritableHandle(name: string) {
+  return {
+    name,
+    async createWritable() {
+      return {
+        async write(_data: BufferSource) {
+          return undefined;
+        },
+        async close() {
+          return undefined;
+        },
+      };
+    },
+  };
 }
 
 describe("describeDecodedFileForWriteback", () => {
@@ -53,7 +70,7 @@ describe("getPaneWriteAvailability", () => {
       fileCount: 1,
       selectedEncoding: "auto",
       target: {
-        handle: { name: "left.txt" },
+        handle: createWritableHandle("left.txt"),
         fileName: "left.txt",
         resolvedEncoding: "utf-8",
         includeUtf8Bom: false,
@@ -83,7 +100,7 @@ describe("getPaneWriteAvailability", () => {
       fileCount: 1,
       selectedEncoding: "auto",
       target: {
-        handle: { name: "left.txt" },
+        handle: createWritableHandle("left.txt"),
         fileName: "left.txt",
         resolvedEncoding: "shift_jis",
         includeUtf8Bom: false,
@@ -101,7 +118,7 @@ describe("getPaneWriteAvailability", () => {
       fileCount: 1,
       selectedEncoding: "euc-jp",
       target: {
-        handle: { name: "left.txt" },
+        handle: createWritableHandle("left.txt"),
         fileName: "left.txt",
         resolvedEncoding: "shift_jis",
         includeUtf8Bom: false,
@@ -111,6 +128,29 @@ describe("getPaneWriteAvailability", () => {
 
     expect(availability.enabled).toBe(false);
     expect(availability.reason).toContain("元の文字コード");
+  });
+
+  it("disables save for readable handles that cannot create a writable stream", () => {
+    const availability = getPaneWriteAvailability({
+      hasFileSystemAccess: true,
+      fileCount: 1,
+      selectedEncoding: "auto",
+      target: {
+        handle: {
+          name: "read-only.txt",
+          async getFile() {
+            return new File(["a"], "read-only.txt");
+          },
+        },
+        fileName: "read-only.txt",
+        resolvedEncoding: "utf-8",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+    });
+
+    expect(availability.enabled).toBe(false);
+    expect(availability.reason).toContain("保存用");
   });
 });
 
@@ -151,6 +191,32 @@ describe("requestFileHandlePermission", () => {
 });
 
 describe("collectDroppedFiles", () => {
+  it("preserves readable handles for dropped files even when they are not writable", async () => {
+    const file = new File(["a"], "read-only.txt", { type: "text/plain" });
+    const handle = {
+      kind: "file",
+      name: "read-only.txt",
+      async getFile() {
+        return file;
+      },
+    };
+
+    const dropped = await collectDroppedFiles({
+      items: [
+        {
+          kind: "file",
+          getAsFile: () => file,
+          getAsFileSystemHandle: async () => handle,
+        },
+      ],
+      files: [file],
+    });
+
+    expect(dropped).toHaveLength(1);
+    expect(dropped[0]?.file).toBe(file);
+    expect(dropped[0]?.handle).toBe(handle);
+  });
+
   it("preserves writable handles for dropped files when the browser exposes them", async () => {
     const file = new File(["a"], "left.txt", { type: "text/plain" });
     const handle = {
@@ -203,6 +269,27 @@ describe("collectDroppedFiles", () => {
     expect(dropped).toHaveLength(1);
     expect(dropped[0]?.file).toBe(file);
     expect(dropped[0]?.handle).toBeNull();
+  });
+});
+
+describe("pickFilesWithHandles", () => {
+  it("accepts readable file handles without requiring write capability", async () => {
+    const file = new File(["a"], "read-only.txt", { type: "text/plain" });
+    const handle = {
+      name: "read-only.txt",
+      async getFile() {
+        return file;
+      },
+    };
+
+    const picked = await pickFilesWithHandles({
+      async showOpenFilePicker() {
+        return [handle];
+      },
+    });
+
+    expect(picked.files).toEqual([file]);
+    expect(picked.handles).toEqual([handle]);
   });
 });
 

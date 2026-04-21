@@ -101,8 +101,8 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/file/postLoad.test.ts` post-load 実行のテスト。
 - `src/file/language.ts` ファイル名から Monaco の言語IDを推定し、ペイン単位の言語を決定。exports: `detectLanguageFromFileName`, `inferPaneLanguage`。
 - `src/file/language.test.ts` 拡張子→言語推定のテスト。
-- `src/file/writeback.ts` 単一ファイル書き戻しの可否判定、File System Access API 経由の読み込みハンドル取得、再読み込み、文字コード/改行/BOMを維持した保存処理を担当。exports: `pickFilesWithHandles`, `collectDroppedFiles`, `getPaneWriteAvailability`, `readCurrentFileFromPaneTarget`, `saveTextWithPaneTarget` ほか。
-- `src/file/writeback.test.ts` 保存可否、再読み込み、UTF-8/Shift_JIS/EUC-JP の安全な書き戻し、破損防止のテスト。
+- `src/file/writeback.ts` 単一ファイル書き戻しの可否判定、File System Access API 経由の読み取りハンドル取得、再読み込み、文字コード/改行/BOMを維持した保存処理を担当。exports: `pickFilesWithHandles`, `collectDroppedFiles`, `getPaneWriteAvailability`, `readCurrentFileFromPaneTarget`, `saveTextWithPaneTarget` ほか。
+- `src/file/writeback.test.ts` 保存可否、読み取り専用ハンドルでの再読み込み、UTF-8/Shift_JIS/EUC-JP の安全な書き戻し、破損防止のテスト。
 
 ### src/ui/
 
@@ -227,8 +227,8 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/storage/workspaces.test.ts` ワークスペース保存のテスト。
 - `src/storage/persistedState.ts` UI状態の localStorage 保存/復元と本文の IndexedDB 保存、復元用フォールバック、スケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。
-- `src/storage/paneSaveTargets.ts` 保存あり画面の単一ファイルハンドルをワークスペース/ペイン別に IndexedDB 保存する。exports: `loadPaneSaveTarget`, `savePaneSaveTarget`, `clearPaneSaveTarget`, `createIndexedDbPaneSaveTargetStore`。
-- `src/storage/paneSaveTargets.test.ts` ペイン保存ハンドルの保存/復元/削除テスト。
+- `src/storage/paneSaveTargets.ts` 単一ファイル再読み込み用ハンドルをワークスペース/ペイン別に IndexedDB 保存する。exports: `loadPaneSaveTarget`, `savePaneSaveTarget`, `clearPaneSaveTarget`, `createIndexedDbPaneSaveTargetStore`。
+- `src/storage/paneSaveTargets.test.ts` ペイン再読み込み用ハンドルの保存/復元/削除テスト。
 - `src/storage/paneSummary.ts` 読み込み完了サマリの保存/復元。exports: `loadPaneSummary`, `savePaneSummary`, `clearPaneSummary`。
 - `src/storage/paneSummary.test.ts` サマリ保存/復元のテスト。
 

@@ -6,10 +6,20 @@ describe("pane action layout", () => {
   it("renders no-save controls by default", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
+    const leftReload = doc.querySelector<HTMLButtonElement>("#left-reload-file");
+    const rightReload = doc.querySelector<HTMLButtonElement>("#right-reload-file");
 
     expect(doc.querySelector(".app")?.getAttribute("data-writeback")).toBe("off");
     expect(doc.querySelector<HTMLButtonElement>("#left-save-file")?.hidden).toBe(true);
     expect(doc.querySelector<HTMLButtonElement>("#right-save-file")?.hidden).toBe(true);
+    expect(leftReload).toBeTruthy();
+    expect(rightReload).toBeTruthy();
+    expect(leftReload?.hidden).toBe(false);
+    expect(rightReload?.hidden).toBe(false);
+    expect(leftReload?.hasAttribute("aria-hidden")).toBe(false);
+    expect(rightReload?.hasAttribute("aria-hidden")).toBe(false);
+    expect(leftReload?.disabled).toBe(true);
+    expect(rightReload?.disabled).toBe(true);
   });
 
   it("can render a writeback screen with save controls visible", () => {

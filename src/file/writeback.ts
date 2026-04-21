@@ -19,20 +19,20 @@ export type WritableFileHandle = PaneWriteHandle & {
   createWritable: () => Promise<WritableFileStream>;
 };
 
-export type ReadableWritableFileHandle = WritableFileHandle & {
+export type ReadableFileHandle = PaneWriteHandle & {
   name: string;
   getFile: () => Promise<File>;
 };
 
+export type ReadableWritableFileHandle = ReadableFileHandle & WritableFileHandle;
+
 export type FileSystemAccessWindow = {
-  showOpenFilePicker?: (options?: { multiple?: boolean }) => Promise<
-    ReadableWritableFileHandle[]
-  >;
+  showOpenFilePicker?: (options?: { multiple?: boolean }) => Promise<ReadableFileHandle[]>;
 };
 
 export type DroppedFileItem = {
   file: File;
-  handle: ReadableWritableFileHandle | null;
+  handle: ReadableFileHandle | null;
 };
 
 export type DropDataTransferItem = {
@@ -59,7 +59,7 @@ export type WritablePaneWriteTarget = Omit<PaneWriteTarget, "handle"> & {
 };
 
 export type PaneSaveTarget = Omit<PaneWriteTarget, "handle"> & {
-  handle: ReadableWritableFileHandle;
+  handle: ReadableFileHandle;
 };
 
 export type PaneWriteAvailability = {
@@ -80,22 +80,19 @@ function hasUtf8Bom(bytes: Uint8Array): boolean {
   );
 }
 
-function isReadableWritableFileHandle(value: unknown): value is ReadableWritableFileHandle {
+function isReadableFileHandle(value: unknown): value is ReadableFileHandle {
   if (typeof value !== "object" || value === null) {
     return false;
   }
   const candidate = value as {
     kind?: unknown;
     getFile?: unknown;
-    createWritable?: unknown;
+    name?: unknown;
   };
   if (candidate.kind !== undefined && candidate.kind !== "file") {
     return false;
   }
-  return (
-    typeof candidate.getFile === "function" &&
-    typeof candidate.createWritable === "function"
-  );
+  return typeof candidate.name === "string" && typeof candidate.getFile === "function";
 }
 
 function decodeUtf8(bytes: Uint8Array, fatal: boolean): string {
@@ -373,6 +370,12 @@ export function getPaneWriteAvailability(options: {
       reason: "ファイル選択ボタンから開いた単一ファイルだけ保存できます。",
     };
   }
+  if (typeof (target.handle as { createWritable?: unknown }).createWritable !== "function") {
+    return {
+      enabled: false,
+      reason: "保存用のファイルハンドルがありません。",
+    };
+  }
   if (selectedEncoding !== "auto" && selectedEncoding !== target.resolvedEncoding) {
     return {
       enabled: false,
@@ -419,11 +422,11 @@ export async function collectDroppedFiles(
       if (!file) {
         continue;
       }
-      let handle: ReadableWritableFileHandle | null = null;
+      let handle: ReadableFileHandle | null = null;
       if (typeof item.getAsFileSystemHandle === "function") {
         try {
           const candidate = await item.getAsFileSystemHandle();
-          if (isReadableWritableFileHandle(candidate)) {
+          if (isReadableFileHandle(candidate)) {
             handle = candidate;
           }
         } catch (_error) {
@@ -447,7 +450,7 @@ export async function pickFilesWithHandles(
   win: FileSystemAccessWindow,
   options: { multiple?: boolean } = {},
 ): Promise<{
-  handles: ReadableWritableFileHandle[];
+  handles: ReadableFileHandle[];
   files: File[];
 }> {
   if (!win.showOpenFilePicker) {
