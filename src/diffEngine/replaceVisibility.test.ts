@@ -60,4 +60,60 @@ describe("normalizeReplaceOpsForDisplay", () => {
       ignoreLeadingFileWhitespace: false,
     })[0]?.type).toBe("replace");
   });
+
+  it("upgrades aligned equal rows to replace when raw lines have visible inline differences", () => {
+    const ops: PairedOp[] = [
+      {
+        type: "equal",
+        leftLine: "$wbook->close;",
+        rightLine: "wbook.close();",
+        leftLineNo: 10,
+        rightLineNo: 10,
+      },
+    ];
+
+    expect(normalizeReplaceOpsForDisplay(ops, {
+      ignoreLeadingFileWhitespace: false,
+    })[0]).toEqual({
+      type: "replace",
+      leftLine: "$wbook->close;",
+      rightLine: "wbook.close();",
+      leftLineNo: 10,
+      rightLineNo: 10,
+    });
+  });
+
+  it("keeps aligned equal rows equal when only ignored leading whitespace differs", () => {
+    const ops: PairedOp[] = [
+      {
+        type: "equal",
+        leftLine: "    value = 1;",
+        rightLine: "value = 1;",
+        leftLineNo: 0,
+        rightLineNo: 0,
+      },
+    ];
+
+    expect(normalizeReplaceOpsForDisplay(ops, {
+      ignoreLeadingFileWhitespace: true,
+      leftLeadingFileWhitespaceEligible: true,
+      rightLeadingFileWhitespaceEligible: true,
+    })[0]?.type).toBe("equal");
+  });
+
+  it("upgrades AppendLine-aligned rows so wrapper differences are highlighted without anchors", () => {
+    const ops: PairedOp[] = [
+      {
+        type: "equal",
+        leftLine: "<head>",
+        rightLine: "sb.AppendLine(\"<head>\");",
+        leftLineNo: 2,
+        rightLineNo: 8,
+      },
+    ];
+
+    expect(normalizeReplaceOpsForDisplay(ops, {
+      ignoreLeadingFileWhitespace: false,
+    })[0]?.type).toBe("replace");
+  });
 });

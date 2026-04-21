@@ -190168,7 +190168,7 @@ function extractHtmlAttributeSpaceDiffRangesPair(leftLine, rightLine, leftRanges
 
 function normalizeReplaceOpsForDisplay(ops, options) {
     return ops.map(op => {
-        if (op.type !== "replace") {
+        if (op.type !== "replace" && op.type !== "equal") {
             return op;
         }
         const leftLine = op.leftLine ?? "";
@@ -190176,7 +190176,16 @@ function normalizeReplaceOpsForDisplay(ops, options) {
         const inline2 = diffInlineWithAppendLiteral(leftLine, rightLine, options);
         const spaceRanges = extractHtmlAttributeSpaceDiffRangesPair(leftLine, rightLine, inline2.leftRanges, inline2.rightRanges);
         const hasVisibleDiff = inline2.leftRanges.length > 0 || inline2.rightRanges.length > 0 || spaceRanges.left.length > 0 || spaceRanges.right.length > 0;
-        if (hasVisibleDiff) {
+        if (op.type === "equal" && hasVisibleDiff) {
+            return {
+                type: "replace",
+                leftLine: op.leftLine,
+                rightLine: op.rightLine,
+                leftLineNo: op.leftLineNo,
+                rightLineNo: op.rightLineNo
+            };
+        }
+        if (op.type === "replace" && hasVisibleDiff) {
             return op;
         }
         return {

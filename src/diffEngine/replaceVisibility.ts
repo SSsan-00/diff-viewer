@@ -13,7 +13,7 @@ export function normalizeReplaceOpsForDisplay(
   options: ReplaceVisibilityOptions,
 ): PairedOp[] {
   return ops.map((op) => {
-    if (op.type !== "replace") {
+    if (op.type !== "replace" && op.type !== "equal") {
       return op;
     }
 
@@ -32,7 +32,17 @@ export function normalizeReplaceOpsForDisplay(
       spaceRanges.left.length > 0 ||
       spaceRanges.right.length > 0;
 
-    if (hasVisibleDiff) {
+    if (op.type === "equal" && hasVisibleDiff) {
+      return {
+        type: "replace",
+        leftLine: op.leftLine,
+        rightLine: op.rightLine,
+        leftLineNo: op.leftLineNo,
+        rightLineNo: op.rightLineNo,
+      };
+    }
+
+    if (op.type === "replace" && hasVisibleDiff) {
       return op;
     }
 
