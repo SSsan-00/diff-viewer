@@ -63,6 +63,7 @@ import {
 } from "./ui/paneClear";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
+import { shouldApplyBySignature } from "./ui/renderSignatures";
 import { handleAnchorShortcut } from "./ui/anchorShortcut";
 import {
   handleLeftAnchorClick,
@@ -1328,6 +1329,7 @@ const paneBoundarySnapshots: Record<
   left: { text: "", segments: [] },
   right: { text: "", segments: [] },
 };
+let diffRenderingInvalidated = false;
 
 function cloneSegmentsForSnapshot(segments: readonly LineSegment[]): LineSegment[] {
   return segments.map((segment) => ({ ...segment }));
@@ -1340,6 +1342,10 @@ function commitPaneBoundarySnapshot(side: "left" | "right"): void {
     text: editor.getValue(),
     segments: cloneSegmentsForSnapshot(segments),
   };
+}
+
+function invalidateDiffRendering(): void {
+  diffRenderingInvalidated = true;
 }
 
 function withProgrammaticEdit(
@@ -1361,6 +1367,7 @@ function withProgrammaticEdit(
       suppressRightFileBytesClear = false;
     }
     suppressRecalc = false;
+    invalidateDiffRendering();
   }
 }
 
@@ -2030,6 +2037,7 @@ leftEditor.onDidChangeModelContent((event) => {
     leftSegments.push(...cloneSegmentsForSnapshot(snapshot.segments));
     updateLineNumbers(leftEditor, leftSegments);
     toast.show("ファイル境界をまたぐ編集はできません。", "error");
+    scheduleRecalc();
     return;
   }
   updateSegmentsForChanges(leftSegments, event.changes);
@@ -2052,6 +2060,7 @@ rightEditor.onDidChangeModelContent((event) => {
     rightSegments.push(...cloneSegmentsForSnapshot(snapshot.segments));
     updateLineNumbers(rightEditor, rightSegments);
     toast.show("ファイル境界をまたぐ編集はできません。", "error");
+    scheduleRecalc();
     return;
   }
   updateSegmentsForChanges(rightSegments, event.changes);
@@ -4046,18 +4055,6 @@ function addInlineDecorations(
   }
 }
 
-function signatureArraysEqual(left: readonly string[], right: readonly string[]): boolean {
-  if (left.length !== right.length) {
-    return false;
-  }
-  for (let index = 0; index < left.length; index += 1) {
-    if (left[index] !== right[index]) {
-      return false;
-    }
-  }
-  return true;
-}
-
 function buildDecorationSignatures(
   decorations: readonly monaco.editor.IModelDeltaDecoration[],
 ): string[] {
@@ -4086,17 +4083,6 @@ function buildZoneSignatures(
       zone.label ?? "",
     ].join("|"),
   );
-}
-
-function shouldApplyBySignature(
-  currentSignatures: readonly string[],
-  nextSignatures: readonly string[],
-  currentIds: readonly string[],
-): boolean {
-  if (!signatureArraysEqual(currentSignatures, nextSignatures)) {
-    return true;
-  }
-  return currentIds.length === 0 && nextSignatures.length > 0;
 }
 
 function canIgnoreLeadingFileWhitespaceFromEditorText(text: string): boolean {
@@ -4507,12 +4493,14 @@ function recalcDiff() {
   const findOffsets = buildFindWidgetOffsetZones(leftEditor, rightEditor);
   const leftZones = findOffsets.left.concat(zones.left, fileZones.left);
   const rightZones = findOffsets.right.concat(zones.right, fileZones.right);
+  const forceRenderRefresh = diffRenderingInvalidated;
   const nextLeftDecorationSignatures = buildDecorationSignatures(left);
   if (
     shouldApplyBySignature(
       leftDecorationSignatures,
       nextLeftDecorationSignatures,
       leftDecorationIds,
+      { force: forceRenderRefresh },
     )
   ) {
     leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
@@ -4524,6 +4512,7 @@ function recalcDiff() {
       rightDecorationSignatures,
       nextRightDecorationSignatures,
       rightDecorationIds,
+      { force: forceRenderRefresh },
     )
   ) {
     rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
@@ -4535,6 +4524,7 @@ function recalcDiff() {
       leftAnchorDecorationSignatures,
       nextLeftAnchorSignatures,
       leftAnchorDecorationIds,
+      { force: forceRenderRefresh },
     )
   ) {
     leftAnchorDecorationIds = leftEditor.deltaDecorations(
@@ -4549,6 +4539,7 @@ function recalcDiff() {
       rightAnchorDecorationSignatures,
       nextRightAnchorSignatures,
       rightAnchorDecorationIds,
+      { force: forceRenderRefresh },
     )
   ) {
     rightAnchorDecorationIds = rightEditor.deltaDecorations(
@@ -4559,15 +4550,30 @@ function recalcDiff() {
   }
   updatePendingAnchorDecoration();
   const nextLeftZoneSignatures = buildZoneSignatures(leftZones);
-  if (shouldApplyBySignature(leftZoneSignatures, nextLeftZoneSignatures, leftZoneIds)) {
+  if (
+    shouldApplyBySignature(
+      leftZoneSignatures,
+      nextLeftZoneSignatures,
+      leftZoneIds,
+      { force: forceRenderRefresh },
+    )
+  ) {
     leftZoneIds = applyViewZones(leftEditor, leftZoneIds, leftZones);
     leftZoneSignatures = nextLeftZoneSignatures;
   }
   const nextRightZoneSignatures = buildZoneSignatures(rightZones);
-  if (shouldApplyBySignature(rightZoneSignatures, nextRightZoneSignatures, rightZoneIds)) {
+  if (
+    shouldApplyBySignature(
+      rightZoneSignatures,
+      nextRightZoneSignatures,
+      rightZoneIds,
+      { force: forceRenderRefresh },
+    )
+  ) {
     rightZoneIds = applyViewZones(rightEditor, rightZoneIds, rightZones);
     rightZoneSignatures = nextRightZoneSignatures;
   }
+  diffRenderingInvalidated = false;
   updateDiffJumpButtons(prevButton, nextButton, diffBlockStarts.length > 0);
   applyFolding();
   focusDiffLines(null, null);

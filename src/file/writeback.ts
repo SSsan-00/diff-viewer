@@ -70,6 +70,30 @@ export type PaneWriteAvailability = {
 const UTF8_BOM = [0xef, 0xbb, 0xbf];
 const WRITE_CHUNK_BYTE_LIMIT = 16 * 1024;
 const legacyEncodeMaps: Partial<Record<"shift_jis" | "euc-jp", Map<string, Uint8Array>>> = {};
+const legacyEncodeAliases: Record<"shift_jis" | "euc-jp", Map<string, Uint8Array>> = {
+  shift_jis: new Map([
+    ["¥", Uint8Array.from([0x5c])],
+    ["‾", Uint8Array.from([0x7e])],
+    ["¢", Uint8Array.from([0x81, 0x91])],
+    ["£", Uint8Array.from([0x81, 0x92])],
+    ["¬", Uint8Array.from([0x81, 0xca])],
+    ["〜", Uint8Array.from([0x81, 0x60])],
+    ["−", Uint8Array.from([0x81, 0x7c])],
+    ["‖", Uint8Array.from([0x81, 0x61])],
+    ["—", Uint8Array.from([0x81, 0x5c])],
+  ]),
+  "euc-jp": new Map([
+    ["¥", Uint8Array.from([0x5c])],
+    ["‾", Uint8Array.from([0x7e])],
+    ["¢", Uint8Array.from([0xa1, 0xf1])],
+    ["£", Uint8Array.from([0xa1, 0xf2])],
+    ["¬", Uint8Array.from([0xa2, 0xcc])],
+    ["〜", Uint8Array.from([0xa1, 0xc1])],
+    ["−", Uint8Array.from([0xa1, 0xdd])],
+    ["‖", Uint8Array.from([0xa1, 0xc2])],
+    ["—", Uint8Array.from([0xa1, 0xbd])],
+  ]),
+};
 
 function hasUtf8Bom(bytes: Uint8Array): boolean {
   return (
@@ -486,7 +510,7 @@ export function buildPaneWriteBytes(
   const bytes: number[] = [];
 
   for (const char of normalized) {
-    const encoded = map.get(char);
+    const encoded = map.get(char) ?? legacyEncodeAliases[options.resolvedEncoding].get(char);
     if (!encoded) {
       throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${char}`);
     }

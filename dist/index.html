@@ -190492,6 +190492,11 @@ const WRITE_CHUNK_BYTE_LIMIT = 16 * 1024;
 
 const legacyEncodeMaps = {};
 
+const legacyEncodeAliases = {
+    shift_jis: new Map([ [ "¥", Uint8Array.from([ 92 ]) ], [ "‾", Uint8Array.from([ 126 ]) ], [ "¢", Uint8Array.from([ 129, 145 ]) ], [ "£", Uint8Array.from([ 129, 146 ]) ], [ "¬", Uint8Array.from([ 129, 202 ]) ], [ "〜", Uint8Array.from([ 129, 96 ]) ], [ "−", Uint8Array.from([ 129, 124 ]) ], [ "‖", Uint8Array.from([ 129, 97 ]) ], [ "—", Uint8Array.from([ 129, 92 ]) ] ]),
+    "euc-jp": new Map([ [ "¥", Uint8Array.from([ 92 ]) ], [ "‾", Uint8Array.from([ 126 ]) ], [ "¢", Uint8Array.from([ 161, 241 ]) ], [ "£", Uint8Array.from([ 161, 242 ]) ], [ "¬", Uint8Array.from([ 162, 204 ]) ], [ "〜", Uint8Array.from([ 161, 193 ]) ], [ "−", Uint8Array.from([ 161, 221 ]) ], [ "‖", Uint8Array.from([ 161, 194 ]) ], [ "—", Uint8Array.from([ 161, 189 ]) ] ])
+};
+
 function hasUtf8Bom(bytes) {
     return bytes.length >= 3 && bytes[0] === UTF8_BOM[0] && bytes[1] === UTF8_BOM[1] && bytes[2] === UTF8_BOM[2];
 }
@@ -190848,7 +190853,7 @@ function buildPaneWriteBytes(text2, options) {
     const map = getLegacyEncodeMap(options.resolvedEncoding);
     const bytes = [];
     for (const char of normalized) {
-        const encoded = map.get(char);
+        const encoded = map.get(char) ?? legacyEncodeAliases[options.resolvedEncoding].get(char);
         if (!encoded) {
             throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${char}`);
         }
@@ -191482,6 +191487,28 @@ function buildAnchorDecorations(validAnchors, autoAnchorTarget, createRange) {
         pushAnchorDecorations(decorations, autoAnchorTarget, "diff-anchor-auto-line", "diff-anchor-auto-glyph", createRange);
     }
     return decorations;
+}
+
+function signatureArraysEqual(left, right) {
+    if (left.length !== right.length) {
+        return false;
+    }
+    for (let index = 0; index < left.length; index += 1) {
+        if (left[index] !== right[index]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function shouldApplyBySignature(currentSignatures, nextSignatures, currentIds, options) {
+    if (options?.force) {
+        return true;
+    }
+    if (!signatureArraysEqual(currentSignatures, nextSignatures)) {
+        return true;
+    }
+    return currentIds.length === 0 && nextSignatures.length > 0;
 }
 
 function handleAnchorShortcut(event, context) {
@@ -196155,6 +196182,8 @@ const paneBoundarySnapshots = {
     }
 };
 
+let diffRenderingInvalidated = false;
+
 function cloneSegmentsForSnapshot(segments) {
     return segments.map(segment => ({
         ...segment
@@ -196168,6 +196197,10 @@ function commitPaneBoundarySnapshot(side) {
         text: editor2.getValue(),
         segments: cloneSegmentsForSnapshot(segments)
     };
+}
+
+function invalidateDiffRendering() {
+    diffRenderingInvalidated = true;
 }
 
 function withProgrammaticEdit(side, action) {
@@ -196186,6 +196219,7 @@ function withProgrammaticEdit(side, action) {
             suppressRightFileBytesClear = false;
         }
         suppressRecalc = false;
+        invalidateDiffRendering();
     }
 }
 
@@ -196791,6 +196825,7 @@ leftEditor.onDidChangeModelContent(event => {
         leftSegments.push(...cloneSegmentsForSnapshot(snapshot.segments));
         updateLineNumbers(leftEditor, leftSegments);
         toast.show("ファイル境界をまたぐ編集はできません。", "error");
+        scheduleRecalc();
         return;
     }
     updateSegmentsForChanges(leftSegments, event.changes);
@@ -196814,6 +196849,7 @@ rightEditor.onDidChangeModelContent(event => {
         rightSegments.push(...cloneSegmentsForSnapshot(snapshot.segments));
         updateLineNumbers(rightEditor, rightSegments);
         toast.show("ファイル境界をまたぐ編集はできません。", "error");
+        scheduleRecalc();
         return;
     }
     updateSegmentsForChanges(rightSegments, event.changes);
@@ -198536,18 +198572,6 @@ function addInlineDecorations(target, lineNo, ranges, className2) {
     }
 }
 
-function signatureArraysEqual(left, right) {
-    if (left.length !== right.length) {
-        return false;
-    }
-    for (let index = 0; index < left.length; index += 1) {
-        if (left[index] !== right[index]) {
-            return false;
-        }
-    }
-    return true;
-}
-
 function buildDecorationSignatures(decorations) {
     return decorations.map(decoration2 => {
         const {range: range2, options: options} = decoration2;
@@ -198559,13 +198583,6 @@ function buildDecorationSignatures(decorations) {
 
 function buildZoneSignatures(zones) {
     return zones.map(zone => [ zone.afterLineNumber, zone.heightInLines ?? "", zone.heightInPx ?? "", zone.className, zone.label ?? "" ].join("|"));
-}
-
-function shouldApplyBySignature(currentSignatures, nextSignatures, currentIds) {
-    if (!signatureArraysEqual(currentSignatures, nextSignatures)) {
-        return true;
-    }
-    return currentIds.length === 0 && nextSignatures.length > 0;
 }
 
 function canIgnoreLeadingFileWhitespaceFromEditorText(text2) {
@@ -198864,37 +198881,51 @@ function recalcDiff() {
     const findOffsets = buildFindWidgetOffsetZones(leftEditor, rightEditor);
     const leftZones = findOffsets.left.concat(zones.left, fileZones.left);
     const rightZones = findOffsets.right.concat(zones.right, fileZones.right);
+    const forceRenderRefresh = diffRenderingInvalidated;
     const nextLeftDecorationSignatures = buildDecorationSignatures(left);
-    if (shouldApplyBySignature(leftDecorationSignatures, nextLeftDecorationSignatures, leftDecorationIds)) {
+    if (shouldApplyBySignature(leftDecorationSignatures, nextLeftDecorationSignatures, leftDecorationIds, {
+        force: forceRenderRefresh
+    })) {
         leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
         leftDecorationSignatures = nextLeftDecorationSignatures;
     }
     const nextRightDecorationSignatures = buildDecorationSignatures(right);
-    if (shouldApplyBySignature(rightDecorationSignatures, nextRightDecorationSignatures, rightDecorationIds)) {
+    if (shouldApplyBySignature(rightDecorationSignatures, nextRightDecorationSignatures, rightDecorationIds, {
+        force: forceRenderRefresh
+    })) {
         rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
         rightDecorationSignatures = nextRightDecorationSignatures;
     }
     const nextLeftAnchorSignatures = buildDecorationSignatures(anchorDecorations.left);
-    if (shouldApplyBySignature(leftAnchorDecorationSignatures, nextLeftAnchorSignatures, leftAnchorDecorationIds)) {
+    if (shouldApplyBySignature(leftAnchorDecorationSignatures, nextLeftAnchorSignatures, leftAnchorDecorationIds, {
+        force: forceRenderRefresh
+    })) {
         leftAnchorDecorationIds = leftEditor.deltaDecorations(leftAnchorDecorationIds, anchorDecorations.left);
         leftAnchorDecorationSignatures = nextLeftAnchorSignatures;
     }
     const nextRightAnchorSignatures = buildDecorationSignatures(anchorDecorations.right);
-    if (shouldApplyBySignature(rightAnchorDecorationSignatures, nextRightAnchorSignatures, rightAnchorDecorationIds)) {
+    if (shouldApplyBySignature(rightAnchorDecorationSignatures, nextRightAnchorSignatures, rightAnchorDecorationIds, {
+        force: forceRenderRefresh
+    })) {
         rightAnchorDecorationIds = rightEditor.deltaDecorations(rightAnchorDecorationIds, anchorDecorations.right);
         rightAnchorDecorationSignatures = nextRightAnchorSignatures;
     }
     updatePendingAnchorDecoration();
     const nextLeftZoneSignatures = buildZoneSignatures(leftZones);
-    if (shouldApplyBySignature(leftZoneSignatures, nextLeftZoneSignatures, leftZoneIds)) {
+    if (shouldApplyBySignature(leftZoneSignatures, nextLeftZoneSignatures, leftZoneIds, {
+        force: forceRenderRefresh
+    })) {
         leftZoneIds = applyViewZones(leftEditor, leftZoneIds, leftZones);
         leftZoneSignatures = nextLeftZoneSignatures;
     }
     const nextRightZoneSignatures = buildZoneSignatures(rightZones);
-    if (shouldApplyBySignature(rightZoneSignatures, nextRightZoneSignatures, rightZoneIds)) {
+    if (shouldApplyBySignature(rightZoneSignatures, nextRightZoneSignatures, rightZoneIds, {
+        force: forceRenderRefresh
+    })) {
         rightZoneIds = applyViewZones(rightEditor, rightZoneIds, rightZones);
         rightZoneSignatures = nextRightZoneSignatures;
     }
+    diffRenderingInvalidated = false;
     updateDiffJumpButtons(prevButton, nextButton, diffBlockStarts.length > 0);
     applyFolding();
     focusDiffLines(null, null);

@@ -404,6 +404,46 @@ describe("writeTextToFileHandle", () => {
     expect(written).toEqual([0xa4, 0xa2, 0x0a, 0xa4, 0xa4]);
   });
 
+  it("encodes common Unicode compatibility characters to Shift_JIS bytes", () => {
+    const bytes = buildPaneWriteBytes("¥‾¢£¬〜−‖—", {
+      resolvedEncoding: "shift_jis",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+
+    expect(Array.from(bytes)).toEqual([
+      0x5c,
+      0x7e,
+      0x81, 0x91,
+      0x81, 0x92,
+      0x81, 0xca,
+      0x81, 0x60,
+      0x81, 0x7c,
+      0x81, 0x61,
+      0x81, 0x5c,
+    ]);
+  });
+
+  it("encodes common Unicode compatibility characters to EUC-JP bytes", () => {
+    const bytes = buildPaneWriteBytes("¥‾¢£¬〜−‖—", {
+      resolvedEncoding: "euc-jp",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+
+    expect(Array.from(bytes)).toEqual([
+      0x5c,
+      0x7e,
+      0xa1, 0xf1,
+      0xa1, 0xf2,
+      0xa2, 0xcc,
+      0xa1, 0xc1,
+      0xa1, 0xdd,
+      0xa1, 0xc2,
+      0xa1, 0xbd,
+    ]);
+  });
+
   it("throws when the text cannot be represented in the target encoding", async () => {
     let createWritableCalled = false;
     const handle = {
