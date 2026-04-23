@@ -444,6 +444,54 @@ describe("writeTextToFileHandle", () => {
     ]);
   });
 
+  it("encodes canonically equivalent decomposed kana to Shift_JIS bytes", () => {
+    const composed = buildPaneWriteBytes("がぱ", {
+      resolvedEncoding: "shift_jis",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+    const decomposed = buildPaneWriteBytes("か\u3099は\u309A", {
+      resolvedEncoding: "shift_jis",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+
+    expect(Array.from(decomposed)).toEqual(Array.from(composed));
+  });
+
+  it("encodes canonically equivalent decomposed kana to EUC-JP bytes", () => {
+    const composed = buildPaneWriteBytes("がぱ", {
+      resolvedEncoding: "euc-jp",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+    const decomposed = buildPaneWriteBytes("か\u3099は\u309A", {
+      resolvedEncoding: "euc-jp",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+
+    expect(Array.from(decomposed)).toEqual(Array.from(composed));
+  });
+
+  it("keeps directly representable ASCII bytes instead of compatibility aliases", () => {
+    expect(
+      Array.from(buildPaneWriteBytes("\\~-", {
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      })),
+    ).toEqual([0x5c, 0x7e, 0x2d]);
+
+    expect(
+      Array.from(buildPaneWriteBytes("\\~-", {
+        resolvedEncoding: "euc-jp",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      })),
+    ).toEqual([0x5c, 0x7e, 0x2d]);
+  });
+
   it("throws when the text cannot be represented in the target encoding", async () => {
     let createWritableCalled = false;
     const handle = {

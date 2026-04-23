@@ -190492,9 +190492,11 @@ const WRITE_CHUNK_BYTE_LIMIT = 16 * 1024;
 
 const legacyEncodeMaps = {};
 
-const legacyEncodeAliases = {
-    shift_jis: new Map([ [ "¥", Uint8Array.from([ 92 ]) ], [ "‾", Uint8Array.from([ 126 ]) ], [ "¢", Uint8Array.from([ 129, 145 ]) ], [ "£", Uint8Array.from([ 129, 146 ]) ], [ "¬", Uint8Array.from([ 129, 202 ]) ], [ "〜", Uint8Array.from([ 129, 96 ]) ], [ "−", Uint8Array.from([ 129, 124 ]) ], [ "‖", Uint8Array.from([ 129, 97 ]) ], [ "—", Uint8Array.from([ 129, 92 ]) ] ]),
-    "euc-jp": new Map([ [ "¥", Uint8Array.from([ 92 ]) ], [ "‾", Uint8Array.from([ 126 ]) ], [ "¢", Uint8Array.from([ 161, 241 ]) ], [ "£", Uint8Array.from([ 161, 242 ]) ], [ "¬", Uint8Array.from([ 162, 204 ]) ], [ "〜", Uint8Array.from([ 161, 193 ]) ], [ "−", Uint8Array.from([ 161, 221 ]) ], [ "‖", Uint8Array.from([ 161, 194 ]) ], [ "—", Uint8Array.from([ 161, 189 ]) ] ])
+const legacyEncodeAliasMaps = {};
+
+const legacyExplicitEncodeAliases = {
+    shift_jis: new Map([ [ "¥", Uint8Array.from([ 92 ]) ], [ "‾", Uint8Array.from([ 126 ]) ], [ "〜", Uint8Array.from([ 129, 96 ]) ], [ "−", Uint8Array.from([ 129, 124 ]) ], [ "‖", Uint8Array.from([ 129, 97 ]) ], [ "—", Uint8Array.from([ 129, 92 ]) ] ]),
+    "euc-jp": new Map([ [ "¥", Uint8Array.from([ 92 ]) ], [ "‾", Uint8Array.from([ 126 ]) ], [ "〜", Uint8Array.from([ 161, 193 ]) ], [ "−", Uint8Array.from([ 161, 221 ]) ], [ "‖", Uint8Array.from([ 161, 194 ]) ], [ "—", Uint8Array.from([ 161, 189 ]) ] ])
 };
 
 function hasUtf8Bom(bytes) {
@@ -190605,6 +190607,10 @@ function normalizeLineEndingsForWriteback(text2, lineEnding) {
     return lineEnding === "\n" ? text2 : text2.replace(/\n/g, lineEnding);
 }
 
+function normalizeLegacyTextForWriteback(text2) {
+    return text2.normalize("NFC");
+}
+
 function registerEncodedCharacter(map, decoder, bytes) {
     const encoded = Uint8Array.from(bytes);
     const decoded = decoder.decode(encoded);
@@ -190681,6 +190687,24 @@ function getLegacyEncodeMap(encoding) {
     const map = encoding === "shift_jis" ? buildShiftJisEncodeMap() : buildEucJpEncodeMap();
     legacyEncodeMaps[encoding] = map;
     return map;
+}
+
+function getLegacyEncodeAliases(encoding) {
+    const cached = legacyEncodeAliasMaps[encoding];
+    if (cached) {
+        return cached;
+    }
+    const directMap = getLegacyEncodeMap(encoding);
+    const aliases = new Map(legacyExplicitEncodeAliases[encoding]);
+    for (const [decoded, bytes] of directMap) {
+        const normalized = decoded.normalize("NFKC");
+        if (normalized === decoded || Array.from(normalized).length !== 1 || directMap.has(normalized) || aliases.has(normalized)) {
+            continue;
+        }
+        aliases.set(normalized, bytes);
+    }
+    legacyEncodeAliasMaps[encoding] = aliases;
+    return aliases;
 }
 
 function describeDecodedFileForWriteback(buffer, encoding) {
@@ -190849,11 +190873,12 @@ function buildPaneWriteBytes(text2, options) {
             lineEnding: options.lineEnding
         });
     }
-    const normalized = normalizeLineEndingsForWriteback(text2, options.lineEnding);
+    const normalized = normalizeLegacyTextForWriteback(normalizeLineEndingsForWriteback(text2, options.lineEnding));
     const map = getLegacyEncodeMap(options.resolvedEncoding);
+    const aliases = getLegacyEncodeAliases(options.resolvedEncoding);
     const bytes = [];
     for (const char of normalized) {
-        const encoded = map.get(char) ?? legacyEncodeAliases[options.resolvedEncoding].get(char);
+        const encoded = map.get(char) ?? aliases.get(char);
         if (!encoded) {
             throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${char}`);
         }
