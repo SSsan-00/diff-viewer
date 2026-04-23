@@ -238,4 +238,63 @@ describe("pairReplace", () => {
       },
     ]);
   });
+
+  it("keeps later close-call replaces aligned after a single inserted call", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "$wbook->close;", leftLineNo: 61 },
+      { type: "delete", leftLine: "$sheet->close;", leftLineNo: 62 },
+      { type: "delete", leftLine: "$cell->close;", leftLineNo: 63 },
+      { type: "delete", leftLine: "$row->close;", leftLineNo: 64 },
+      { type: "delete", leftLine: "$style->close;", leftLineNo: 65 },
+      { type: "insert", rightLine: "wbook.close();", rightLineNo: 61 },
+      { type: "insert", rightLine: "sheet.open();", rightLineNo: 62 },
+      { type: "insert", rightLine: "sheet.close();", rightLineNo: 63 },
+      { type: "insert", rightLine: "cell.close();", rightLineNo: 64 },
+      { type: "insert", rightLine: "row.close();", rightLineNo: 65 },
+      { type: "insert", rightLine: "style.close();", rightLineNo: 66 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "replace",
+        leftLine: "$wbook->close;",
+        rightLine: "wbook.close();",
+        leftLineNo: 61,
+        rightLineNo: 61,
+      },
+      {
+        type: "insert",
+        rightLine: "sheet.open();",
+        rightLineNo: 62,
+      },
+      {
+        type: "replace",
+        leftLine: "$sheet->close;",
+        rightLine: "sheet.close();",
+        leftLineNo: 62,
+        rightLineNo: 63,
+      },
+      {
+        type: "replace",
+        leftLine: "$cell->close;",
+        rightLine: "cell.close();",
+        leftLineNo: 63,
+        rightLineNo: 64,
+      },
+      {
+        type: "replace",
+        leftLine: "$row->close;",
+        rightLine: "row.close();",
+        leftLineNo: 64,
+        rightLineNo: 65,
+      },
+      {
+        type: "replace",
+        leftLine: "$style->close;",
+        rightLine: "style.close();",
+        leftLineNo: 65,
+        rightLineNo: 66,
+      },
+    ]);
+  });
 });

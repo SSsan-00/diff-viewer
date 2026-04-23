@@ -167,18 +167,33 @@ function toPairedOp(op: LineOp): PairedOp {
 }
 
 function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
-  const usedInserts = new Set<number>();
   const emittedInserts = new Set<number>();
   const matches = new Array<number | undefined>(deletes.length).fill(undefined);
-  const candidates = buildCandidates(deletes, inserts).sort(sortCandidates);
+  const candidatesByDelete = Array.from(
+    { length: deletes.length },
+    () => [] as PairCandidate[],
+  );
 
-  for (const candidate of candidates) {
-    if (usedInserts.has(candidate.insertIndex) || matches[candidate.deleteIndex] !== undefined) {
+  for (const candidate of buildCandidates(deletes, inserts)) {
+    candidatesByDelete[candidate.deleteIndex].push(candidate);
+  }
+
+  candidatesByDelete.forEach((bucket) => bucket.sort(sortCandidates));
+
+  let nextInsertFloor = 0;
+  for (let deleteIndex = 0; deleteIndex < deletes.length; deleteIndex += 1) {
+    const candidate = candidatesByDelete[deleteIndex].find(
+      (entry) => entry.insertIndex >= nextInsertFloor,
+    );
+    if (!candidate) {
       continue;
     }
-    matches[candidate.deleteIndex] = candidate.insertIndex;
-    usedInserts.add(candidate.insertIndex);
+    matches[deleteIndex] = candidate.insertIndex;
+    nextInsertFloor = candidate.insertIndex + 1;
   }
+  const matchedInsertIndices = new Set<number>(
+    matches.filter((value): value is number => value !== undefined),
+  );
 
   const result: PairedOp[] = [];
   let insertCursor = 0;
@@ -190,7 +205,7 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
       if (stopRightLineNo !== undefined && insertLineNo >= stopRightLineNo) {
         break;
       }
-      if (!usedInserts.has(insertCursor) && !emittedInserts.has(insertCursor)) {
+      if (!matchedInsertIndices.has(insertCursor) && !emittedInserts.has(insertCursor)) {
         result.push(toPairedOp(insert));
         emittedInserts.add(insertCursor);
       }
@@ -221,7 +236,7 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
 
   emitUnmatchedInsertsBefore(undefined);
   for (let i = 0; i < inserts.length; i += 1) {
-    if (!usedInserts.has(i) && !emittedInserts.has(i)) {
+    if (!matchedInsertIndices.has(i) && !emittedInserts.has(i)) {
       result.push(toPairedOp(inserts[i]));
       emittedInserts.add(i);
     }

@@ -319,6 +319,50 @@ describe("semantic alignment across languages", () => {
     expect(onSheetInline).toEqual(offSheetInline);
   });
 
+  it("keeps inline-highlightable replace pairs stable inside a large unmatched block", () => {
+    const gap = 120;
+    const left = [
+      "header",
+      ...Array.from({ length: gap }, (_, index) => `left-gap-${index}`),
+      "$wbook->close;",
+      "$sheet->close;",
+      ...Array.from({ length: gap }, (_, index) => `left-tail-${index}`),
+      "footer",
+    ];
+    const right = [
+      "header",
+      ...Array.from({ length: gap }, (_, index) => `right-gap-${index}`),
+      "wbook.close();",
+      "sheet.close();",
+      ...Array.from({ length: gap }, (_, index) => `right-tail-${index}`),
+      "footer",
+    ];
+    const anchors: Anchor[] = [
+      { leftLineNo: 0, rightLineNo: 0 },
+      { leftLineNo: left.length - 1, rightLineNo: right.length - 1 },
+    ];
+
+    const off = toPairedOps(left, right);
+    const on = diffWithAnchors(left.join("\n"), right.join("\n"), anchors);
+
+    const offWorkbook = findReplaceOp(off, "$wbook->close", "wbook.close()");
+    const offSheet = findReplaceOp(off, "$sheet->close", "sheet.close()");
+    const onWorkbook = findReplaceOp(on, "$wbook->close", "wbook.close()");
+    const onSheet = findReplaceOp(on, "$sheet->close", "sheet.close()");
+
+    expect(offWorkbook).toBeDefined();
+    expect(offSheet).toBeDefined();
+    expect(onWorkbook).toBeDefined();
+    expect(onSheet).toBeDefined();
+
+    expect(diffInline(offWorkbook?.leftLine ?? "", offWorkbook?.rightLine ?? "").leftRanges.length +
+      diffInline(offWorkbook?.leftLine ?? "", offWorkbook?.rightLine ?? "").rightRanges.length)
+      .toBeGreaterThan(0);
+    expect(diffInline(offSheet?.leftLine ?? "", offSheet?.rightLine ?? "").leftRanges.length +
+      diffInline(offSheet?.leftLine ?? "", offSheet?.rightLine ?? "").rightRanges.length)
+      .toBeGreaterThan(0);
+  });
+
   it("aligns SQL construction across languages", () => {
     const left = [
       "StringBuilder sql = new();",

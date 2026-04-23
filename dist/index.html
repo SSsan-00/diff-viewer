@@ -189544,17 +189544,25 @@ function toPairedOp(op) {
 }
 
 function pairBlock(deletes, inserts) {
-    const usedInserts = new Set;
     const emittedInserts = new Set;
     const matches = new Array(deletes.length).fill(void 0);
-    const candidates = buildCandidates(deletes, inserts).sort(sortCandidates);
-    for (const candidate of candidates) {
-        if (usedInserts.has(candidate.insertIndex) || matches[candidate.deleteIndex] !== void 0) {
+    const candidatesByDelete = Array.from({
+        length: deletes.length
+    }, () => []);
+    for (const candidate of buildCandidates(deletes, inserts)) {
+        candidatesByDelete[candidate.deleteIndex].push(candidate);
+    }
+    candidatesByDelete.forEach(bucket => bucket.sort(sortCandidates));
+    let nextInsertFloor = 0;
+    for (let deleteIndex = 0; deleteIndex < deletes.length; deleteIndex += 1) {
+        const candidate = candidatesByDelete[deleteIndex].find(entry => entry.insertIndex >= nextInsertFloor);
+        if (!candidate) {
             continue;
         }
-        matches[candidate.deleteIndex] = candidate.insertIndex;
-        usedInserts.add(candidate.insertIndex);
+        matches[deleteIndex] = candidate.insertIndex;
+        nextInsertFloor = candidate.insertIndex + 1;
     }
+    const matchedInsertIndices = new Set(matches.filter(value => value !== void 0));
     const result = [];
     let insertCursor = 0;
     const emitUnmatchedInsertsBefore = stopRightLineNo => {
@@ -189564,7 +189572,7 @@ function pairBlock(deletes, inserts) {
             if (stopRightLineNo !== void 0 && insertLineNo >= stopRightLineNo) {
                 break;
             }
-            if (!usedInserts.has(insertCursor) && !emittedInserts.has(insertCursor)) {
+            if (!matchedInsertIndices.has(insertCursor) && !emittedInserts.has(insertCursor)) {
                 result.push(toPairedOp(insert));
                 emittedInserts.add(insertCursor);
             }
@@ -189593,7 +189601,7 @@ function pairBlock(deletes, inserts) {
     }
     emitUnmatchedInsertsBefore(void 0);
     for (let i2 = 0; i2 < inserts.length; i2 += 1) {
-        if (!usedInserts.has(i2) && !emittedInserts.has(i2)) {
+        if (!matchedInsertIndices.has(i2) && !emittedInserts.has(i2)) {
             result.push(toPairedOp(inserts[i2]));
             emittedInserts.add(i2);
         }
