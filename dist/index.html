@@ -196363,6 +196363,9 @@ const syntaxHighlightController = bindSyntaxHighlightToggle({
     getLanguageForEditor: index => index === 0 ? getPaneLanguage(leftSegments) : getPaneLanguage(rightSegments),
     setModelLanguage: (model, language2) => {
         editor.setModelLanguage(model, language2);
+    },
+    onAfterToggle: () => {
+        invalidateDiffRendering();
     }
 });
 

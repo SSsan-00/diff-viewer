@@ -77,4 +77,31 @@ describe("syntax highlight toggle", () => {
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(setModelLanguage).toHaveBeenCalledWith(model, "javascript");
   });
+
+  it("runs the post-toggle hook for user and programmatic refreshes", () => {
+    const dom = new JSDOM(
+      `<div class="highlight-toggle-control">
+        <button id="hl-btn" type="button" aria-label="ハイライト" aria-pressed="true"></button>
+        <input id="hl" type="checkbox" />
+      </div>`,
+    );
+    const input = dom.window.document.querySelector<HTMLInputElement>("#hl")!;
+    const button = dom.window.document.querySelector<HTMLButtonElement>("#hl-btn")!;
+
+    const onAfterToggle = vi.fn();
+    const controller = bindSyntaxHighlightToggle({
+      input,
+      button,
+      editors: [{ getModel: () => ({}) }],
+      getLanguageForEditor: () => "javascript",
+      setModelLanguage: vi.fn(),
+      onAfterToggle,
+      initialEnabled: true,
+    });
+
+    button.click();
+    controller?.applyHighlight(true);
+
+    expect(onAfterToggle).toHaveBeenCalledTimes(2);
+  });
 });

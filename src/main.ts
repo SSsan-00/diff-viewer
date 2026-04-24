@@ -1231,6 +1231,9 @@ const syntaxHighlightController = bindSyntaxHighlightToggle({
   setModelLanguage: (model, language) => {
     monaco.editor.setModelLanguage(model as monaco.editor.ITextModel, language);
   },
+  onAfterToggle: () => {
+    invalidateDiffRendering();
+  },
 });
 
 const refreshSyntaxHighlight = () => {

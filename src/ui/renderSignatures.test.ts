@@ -21,4 +21,8 @@ describe("shouldApplyBySignature", () => {
       }),
     ).toBe(true);
   });
+
+  it("reapplies rendering when Monaco lost decoration ids during a reload", () => {
+    expect(shouldApplyBySignature(["range:a"], ["range:a"], [])).toBe(true);
+  });
 });
