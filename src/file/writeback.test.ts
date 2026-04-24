@@ -17,6 +17,69 @@ function toBuffer(bytes: number[]): ArrayBuffer {
   return new Uint8Array(bytes).buffer;
 }
 
+function collectDirectLegacyCharacters(
+  encoding: "shift_jis" | "euc-jp",
+): string[] {
+  const decoder = new TextDecoder(encoding);
+  const chars = new Set<string>();
+  const register = (bytes: number[]) => {
+    const decoded = decoder.decode(Uint8Array.from(bytes));
+    if (decoded.includes("\uFFFD")) {
+      return;
+    }
+    const values = Array.from(decoded);
+    if (values.length !== 1) {
+      return;
+    }
+    chars.add(values[0] ?? "");
+  };
+
+  if (encoding === "shift_jis") {
+    for (let byte = 0x00; byte <= 0x7f; byte += 1) {
+      register([byte]);
+    }
+    for (let byte = 0xa1; byte <= 0xdf; byte += 1) {
+      register([byte]);
+    }
+    const trailBytes: number[] = [];
+    for (let byte = 0x40; byte <= 0x7e; byte += 1) {
+      trailBytes.push(byte);
+    }
+    for (let byte = 0x80; byte <= 0xfc; byte += 1) {
+      trailBytes.push(byte);
+    }
+    for (let lead = 0x81; lead <= 0x9f; lead += 1) {
+      for (const trail of trailBytes) {
+        register([lead, trail]);
+      }
+    }
+    for (let lead = 0xe0; lead <= 0xfc; lead += 1) {
+      for (const trail of trailBytes) {
+        register([lead, trail]);
+      }
+    }
+    return [...chars];
+  }
+
+  for (let byte = 0x00; byte <= 0x7f; byte += 1) {
+    register([byte]);
+  }
+  for (let byte = 0xa1; byte <= 0xdf; byte += 1) {
+    register([0x8e, byte]);
+  }
+  for (let lead = 0xa1; lead <= 0xfe; lead += 1) {
+    for (let trail = 0xa1; trail <= 0xfe; trail += 1) {
+      register([lead, trail]);
+    }
+  }
+  for (let lead = 0xa1; lead <= 0xfe; lead += 1) {
+    for (let trail = 0xa1; trail <= 0xfe; trail += 1) {
+      register([0x8f, lead, trail]);
+    }
+  }
+  return [...chars];
+}
+
 function createWritableHandle(name: string) {
   return {
     name,
@@ -474,6 +537,26 @@ describe("writeTextToFileHandle", () => {
     expect(Array.from(decomposed)).toEqual(Array.from(composed));
   });
 
+  it("falls back to compatibility decomposition for otherwise unencodable Shift_JIS characters", () => {
+    const bytes = buildPaneWriteBytes("™", {
+      resolvedEncoding: "shift_jis",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+
+    expect(new TextDecoder("shift_jis").decode(bytes)).toBe("TM");
+  });
+
+  it("keeps directly representable compatibility characters unchanged in Shift_JIS", () => {
+    const bytes = buildPaneWriteBytes("㈱", {
+      resolvedEncoding: "shift_jis",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+
+    expect(new TextDecoder("shift_jis").decode(bytes)).toBe("㈱");
+  });
+
   it("keeps directly representable ASCII bytes instead of compatibility aliases", () => {
     expect(
       Array.from(buildPaneWriteBytes("\\~-", {
@@ -579,6 +662,61 @@ describe("writeTextToFileHandle", () => {
     expect(written).toEqual([[0x61, 0x0a, 0x62]]);
     expect(aborted).toBe(true);
     expect(closed).toBe(false);
+  });
+
+  it("does not close a writable stream without abort when a write fails", async () => {
+    let closed = false;
+    const handle = {
+      name: "left.txt",
+      async createWritable() {
+        return {
+          async write(_data: BufferSource) {
+            throw new Error("disk full");
+          },
+          async close() {
+            closed = true;
+          },
+        };
+      },
+    };
+
+    await expect(
+      writeTextToFileHandle(handle, "a\nb", {
+        resolvedEncoding: "utf-8",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      }),
+    ).rejects.toThrow("disk full");
+
+    expect(closed).toBe(false);
+  });
+
+  it("round-trips every directly decodable Shift_JIS character", () => {
+    const chars = collectDirectLegacyCharacters("shift_jis");
+    const decoder = new TextDecoder("shift_jis");
+
+    chars.forEach((char) => {
+      const bytes = buildPaneWriteBytes(char, {
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      });
+      expect(decoder.decode(bytes)).toBe(char);
+    });
+  });
+
+  it("round-trips every directly decodable EUC-JP character", () => {
+    const chars = collectDirectLegacyCharacters("euc-jp");
+    const decoder = new TextDecoder("euc-jp");
+
+    chars.forEach((char) => {
+      const bytes = buildPaneWriteBytes(char, {
+        resolvedEncoding: "euc-jp",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      });
+      expect(decoder.decode(bytes)).toBe(char);
+    });
   });
 });
 

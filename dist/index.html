@@ -189424,6 +189424,15 @@ const WINDOW_SIZE = 40;
 
 const SCORE_THRESHOLD = 4;
 
+const EMPTY_MATCH_STATE = {
+    score: 0,
+    pairCount: 0,
+    indentDiffTotal: 0,
+    distanceTotal: 0,
+    previous: null,
+    candidate: null
+};
+
 function buildIndexMap(features) {
     const map = new Map;
     features.forEach((feature, index) => {
@@ -189519,6 +189528,89 @@ function sortCandidates(a, b) {
     return a.insertIndex - b.insertIndex;
 }
 
+function compareMatchStates(a, b) {
+    if (!a && !b) {
+        return 0;
+    }
+    if (!a) {
+        return 1;
+    }
+    if (!b) {
+        return -1;
+    }
+    if (a.score !== b.score) {
+        return b.score - a.score;
+    }
+    if (a.pairCount !== b.pairCount) {
+        return b.pairCount - a.pairCount;
+    }
+    if (a.indentDiffTotal !== b.indentDiffTotal) {
+        return a.indentDiffTotal - b.indentDiffTotal;
+    }
+    if (a.distanceTotal !== b.distanceTotal) {
+        return a.distanceTotal - b.distanceTotal;
+    }
+    const aCandidate = a.candidate;
+    const bCandidate = b.candidate;
+    if (!aCandidate && !bCandidate) {
+        return 0;
+    }
+    if (!aCandidate) {
+        return 1;
+    }
+    if (!bCandidate) {
+        return -1;
+    }
+    return sortCandidates(aCandidate, bCandidate);
+}
+
+function pickBetterMatchState(current, candidate) {
+    return compareMatchStates(current, candidate) <= 0 ? current : candidate;
+}
+
+function buildMatchState(previous, candidate) {
+    return {
+        score: previous.score + candidate.score,
+        pairCount: previous.pairCount + 1,
+        indentDiffTotal: previous.indentDiffTotal + candidate.indentDiff,
+        distanceTotal: previous.distanceTotal + candidate.distance,
+        previous: previous,
+        candidate: candidate
+    };
+}
+
+function collectMatchPairs(state) {
+    const pairs = [];
+    let current = state;
+    while (current?.candidate) {
+        pairs.push([ current.candidate.deleteIndex, current.candidate.insertIndex ]);
+        current = current.previous;
+    }
+    return pairs.reverse();
+}
+
+function createFenwickBest(size2) {
+    const tree = new Array(size2 + 1).fill(null);
+    return {
+        query(upTo) {
+            let best = EMPTY_MATCH_STATE;
+            let index = upTo;
+            while (index > 0) {
+                best = pickBetterMatchState(best, tree[index]);
+                index -= index & -index;
+            }
+            return best ?? EMPTY_MATCH_STATE;
+        },
+        update(index, state) {
+            let currentIndex = index;
+            while (currentIndex < tree.length) {
+                tree[currentIndex] = pickBetterMatchState(tree[currentIndex], state);
+                currentIndex += currentIndex & -currentIndex;
+            }
+        }
+    };
+}
+
 function toPairedOp(op) {
     if (op.type === "equal") {
         return {
@@ -189552,17 +189644,30 @@ function pairBlock(deletes, inserts) {
     for (const candidate of buildCandidates(deletes, inserts)) {
         candidatesByDelete[candidate.deleteIndex].push(candidate);
     }
-    candidatesByDelete.forEach(bucket => bucket.sort(sortCandidates));
-    let nextInsertFloor = 0;
+    candidatesByDelete.forEach(bucket => bucket.sort((a, b) => a.insertIndex === b.insertIndex ? sortCandidates(a, b) : a.insertIndex - b.insertIndex));
+    const fenwick = createFenwickBest(inserts.length);
+    let bestState = EMPTY_MATCH_STATE;
     for (let deleteIndex = 0; deleteIndex < deletes.length; deleteIndex += 1) {
-        const candidate = candidatesByDelete[deleteIndex].find(entry => entry.insertIndex >= nextInsertFloor);
-        if (!candidate) {
-            continue;
+        const updates = candidatesByDelete[deleteIndex].map(candidate => ({
+            insertIndex: candidate.insertIndex,
+            state: buildMatchState(fenwick.query(candidate.insertIndex), candidate)
+        }));
+        for (const update of updates) {
+            fenwick.update(update.insertIndex + 1, update.state);
+            if (compareMatchStates(bestState, update.state) > 0) {
+                bestState = update.state;
+            }
         }
-        matches[deleteIndex] = candidate.insertIndex;
-        nextInsertFloor = candidate.insertIndex + 1;
     }
-    const matchedInsertIndices = new Set(matches.filter(value => value !== void 0));
+    collectMatchPairs(bestState).forEach(([deleteIndex, insertIndex]) => {
+        matches[deleteIndex] = insertIndex;
+    });
+    const matchedInsertIndices = new Set;
+    matches.forEach(value => {
+        if (value !== void 0) {
+            matchedInsertIndices.add(value);
+        }
+    });
     const result = [];
     let insertCursor = 0;
     const emitUnmatchedInsertsBefore = stopRightLineNo => {
@@ -190615,10 +190720,6 @@ function normalizeLineEndingsForWriteback(text2, lineEnding) {
     return lineEnding === "\n" ? text2 : text2.replace(/\n/g, lineEnding);
 }
 
-function normalizeLegacyTextForWriteback(text2) {
-    return text2.normalize("NFC");
-}
-
 function registerEncodedCharacter(map, decoder, bytes) {
     const encoded = Uint8Array.from(bytes);
     const decoded = decoder.decode(encoded);
@@ -190713,6 +190814,75 @@ function getLegacyEncodeAliases(encoding) {
     }
     legacyEncodeAliasMaps[encoding] = aliases;
     return aliases;
+}
+
+function isCombiningMark(char) {
+    return new RegExp("\\p{M}", "u").test(char);
+}
+
+function resolveLegacyEncodedBytes(char, map, aliases) {
+    return map.get(char) ?? aliases.get(char) ?? null;
+}
+
+function tryEncodeLegacyText(text2, map, aliases, seen) {
+    if (seen.has(text2)) {
+        return null;
+    }
+    seen.add(text2);
+    const chars = Array.from(text2);
+    const bytes = [];
+    for (let index = 0; index < chars.length; index += 1) {
+        const char = chars[index] ?? "";
+        let clusterEnd = index + 1;
+        while (clusterEnd < chars.length && isCombiningMark(chars[clusterEnd] ?? "")) {
+            clusterEnd += 1;
+        }
+        if (clusterEnd > index + 1) {
+            const cluster = chars.slice(index, clusterEnd).join("");
+            const variants = [ cluster.normalize("NFC"), cluster.normalize("NFKC") ];
+            let clusterEncoded = false;
+            for (const variant of variants) {
+                if (variant === cluster) {
+                    continue;
+                }
+                const encoded = tryEncodeLegacyText(variant, map, aliases, new Set(seen));
+                if (encoded) {
+                    bytes.push(...encoded);
+                    index = clusterEnd - 1;
+                    clusterEncoded = true;
+                    break;
+                }
+            }
+            if (clusterEncoded) {
+                continue;
+            }
+        }
+        const direct = resolveLegacyEncodedBytes(char, map, aliases);
+        if (direct) {
+            bytes.push(...direct);
+            continue;
+        }
+        const compatibility = char.normalize("NFKC");
+        if (compatibility !== char) {
+            const encoded = tryEncodeLegacyText(compatibility, map, aliases, new Set(seen));
+            if (encoded) {
+                bytes.push(...encoded);
+                continue;
+            }
+        }
+        return null;
+    }
+    return Uint8Array.from(bytes);
+}
+
+function findFirstLegacyUnencodableChar(text2, map, aliases) {
+    for (const char of Array.from(text2)) {
+        if (resolveLegacyEncodedBytes(char, map, aliases)) {
+            continue;
+        }
+        return char;
+    }
+    return "";
 }
 
 function describeDecodedFileForWriteback(buffer, encoding) {
@@ -190881,18 +191051,15 @@ function buildPaneWriteBytes(text2, options) {
             lineEnding: options.lineEnding
         });
     }
-    const normalized = normalizeLegacyTextForWriteback(normalizeLineEndingsForWriteback(text2, options.lineEnding));
+    const normalized = normalizeLineEndingsForWriteback(text2, options.lineEnding);
     const map = getLegacyEncodeMap(options.resolvedEncoding);
     const aliases = getLegacyEncodeAliases(options.resolvedEncoding);
-    const bytes = [];
-    for (const char of normalized) {
-        const encoded = map.get(char) ?? aliases.get(char);
-        if (!encoded) {
-            throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${char}`);
-        }
-        bytes.push(...encoded);
+    const encoded = tryEncodeLegacyText(normalized, map, aliases, new Set);
+    if (!encoded) {
+        const failedChar = findFirstLegacyUnencodableChar(normalized, map, aliases);
+        throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${failedChar}`);
     }
-    return Uint8Array.from(bytes);
+    return encoded;
 }
 
 async function writeBytesToFileHandle(handle, bytes) {
@@ -190905,8 +191072,6 @@ async function writeBytesToFileHandle(handle, bytes) {
     } catch (error) {
         if (typeof writable.abort === "function") {
             await writable.abort();
-        } else {
-            await writable.close();
         }
         throw error;
     }

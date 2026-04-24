@@ -363,6 +363,41 @@ describe("semantic alignment across languages", () => {
       .toBeGreaterThan(0);
   });
 
+  it("keeps same-name append pairs inline-highlightable in a large unmatched block without anchors", () => {
+    const gap = 180;
+    const left = [
+      "header",
+      ...Array.from({ length: gap }, (_, index) => `left-gap-${index}`),
+      "value.AppendLine(\"close\");",
+      "return $row_write;",
+      "$wbook->append;",
+      "return $table_load;",
+      ...Array.from({ length: gap }, (_, index) => `left-tail-${index}`),
+      "footer",
+    ];
+    const right = [
+      "header",
+      ...Array.from({ length: gap }, (_, index) => `right-gap-${index}`),
+      "html.AppendLine(\"render\");",
+      "return row_render;",
+      "wbook.AppendLine(\"append\");",
+      "sheet.render();",
+      "html.load();",
+      "$value->close;",
+      ...Array.from({ length: gap }, (_, index) => `right-tail-${index}`),
+      "footer",
+    ];
+    const ops = toPairedOps(left, right);
+    const wbookReplace = findReplaceOp(ops, "$wbook->append;", "wbook.AppendLine(\"append\");");
+
+    expect(wbookReplace).toBeDefined();
+    const inline = diffInline(
+      wbookReplace?.leftLine ?? "",
+      wbookReplace?.rightLine ?? "",
+    );
+    expect(inline.leftRanges.length + inline.rightRanges.length).toBeGreaterThan(0);
+  });
+
   it("aligns SQL construction across languages", () => {
     const left = [
       "StringBuilder sql = new();",

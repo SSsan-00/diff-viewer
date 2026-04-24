@@ -297,4 +297,69 @@ describe("pairReplace", () => {
       },
     ]);
   });
+
+  it("prefers the best ordered same-name chain over an unrelated early literal match", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "value.AppendLine(\"close\");", leftLineNo: 101 },
+      { type: "delete", leftLine: "return $row_write;", leftLineNo: 102 },
+      { type: "delete", leftLine: "$wbook->append;", leftLineNo: 103 },
+      { type: "delete", leftLine: "return $table_load;", leftLineNo: 104 },
+      { type: "insert", rightLine: "html.AppendLine(\"render\");", rightLineNo: 201 },
+      { type: "insert", rightLine: "return row_render;", rightLineNo: 202 },
+      { type: "insert", rightLine: "wbook.AppendLine(\"append\");", rightLineNo: 203 },
+      { type: "insert", rightLine: "sheet.render();", rightLineNo: 204 },
+      { type: "insert", rightLine: "html.load();", rightLineNo: 205 },
+      { type: "insert", rightLine: "$value->close;", rightLineNo: 206 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "delete",
+        leftLine: "value.AppendLine(\"close\");",
+        leftLineNo: 101,
+      },
+      {
+        type: "delete",
+        leftLine: "return $row_write;",
+        leftLineNo: 102,
+      },
+      {
+        type: "insert",
+        rightLine: "html.AppendLine(\"render\");",
+        rightLineNo: 201,
+      },
+      {
+        type: "insert",
+        rightLine: "return row_render;",
+        rightLineNo: 202,
+      },
+      {
+        type: "replace",
+        leftLine: "$wbook->append;",
+        rightLine: "wbook.AppendLine(\"append\");",
+        leftLineNo: 103,
+        rightLineNo: 203,
+      },
+      {
+        type: "delete",
+        leftLine: "return $table_load;",
+        leftLineNo: 104,
+      },
+      {
+        type: "insert",
+        rightLine: "sheet.render();",
+        rightLineNo: 204,
+      },
+      {
+        type: "insert",
+        rightLine: "html.load();",
+        rightLineNo: 205,
+      },
+      {
+        type: "insert",
+        rightLine: "$value->close;",
+        rightLineNo: 206,
+      },
+    ]);
+  });
 });

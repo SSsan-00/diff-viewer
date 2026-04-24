@@ -220,10 +220,6 @@ function normalizeLineEndingsForWriteback(
   return lineEnding === "\n" ? text : text.replace(/\n/g, lineEnding);
 }
 
-function normalizeLegacyTextForWriteback(text: string): string {
-  return text.normalize("NFC");
-}
-
 function registerEncodedCharacter(
   map: Map<string, Uint8Array>,
   decoder: TextDecoder,
@@ -331,6 +327,95 @@ function getLegacyEncodeAliases(
 
   legacyEncodeAliasMaps[encoding] = aliases;
   return aliases;
+}
+
+function isCombiningMark(char: string): boolean {
+  return /\p{M}/u.test(char);
+}
+
+function resolveLegacyEncodedBytes(
+  char: string,
+  map: Map<string, Uint8Array>,
+  aliases: Map<string, Uint8Array>,
+): Uint8Array | null {
+  return map.get(char) ?? aliases.get(char) ?? null;
+}
+
+function tryEncodeLegacyText(
+  text: string,
+  map: Map<string, Uint8Array>,
+  aliases: Map<string, Uint8Array>,
+  seen: Set<string>,
+): Uint8Array | null {
+  if (seen.has(text)) {
+    return null;
+  }
+  seen.add(text);
+
+  const chars = Array.from(text);
+  const bytes: number[] = [];
+
+  for (let index = 0; index < chars.length; index += 1) {
+    const char = chars[index] ?? "";
+    let clusterEnd = index + 1;
+    while (clusterEnd < chars.length && isCombiningMark(chars[clusterEnd] ?? "")) {
+      clusterEnd += 1;
+    }
+
+    if (clusterEnd > index + 1) {
+      const cluster = chars.slice(index, clusterEnd).join("");
+      const variants = [cluster.normalize("NFC"), cluster.normalize("NFKC")];
+      let clusterEncoded = false;
+      for (const variant of variants) {
+        if (variant === cluster) {
+          continue;
+        }
+        const encoded = tryEncodeLegacyText(variant, map, aliases, new Set(seen));
+        if (encoded) {
+          bytes.push(...encoded);
+          index = clusterEnd - 1;
+          clusterEncoded = true;
+          break;
+        }
+      }
+      if (clusterEncoded) {
+        continue;
+      }
+    }
+
+    const direct = resolveLegacyEncodedBytes(char, map, aliases);
+    if (direct) {
+      bytes.push(...direct);
+      continue;
+    }
+
+    const compatibility = char.normalize("NFKC");
+    if (compatibility !== char) {
+      const encoded = tryEncodeLegacyText(compatibility, map, aliases, new Set(seen));
+      if (encoded) {
+        bytes.push(...encoded);
+        continue;
+      }
+    }
+
+    return null;
+  }
+
+  return Uint8Array.from(bytes);
+}
+
+function findFirstLegacyUnencodableChar(
+  text: string,
+  map: Map<string, Uint8Array>,
+  aliases: Map<string, Uint8Array>,
+): string {
+  for (const char of Array.from(text)) {
+    if (resolveLegacyEncodedBytes(char, map, aliases)) {
+      continue;
+    }
+    return char;
+  }
+  return "";
 }
 
 export function describeDecodedFileForWriteback(
@@ -531,22 +616,15 @@ export function buildPaneWriteBytes(
     });
   }
 
-  const normalized = normalizeLegacyTextForWriteback(
-    normalizeLineEndingsForWriteback(text, options.lineEnding),
-  );
+  const normalized = normalizeLineEndingsForWriteback(text, options.lineEnding);
   const map = getLegacyEncodeMap(options.resolvedEncoding);
   const aliases = getLegacyEncodeAliases(options.resolvedEncoding);
-  const bytes: number[] = [];
-
-  for (const char of normalized) {
-    const encoded = map.get(char) ?? aliases.get(char);
-    if (!encoded) {
-      throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${char}`);
-    }
-    bytes.push(...encoded);
+  const encoded = tryEncodeLegacyText(normalized, map, aliases, new Set<string>());
+  if (!encoded) {
+    const failedChar = findFirstLegacyUnencodableChar(normalized, map, aliases);
+    throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${failedChar}`);
   }
-
-  return Uint8Array.from(bytes);
+  return encoded;
 }
 
 export async function writeTextToFileHandle(
@@ -575,8 +653,6 @@ export async function writeBytesToFileHandle(
   } catch (error) {
     if (typeof writable.abort === "function") {
       await writable.abort();
-    } else {
-      await writable.close();
     }
     throw error;
   }

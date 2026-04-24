@@ -25,8 +25,25 @@ type PairCandidate = {
   distance: number;
 };
 
+type MatchState = {
+  score: number;
+  pairCount: number;
+  indentDiffTotal: number;
+  distanceTotal: number;
+  previous: MatchState | null;
+  candidate: PairCandidate | null;
+};
+
 const WINDOW_SIZE = 40;
 const SCORE_THRESHOLD = 4;
+const EMPTY_MATCH_STATE: MatchState = {
+  score: 0,
+  pairCount: 0,
+  indentDiffTotal: 0,
+  distanceTotal: 0,
+  previous: null,
+  candidate: null,
+};
 
 function buildIndexMap(features: ReturnType<typeof buildLineFeatures>[]): Map<string, number[]> {
   const map = new Map<string, number[]>();
@@ -140,6 +157,99 @@ function sortCandidates(a: PairCandidate, b: PairCandidate): number {
   return a.insertIndex - b.insertIndex;
 }
 
+function compareMatchStates(a: MatchState | null, b: MatchState | null): number {
+  if (!a && !b) {
+    return 0;
+  }
+  if (!a) {
+    return 1;
+  }
+  if (!b) {
+    return -1;
+  }
+  if (a.score !== b.score) {
+    return b.score - a.score;
+  }
+  if (a.pairCount !== b.pairCount) {
+    return b.pairCount - a.pairCount;
+  }
+  if (a.indentDiffTotal !== b.indentDiffTotal) {
+    return a.indentDiffTotal - b.indentDiffTotal;
+  }
+  if (a.distanceTotal !== b.distanceTotal) {
+    return a.distanceTotal - b.distanceTotal;
+  }
+  const aCandidate = a.candidate;
+  const bCandidate = b.candidate;
+  if (!aCandidate && !bCandidate) {
+    return 0;
+  }
+  if (!aCandidate) {
+    return 1;
+  }
+  if (!bCandidate) {
+    return -1;
+  }
+  return sortCandidates(aCandidate, bCandidate);
+}
+
+function pickBetterMatchState(
+  current: MatchState | null,
+  candidate: MatchState | null,
+): MatchState | null {
+  return compareMatchStates(current, candidate) <= 0 ? current : candidate;
+}
+
+function buildMatchState(
+  previous: MatchState,
+  candidate: PairCandidate,
+): MatchState {
+  return {
+    score: previous.score + candidate.score,
+    pairCount: previous.pairCount + 1,
+    indentDiffTotal: previous.indentDiffTotal + candidate.indentDiff,
+    distanceTotal: previous.distanceTotal + candidate.distance,
+    previous,
+    candidate,
+  };
+}
+
+function collectMatchPairs(state: MatchState | null): Array<[number, number]> {
+  const pairs: Array<[number, number]> = [];
+  let current = state;
+  while (current?.candidate) {
+    pairs.push([current.candidate.deleteIndex, current.candidate.insertIndex]);
+    current = current.previous;
+  }
+  return pairs.reverse();
+}
+
+function createFenwickBest(size: number): {
+  query: (upTo: number) => MatchState;
+  update: (index: number, state: MatchState) => void;
+} {
+  const tree = new Array<MatchState | null>(size + 1).fill(null);
+
+  return {
+    query(upTo: number): MatchState {
+      let best: MatchState | null = EMPTY_MATCH_STATE;
+      let index = upTo;
+      while (index > 0) {
+        best = pickBetterMatchState(best, tree[index]);
+        index -= index & -index;
+      }
+      return best ?? EMPTY_MATCH_STATE;
+    },
+    update(index: number, state: MatchState): void {
+      let currentIndex = index;
+      while (currentIndex < tree.length) {
+        tree[currentIndex] = pickBetterMatchState(tree[currentIndex], state);
+        currentIndex += currentIndex & -currentIndex;
+      }
+    },
+  };
+}
+
 function toPairedOp(op: LineOp): PairedOp {
   if (op.type === "equal") {
     return {
@@ -178,22 +288,39 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
     candidatesByDelete[candidate.deleteIndex].push(candidate);
   }
 
-  candidatesByDelete.forEach((bucket) => bucket.sort(sortCandidates));
-
-  let nextInsertFloor = 0;
-  for (let deleteIndex = 0; deleteIndex < deletes.length; deleteIndex += 1) {
-    const candidate = candidatesByDelete[deleteIndex].find(
-      (entry) => entry.insertIndex >= nextInsertFloor,
-    );
-    if (!candidate) {
-      continue;
-    }
-    matches[deleteIndex] = candidate.insertIndex;
-    nextInsertFloor = candidate.insertIndex + 1;
-  }
-  const matchedInsertIndices = new Set<number>(
-    matches.filter((value): value is number => value !== undefined),
+  candidatesByDelete.forEach((bucket) =>
+    bucket.sort((a, b) =>
+      a.insertIndex === b.insertIndex ? sortCandidates(a, b) : a.insertIndex - b.insertIndex,
+    ),
   );
+
+  const fenwick = createFenwickBest(inserts.length);
+  let bestState: MatchState = EMPTY_MATCH_STATE;
+
+  for (let deleteIndex = 0; deleteIndex < deletes.length; deleteIndex += 1) {
+    const updates = candidatesByDelete[deleteIndex].map((candidate) => ({
+      insertIndex: candidate.insertIndex,
+      state: buildMatchState(fenwick.query(candidate.insertIndex), candidate),
+    }));
+
+    for (const update of updates) {
+      fenwick.update(update.insertIndex + 1, update.state);
+      if (compareMatchStates(bestState, update.state) > 0) {
+        bestState = update.state;
+      }
+    }
+  }
+
+  collectMatchPairs(bestState).forEach(([deleteIndex, insertIndex]) => {
+    matches[deleteIndex] = insertIndex;
+  });
+
+  const matchedInsertIndices = new Set<number>();
+  matches.forEach((value) => {
+    if (value !== undefined) {
+      matchedInsertIndices.add(value);
+    }
+  });
 
   const result: PairedOp[] = [];
   let insertCursor = 0;

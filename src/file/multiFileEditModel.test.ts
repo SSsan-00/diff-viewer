@@ -117,4 +117,41 @@ describe("multi-file edit model", () => {
     expect(() => buildMultiFileWritePlan("A1\nA2\n🙂", segments, targets))
       .toThrow("shift_jis");
   });
+
+  it("builds mixed-encoding plans per file without losing directly representable legacy characters", () => {
+    const extendedSegments: LineSegment[] = [
+      { startLine: 1, lineCount: 1, fileIndex: 1, fileName: "a.txt" },
+      { startLine: 2, lineCount: 1, fileIndex: 2, fileName: "b.txt" },
+      { startLine: 3, lineCount: 1, fileIndex: 3, fileName: "c.txt" },
+    ];
+    const targets: PaneSaveTarget[] = [
+      {
+        handle: { name: "a.txt", async getFile() { return new File([""], "a.txt"); } },
+        fileName: "a.txt",
+        resolvedEncoding: "utf-8",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+      {
+        handle: { name: "b.txt", async getFile() { return new File([""], "b.txt"); } },
+        fileName: "b.txt",
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+      {
+        handle: { name: "c.txt", async getFile() { return new File([""], "c.txt"); } },
+        fileName: "c.txt",
+        resolvedEncoding: "euc-jp",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+    ];
+
+    const plan = buildMultiFileWritePlan("alpha\n™\n㈱", extendedSegments, targets);
+
+    expect(new TextDecoder().decode(plan[0].bytes)).toBe("alpha");
+    expect(new TextDecoder("shift_jis").decode(plan[1].bytes)).toBe("TM");
+    expect(new TextDecoder("euc-jp").decode(plan[2].bytes)).toBe("㈱");
+  });
 });
