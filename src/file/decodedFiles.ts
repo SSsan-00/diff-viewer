@@ -6,6 +6,7 @@ import { normalizeLastSegmentForAppend } from "./segmentAppend";
 export type FileBytes = {
   name: string;
   bytes: Uint8Array;
+  encoding?: FileEncoding;
 };
 
 export type DecodedFilesResult = {
@@ -38,6 +39,7 @@ export function appendDecodedFiles(
   currentSegments: LineSegment[],
   files: FileBytes[],
   encoding: FileEncoding,
+  options?: { preferFileEncoding?: boolean },
 ): DecodedFilesResult {
   let text = currentText;
   const segments = [...currentSegments];
@@ -49,7 +51,9 @@ export function appendDecodedFiles(
       file.bytes.byteOffset,
       file.bytes.byteOffset + file.bytes.byteLength,
     );
-    const decoded = normalizeText(decodeArrayBuffer(buffer, encoding));
+    const decodedEncoding =
+      options?.preferFileEncoding === true ? file.encoding ?? encoding : encoding;
+    const decoded = normalizeText(decodeArrayBuffer(buffer, decodedEncoding));
     const includeTrailingEmptyLine = index === files.length - 1;
     const { lineCount, endsWithNewline } = getLogicalLineCount(
       decoded,
@@ -77,6 +81,7 @@ export function appendDecodedFiles(
 export function buildDecodedFiles(
   files: FileBytes[],
   encoding: FileEncoding,
+  options?: { preferFileEncoding?: boolean },
 ): DecodedFilesResult {
-  return appendDecodedFiles("", [], files, encoding);
+  return appendDecodedFiles("", [], files, encoding, options);
 }

@@ -99,6 +99,10 @@ function hasUtf8Bom(bytes: Uint8Array): boolean {
   );
 }
 
+function isAsciiOnlyBytes(bytes: Uint8Array): boolean {
+  return bytes.every((byte) => byte <= 0x7f);
+}
+
 function isReadableFileHandle(value: unknown): value is ReadableFileHandle {
   if (typeof value !== "object" || value === null) {
     return false;
@@ -681,15 +685,33 @@ export async function readCurrentFileFromPaneTarget(
   const buffer = await file.arrayBuffer();
   const bytes = new Uint8Array(buffer);
   const metadata = describeDecodedFileForWriteback(buffer, encoding);
+  const resolvedEncoding =
+    encoding === "auto" && !hasUtf8Bom(bytes) && isAsciiOnlyBytes(bytes)
+      ? target.resolvedEncoding
+      : metadata.resolvedEncoding;
   return {
     file,
     bytes,
     target: {
       handle: target.handle,
       fileName: file.name,
-      resolvedEncoding: metadata.resolvedEncoding,
+      resolvedEncoding,
       includeUtf8Bom: metadata.includeUtf8Bom,
       lineEnding: metadata.lineEnding,
     },
   };
+}
+
+export function resolveReloadEncodingForPaneTarget(options: {
+  fileCount: number;
+  selectedEncoding: FileEncoding;
+  target: PaneSaveTarget;
+}): FileEncoding {
+  if (options.selectedEncoding === "auto") {
+    return "auto";
+  }
+  if (options.fileCount <= 1) {
+    return options.selectedEncoding;
+  }
+  return options.target.resolvedEncoding;
 }

@@ -190569,13 +190569,14 @@ function getLogicalLineCount(text2, includeTrailingEmptyLine) {
     };
 }
 
-function appendDecodedFiles(currentText, currentSegments, files, encoding) {
+function appendDecodedFiles(currentText, currentSegments, files, encoding, options) {
     let text2 = currentText;
     const segments = [ ...currentSegments ];
     files.forEach((file, index) => {
         normalizeLastSegmentForAppend(segments, text2);
         const buffer = file.bytes.buffer.slice(file.bytes.byteOffset, file.bytes.byteOffset + file.bytes.byteLength);
-        const decoded = normalizeText(decodeArrayBuffer(buffer, encoding));
+        const decodedEncoding = options?.preferFileEncoding === true ? file.encoding ?? encoding : encoding;
+        const decoded = normalizeText(decodeArrayBuffer(buffer, decodedEncoding));
         const includeTrailingEmptyLine = index === files.length - 1;
         const {lineCount: lineCount, endsWithNewline: endsWithNewline} = getLogicalLineCount(decoded, includeTrailingEmptyLine);
         const startLine = segments.length === 0 ? 1 : segments[segments.length - 1].startLine + segments[segments.length - 1].lineCount;
@@ -190595,8 +190596,8 @@ function appendDecodedFiles(currentText, currentSegments, files, encoding) {
     };
 }
 
-function buildDecodedFiles(files, encoding) {
-    return appendDecodedFiles("", [], files, encoding);
+function buildDecodedFiles(files, encoding, options) {
+    return appendDecodedFiles("", [], files, encoding, options);
 }
 
 const UTF8_BOM = [ 239, 187, 191 ];
@@ -190614,6 +190615,10 @@ const legacyExplicitEncodeAliases = {
 
 function hasUtf8Bom(bytes) {
     return bytes.length >= 3 && bytes[0] === UTF8_BOM[0] && bytes[1] === UTF8_BOM[1] && bytes[2] === UTF8_BOM[2];
+}
+
+function isAsciiOnlyBytes(bytes) {
+    return bytes.every(byte => byte <= 127);
 }
 
 function isReadableFileHandle(value) {
@@ -191082,17 +191087,28 @@ async function readCurrentFileFromPaneTarget(target, encoding) {
     const buffer = await file.arrayBuffer();
     const bytes = new Uint8Array(buffer);
     const metadata = describeDecodedFileForWriteback(buffer, encoding);
+    const resolvedEncoding = encoding === "auto" && !hasUtf8Bom(bytes) && isAsciiOnlyBytes(bytes) ? target.resolvedEncoding : metadata.resolvedEncoding;
     return {
         file: file,
         bytes: bytes,
         target: {
             handle: target.handle,
             fileName: file.name,
-            resolvedEncoding: metadata.resolvedEncoding,
+            resolvedEncoding: resolvedEncoding,
             includeUtf8Bom: metadata.includeUtf8Bom,
             lineEnding: metadata.lineEnding
         }
     };
+}
+
+function resolveReloadEncodingForPaneTarget(options) {
+    if (options.selectedEncoding === "auto") {
+        return "auto";
+    }
+    if (options.fileCount <= 1) {
+        return options.selectedEncoding;
+    }
+    return options.target.resolvedEncoding;
 }
 
 function findSegmentIndexAtLine(segments, lineNumber) {
@@ -197538,13 +197554,20 @@ async function reloadPaneFromFile(side) {
             }
         }
         const config = paneBindings[side];
-        const encoding = config.encodingSelect.value;
-        const reloaded = await Promise.all(targets.map(target => readCurrentFileFromPaneTarget(target, encoding)));
+        const selectedEncoding = config.encodingSelect.value;
+        const reloaded = await Promise.all(targets.map(target => readCurrentFileFromPaneTarget(target, resolveReloadEncodingForPaneTarget({
+            fileCount: targets.length,
+            selectedEncoding: selectedEncoding,
+            target: target
+        }))));
         const nextRawFiles = reloaded.map(item => ({
             name: item.file.name,
-            bytes: item.bytes
+            bytes: item.bytes,
+            encoding: item.target.resolvedEncoding
         }));
-        const decoded = buildDecodedFiles(nextRawFiles, encoding);
+        const decoded = buildDecodedFiles(nextRawFiles, selectedEncoding, {
+            preferFileEncoding: true
+        });
         withProgrammaticEdit(side, () => {
             config.editor.setValue(decoded.text);
         });

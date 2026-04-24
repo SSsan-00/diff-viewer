@@ -7,6 +7,7 @@ import {
   getPaneWriteAvailability,
   pickFilesWithHandles,
   readCurrentFileFromPaneTarget,
+  resolveReloadEncodingForPaneTarget,
   requestFileHandlePermission,
   saveTextWithPaneTarget,
   writeBytesToFileHandle,
@@ -881,5 +882,89 @@ describe("readCurrentFileFromPaneTarget", () => {
       includeUtf8Bom: false,
       lineEnding: "\r\n",
     });
+  });
+
+  it("keeps the previous legacy encoding for ASCII-only files on auto reload", async () => {
+    const handle = {
+      name: "ascii-sjis.txt",
+      async getFile() {
+        return new File(["plain-ascii"], "ascii-sjis.txt");
+      },
+      async createWritable() {
+        return {
+          async write(_data: BufferSource) {
+            return undefined;
+          },
+          async close() {
+            return undefined;
+          },
+        };
+      },
+    };
+
+    const result = await readCurrentFileFromPaneTarget(
+      {
+        handle,
+        fileName: "ascii-sjis.txt",
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+      "auto",
+    );
+
+    expect(result.target.handle).toBe(handle);
+    expect(result.target.resolvedEncoding).toBe("shift_jis");
+    expect(result.target.fileName).toBe("ascii-sjis.txt");
+  });
+});
+
+describe("resolveReloadEncodingForPaneTarget", () => {
+  it("uses the pane selection for single-file reloads", () => {
+    expect(
+      resolveReloadEncodingForPaneTarget({
+        fileCount: 1,
+        selectedEncoding: "euc-jp",
+        target: {
+          handle: { name: "single.txt", async getFile() { return new File([""], "single.txt"); } },
+          fileName: "single.txt",
+          resolvedEncoding: "shift_jis",
+          includeUtf8Bom: false,
+          lineEnding: "\n",
+        },
+      }),
+    ).toBe("euc-jp");
+  });
+
+  it("keeps file-specific encodings for multi-file reloads", () => {
+    expect(
+      resolveReloadEncodingForPaneTarget({
+        fileCount: 2,
+        selectedEncoding: "shift_jis",
+        target: {
+          handle: { name: "right.txt", async getFile() { return new File([""], "right.txt"); } },
+          fileName: "right.txt",
+          resolvedEncoding: "euc-jp",
+          includeUtf8Bom: false,
+          lineEnding: "\n",
+        },
+      }),
+    ).toBe("euc-jp");
+  });
+
+  it("keeps auto reload when the pane stays in auto mode", () => {
+    expect(
+      resolveReloadEncodingForPaneTarget({
+        fileCount: 3,
+        selectedEncoding: "auto",
+        target: {
+          handle: { name: "right.txt", async getFile() { return new File([""], "right.txt"); } },
+          fileName: "right.txt",
+          resolvedEncoding: "euc-jp",
+          includeUtf8Bom: false,
+          lineEnding: "\n",
+        },
+      }),
+    ).toBe("auto");
   });
 });

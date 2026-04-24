@@ -18,6 +18,18 @@ describe("buildDecodedFiles", () => {
     expect(euc).not.toBe("あ");
   });
 
+  it("can decode mixed files with file-specific encodings", () => {
+    const files: FileBytes[] = [
+      { name: "sjis.txt", bytes: toBytes([0x82, 0xa0]), encoding: "shift_jis" },
+      { name: "euc.txt", bytes: toBytes([0xa4, 0xa4]), encoding: "euc-jp" },
+      { name: "utf8.txt", bytes: new TextEncoder().encode("utf8"), encoding: "utf-8" },
+    ];
+
+    const result = buildDecodedFiles(files, "utf-8", { preferFileEncoding: true });
+
+    expect(result.text).toBe("あ\nい\nutf8");
+  });
+
   it("builds segments in file order", () => {
     const files: FileBytes[] = [
       { name: "a.txt", bytes: toBytes([0x61, 0x0a, 0x62]) },

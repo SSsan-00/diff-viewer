@@ -29,6 +29,7 @@ import {
   getPaneWriteAvailability,
   pickFilesWithHandles,
   readCurrentFileFromPaneTarget,
+  resolveReloadEncodingForPaneTarget,
   requestFileHandlePermission,
   supportsFileSystemAccess,
   writeBytesToFileHandle,
@@ -2674,15 +2675,27 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
       }
     }
     const config = paneBindings[side];
-    const encoding = config.encodingSelect.value as FileEncoding;
+    const selectedEncoding = config.encodingSelect.value as FileEncoding;
     const reloaded = await Promise.all(
-      targets.map((target) => readCurrentFileFromPaneTarget(target, encoding)),
+      targets.map((target) =>
+        readCurrentFileFromPaneTarget(
+          target,
+          resolveReloadEncodingForPaneTarget({
+            fileCount: targets.length,
+            selectedEncoding,
+            target,
+          }),
+        ),
+      ),
     );
     const nextRawFiles: FileBytes[] = reloaded.map((item) => ({
       name: item.file.name,
       bytes: item.bytes,
+      encoding: item.target.resolvedEncoding,
     }));
-    const decoded = buildDecodedFiles(nextRawFiles, encoding);
+    const decoded = buildDecodedFiles(nextRawFiles, selectedEncoding, {
+      preferFileEncoding: true,
+    });
 
     withProgrammaticEdit(side, () => {
       config.editor.setValue(decoded.text);
