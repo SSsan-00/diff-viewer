@@ -372,6 +372,13 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
         <div id="left-message" class="pane-message" aria-live="polite"></div>
         <div id="left-editor" class="editor"></div>
       </section>
+      <div
+        id="pane-divider"
+        class="editors-divider"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="ペイン幅を変更"
+      ></div>
       <section id="right-pane" class="editor-pane">
         <div class="pane-title">
           <div class="pane-title-left">

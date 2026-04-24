@@ -244,6 +244,23 @@ describe("pane action layout", () => {
     );
   });
 
+  it("renders a pane divider and keeps widths at the default split on first load", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const editors = doc.querySelector(".editors");
+    const divider = doc.querySelector("#pane-divider");
+    const children = Array.from(editors?.children ?? []);
+
+    expect(editors).toBeTruthy();
+    expect(editors?.getAttribute("style")).toBeNull();
+    expect(divider).toBeTruthy();
+    expect(divider?.classList.contains("editors-divider")).toBe(true);
+    expect(divider?.getAttribute("role")).toBe("separator");
+    expect(divider?.getAttribute("aria-orientation")).toBe("vertical");
+    expect(children[1]).toBe(divider);
+  });
+
   it("renders favorite path controls for both panes", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;

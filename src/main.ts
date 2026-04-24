@@ -97,6 +97,7 @@ import {
 import { bindReportModeMenu, type ReportMode } from "./ui/reportModeMenu";
 import { createRecalcScheduler } from "./ui/recalcScheduler";
 import { bindEditorLayoutRecalc } from "./ui/layoutRecalcWatcher";
+import { bindPaneResize } from "./ui/paneResize";
 import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
 import { createEditorOptions } from "./ui/editorOptions";
 import { renderFileCards } from "./ui/fileCards";
@@ -316,6 +317,8 @@ function getRequiredElement<T extends Element>(selector: string): T {
 
 const leftContainer = getRequiredElement<HTMLDivElement>("#left-editor");
 const rightContainer = getRequiredElement<HTMLDivElement>("#right-editor");
+const editorsContainer = getRequiredElement<HTMLDivElement>(".editors");
+const paneDivider = getRequiredElement<HTMLDivElement>("#pane-divider");
 const leftPane = getRequiredElement<HTMLElement>("#left-pane");
 const rightPane = getRequiredElement<HTMLElement>("#right-pane");
 const workspaceToggle = getRequiredElement<HTMLButtonElement>("#workspace-toggle");
@@ -1267,6 +1270,12 @@ const scheduleRecalc = () => {
 };
 
 bindEditorLayoutRecalc([leftEditor, rightEditor], scheduleRecalc);
+bindPaneResize({
+  container: editorsContainer,
+  divider: paneDivider,
+  editors: [leftEditor, rightEditor],
+  onAfterResize: scheduleRecalc,
+});
 
 let lastFocusedSide: "left" | "right" = "left";
 const leftFileBytes: FileBytes[] = [];

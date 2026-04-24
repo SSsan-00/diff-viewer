@@ -1026,11 +1026,57 @@ body {
 }
 .editors {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) 12px minmax(0, 1fr);
+  gap: 0;
   padding: 16px 16px 20px;
   flex: 1;
   min-height: 0;
+}
+
+.editors.is-pane-resizing,
+.editors.is-pane-resizing * {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.editors-divider {
+  position: relative;
+  min-width: 12px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.editors-divider::before {
+  content: "";
+  position: absolute;
+  top: 10px;
+  bottom: 10px;
+  left: 50%;
+  width: 1px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(186, 168, 136, 0.18) 0%,
+    rgba(143, 121, 92, 0.45) 18%,
+    rgba(143, 121, 92, 0.45) 82%,
+    rgba(186, 168, 136, 0.18) 100%
+  );
+}
+
+.editors-divider::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 4px;
+  height: 56px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 8px, rgba(125, 103, 76, 0.45) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 50% 28px, rgba(125, 103, 76, 0.45) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 50% 48px, rgba(125, 103, 76, 0.45) 0 2px, transparent 2.5px);
 }
 
 .editor-pane {
@@ -1740,6 +1786,10 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .editors-divider {
+    display: none;
+  }
+
   .toolbar {
     flex-direction: column;
     gap: 12px;
@@ -2322,6 +2372,23 @@ body {
 [data-theme="dark"] .anchor-panel {
   background-color: rgba(30, 27, 24, 0.85);
   border-bottom-color: #3b342d;
+}
+
+[data-theme="dark"] .editors-divider::before {
+  background: linear-gradient(
+    180deg,
+    rgba(110, 125, 145, 0.12) 0%,
+    rgba(153, 171, 191, 0.38) 18%,
+    rgba(153, 171, 191, 0.38) 82%,
+    rgba(110, 125, 145, 0.12) 100%
+  );
+}
+
+[data-theme="dark"] .editors-divider::after {
+  background:
+    radial-gradient(circle at 50% 8px, rgba(188, 202, 218, 0.4) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 50% 28px, rgba(188, 202, 218, 0.4) 0 2px, transparent 2.5px),
+    radial-gradient(circle at 50% 48px, rgba(188, 202, 218, 0.4) 0 2px, transparent 2.5px);
 }
 
 [data-theme="dark"] .editor-pane {

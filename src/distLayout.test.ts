@@ -15,6 +15,7 @@ describe("layout template", () => {
     expect(document.querySelector(".toolbar")).toBeTruthy();
     expect(document.querySelector(".anchor-panel")).toBeTruthy();
     expect(document.querySelector(".editors")).toBeTruthy();
+    expect(document.querySelector("#pane-divider")).toBeTruthy();
     expect(document.querySelector("#left-pane .pane-title-left .file-picker")).toBeTruthy();
     expect(document.querySelector("#right-pane .pane-title-left .file-picker")).toBeTruthy();
     expect(document.querySelector("#left-pane .pane-actions #left-clear")).toBeTruthy();
