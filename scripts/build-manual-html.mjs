@@ -148,6 +148,14 @@ const html = `<!doctype html>
       padding-left: 20px;
       margin: 8px 0 0;
     }
+    code {
+      padding: 0.12em 0.45em;
+      border-radius: 8px;
+      background: rgba(88, 62, 28, 0.08);
+      border: 1px solid rgba(120, 100, 75, 0.15);
+      font-family: "Consolas", "Menlo", monospace;
+      font-size: 0.92em;
+    }
     .shortcut-grid {
       display: grid;
       gap: 10px;
@@ -233,14 +241,16 @@ const html = `<!doctype html>
       <h2>目次</h2>
       <ul>
         <li><a href="#overview">1. ツール概要</a></li>
-        <li><a href="#load">2. ファイルを読み込む</a></li>
-        <li><a href="#diff">3. 差分の見方</a></li>
-        <li><a href="#controls">4. 主要操作（出力/移動/トグル）</a></li>
-        <li><a href="#anchors">5. アンカー機能</a></li>
-        <li><a href="#workspace">6. ワークスペース</a></li>
-        <li><a href="#paths">7. パス登録機能</a></li>
-        <li><a href="#goto-line">8. 行ジャンプ機能</a></li>
-        <li><a href="#shortcuts">9. ショートカット一覧</a></li>
+        <li><a href="#mode">2. 起動モード</a></li>
+        <li><a href="#load">3. ファイルを読み込む</a></li>
+        <li><a href="#writeback">4. 保存と再読み込み</a></li>
+        <li><a href="#diff">5. 差分の見方</a></li>
+        <li><a href="#controls">6. 主要操作（出力/移動/トグル）</a></li>
+        <li><a href="#anchors">7. アンカー機能</a></li>
+        <li><a href="#workspace">8. ワークスペース</a></li>
+        <li><a href="#paths">9. パス登録機能</a></li>
+        <li><a href="#goto-line">10. 行ジャンプ機能</a></li>
+        <li><a href="#shortcuts">11. ショートカット一覧</a></li>
       </ul>
     </nav>
 
@@ -248,8 +258,11 @@ const html = `<!doctype html>
       <h2>1. ツール概要</h2>
       <p>左右のペインでファイルを並べて差分を確認するための、HTMLツールです。</p>
       <ul>
-        <li>左右ペインに内容を読み込み、差分を可視化します。</li>
-        <li>スクロール連動、先頭の空白を無視、差分のみ、ハイライトなどの比較機能をまとめています。</li>
+        <li>左右ペインに内容を読み込み、行差分と行内差分を可視化します。</li>
+        <li>複数ファイルをまとめて読み込み、ファイルカードやファイル単位の行ジャンプで追えます。</li>
+        <li>文字コードは <code>自動 / UTF-8 / Shift_JIS / EUC-JP</code> に対応し、複数ファイル時もファイル単位で扱います。</li>
+        <li>スクロール連動、先頭の空白を無視、差分のみ、ハイライト、テーマ切り替えなどの比較機能をまとめています。</li>
+        <li>左右ペインの間の仕切りをドラッグして、ペイン幅を一時的に変更できます。</li>
         <li>レポート出力（シンプル/リッチ）で、現在表示に合わせたHTMLを保存できます。</li>
       </ul>
       <figure>
@@ -258,15 +271,28 @@ const html = `<!doctype html>
       </figure>
     </section>
 
+    <section id="mode">
+      <h2>2. 起動モード</h2>
+      <p>このツールは <code>file://</code> の直開きで使えます。サーバーは不要です。</p>
+      <ul>
+        <li>既定では <strong>保存なし画面</strong> として起動します。</li>
+        <li>保存を有効にしたい場合は URL に <code>?save=on</code> または <code>#save=on</code> を付けて開きます。</li>
+        <li>保存なし画面では <code>保存</code> ボタンは表示されません。</li>
+        <li><code>再読み込み</code> ボタンは保存あり/なしに関係なく表示されます。</li>
+      </ul>
+    </section>
+
     <section id="load">
-      <h2>2. ファイルを読み込む</h2>
+      <h2>3. ファイルを読み込む</h2>
       <p>各ペインの「ファイルを選択」からファイルを読み込みます。</p>
       <ul>
         <li>複数ファイルを一度に選択すると、ペイン内に連結して表示されます。</li>
         <li>ペインにドラッグ&ドロップして読み込むこともできます。</li>
         <li>cshtml → cshtml.cs の順で選んでも、cshtml.cs → cshtml の順で読み込みます。</li>
+        <li>文字コードはペイン右上の選択欄から切り替えられます。<code>自動</code> では BOM / UTF-8 / Shift_JIS / EUC-JP を判定します。</li>
+        <li>複数ファイル読み込み時も、内部ではファイル境界と文字コード情報を保ったまま比較します。</li>
         <li>ファイルカードをクリックすると、そのファイルの先頭にジャンプします。</li>
-        <li>各ペイン上部の「コピー」で、そのペインの表示どおりの行をコピーできます（差分整列用の空行/ギャップ行や複数ファイル境界の表示も含む）。</li>
+        <li>各ペイン上部の「ソースコピー」で、そのペインの表示どおりの行をコピーできます（差分整列用の空行/ギャップ行や複数ファイル境界の表示も含む）。</li>
         <li>コピー成功時は「左ペインのソースをコピーしました。」「右ペインのソースをコピーしました。」のトーストが表示されます。</li>
       </ul>
       <figure>
@@ -279,8 +305,29 @@ const html = `<!doctype html>
       </figure>
     </section>
 
+    <section id="writeback">
+      <h2>4. 保存と再読み込み</h2>
+      <p>現在の実装では、保存の有無と再読み込みの可否はファイルハンドルと起動モードに応じて切り替わります。</p>
+      <h3>再読み込み</h3>
+      <ul>
+        <li><code>再読み込み</code> ボタンは保存あり/なしに関係なく各ペインに表示されます。</li>
+        <li>読み取りハンドルを保持しているファイルでは、外部変更を <code>再読み込み</code> で取り込めます。</li>
+        <li>複数ファイルを読み込んでいる場合も、対象ファイル群をまとめて再読み込みします。</li>
+        <li>権限状態によっては、再読み込み時にブラウザから許可を求められることがあります。</li>
+      </ul>
+      <h3>保存</h3>
+      <ul>
+        <li><code>保存</code> ボタンは <code>save=on</code> で開いた保存あり画面のときだけ表示されます。</li>
+        <li>単一ファイルだけでなく、複数ファイルを連結表示している場合も、全ファイルの保存ハンドルが揃っていれば保存できます。</li>
+        <li>複数ファイル保存時は、内部でファイル境界を管理し、それぞれの元ファイルへ分割して書き戻します。</li>
+        <li>ファイル境界をまたぐ編集は拒否されるため、別ファイルへまたがる破壊的な保存は行いません。</li>
+        <li>Shift_JIS / EUC-JP を含め、元の文字コードで表現できない文字がある場合は保存を失敗させ、中途半端な書き込みを避けます。</li>
+        <li>対応ブラウザでは、ドラッグ&ドロップで開いたファイルでもハンドルを取得できれば保存や再読み込みの対象になります。</li>
+      </ul>
+    </section>
+
     <section id="diff">
-      <h2>3. 差分の見方</h2>
+      <h2>5. 差分の見方</h2>
       <p>追加/削除/変更の行が色で強調されます。行内差分もハイライトされます。</p>
       <ul>
         <li>行の背景色で差分を把握できます。</li>
@@ -293,7 +340,7 @@ const html = `<!doctype html>
     </section>
 
     <section id="controls">
-      <h2>4. 主要操作（出力/移動/トグル）</h2>
+      <h2>6. 主要操作（出力/移動/トグル）</h2>
       <p>ヘッダーのボタンとトグルで差分比較の基本操作を行います。</p>
       <ul>
         <li>「レポート出力」: 現在表示どおりの比較結果をHTMLで保存します。</li>
@@ -304,6 +351,8 @@ const html = `<!doctype html>
         <li>「ハイライト」: 差分の色強調を切り替えます（ライトアイコンのトグル）。</li>
         <li>「差分のみ」: 差分のない行を折りたたみます。</li>
         <li>「テーマ切り替え」: ライト/ダークテーマを切り替えます。</li>
+        <li>左右ペインの間の仕切りをドラッグすると、ペイン幅を任意に変えられます。</li>
+        <li>ペイン幅の変更はその場限りで、ページ再読み込み時は 1:1 の幅に戻ります。</li>
       </ul>
       <figure>
         <img src="${images.toggles}" alt="主要トグルの位置" />
@@ -324,7 +373,7 @@ const html = `<!doctype html>
     </section>
 
     <section id="anchors">
-      <h2>5. アンカー機能</h2>
+      <h2>7. アンカー機能</h2>
       <p>アンカーは「左右の対応行を固定する」ための目印です。</p>
       <ul>
         <li>行番号をクリック、または Ctrl+L でアンカーを追加/解除します。</li>
@@ -337,7 +386,7 @@ const html = `<!doctype html>
     </section>
 
     <section id="workspace">
-      <h2>6. ワークスペース</h2>
+      <h2>8. ワークスペース</h2>
       <p>用途ごとにワークスペースを分けて作業できます。</p>
       <ul>
         <li>左上のワークスペース名をクリックすると一覧が開きます。</li>
@@ -351,7 +400,7 @@ const html = `<!doctype html>
     </section>
 
     <section id="paths">
-      <h2>7. パス登録機能</h2>
+      <h2>9. パス登録機能</h2>
       <p>よく使うファイルパスを登録して、ワンクリックでコピーできます。</p>
       <ul>
         <li>「パス登録」ボタンまたは Ctrl+P で開閉します。</li>
@@ -364,7 +413,7 @@ const html = `<!doctype html>
     </section>
 
     <section id="goto-line">
-      <h2>8. 行ジャンプ機能</h2>
+      <h2>10. 行ジャンプ機能</h2>
       <p>Ctrl+Gで行ジャンプ機能を開き、行番号を指定してその行へ移動できます。</p>
       <ul>
         <li>ジャンプ対象は「フォーカス中のペイン」のファイル単位です。</li>
@@ -377,7 +426,7 @@ const html = `<!doctype html>
     </section>
 
     <section id="shortcuts">
-      <h2>9. ショートカット一覧（Windows）</h2>
+      <h2>11. ショートカット一覧（Windows）</h2>
       <div class="shortcut-grid">
         <div class="shortcut-item">
           <span class="shortcut-key">Ctrl+F</span>
