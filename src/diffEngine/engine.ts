@@ -7,6 +7,7 @@ import {
   type DiffLinesOptions,
   type DiffStep,
 } from "./diffLines";
+import { setDiffInlineCore } from "./diffInline";
 import {
   EMBEDDED_DIFF_WASM_BUILD_ID,
   EMBEDDED_DIFF_WASM_BYTES,
@@ -20,6 +21,7 @@ export type DiffEngineMode = "auto" | "ts" | "wasm";
 export type ActiveDiffEngineMode = "ts" | "wasm";
 
 export type DiffEngineBindings = {
+  activateRuntimeFeatures?: () => void;
   buildId?: string | null;
   diffLines: (
     leftText: string,
@@ -77,6 +79,9 @@ type EmbeddedWasmExports = WebAssembly.Exports & {
 
 function createTypeScriptBindings(): DiffEngineBindings {
   return {
+    activateRuntimeFeatures: () => {
+      setDiffInlineCore(null);
+    },
     buildId: null,
     diffLines,
     diffWithAnchors,
@@ -91,6 +96,7 @@ function wrapBindings(
   bindings: DiffEngineBindings,
   status: DiffEngineStatus,
 ): DiffEngine {
+  bindings.activateRuntimeFeatures?.();
   return {
     buildId: bindings.buildId ?? null,
     diffLines: (leftText, rightText, options) =>
@@ -389,6 +395,9 @@ export async function loadEmbeddedWasmDiffEngine(): Promise<DiffEngineBindings> 
   };
 
   return {
+    activateRuntimeFeatures: () => {
+      setDiffInlineCore(null);
+    },
     buildId,
     diffLines: diffLinesWithEmbeddedWasm,
     diffWithAnchors: createDiffWithAnchors(diffSegmentLinesWithEmbeddedWasm),

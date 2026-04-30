@@ -2,6 +2,7 @@ import type { InlineDiff, Range } from "./types";
 import { extractAppendLiteralInlineMap } from "./appendLiteral";
 
 type MatchPair = { leftIndex: number; rightIndex: number };
+export type DiffInlineCore = (leftLine: string, rightLine: string) => InlineDiff;
 
 function buildLcsTable(left: string, right: string): number[][] {
   const rows = left.length + 1;
@@ -103,7 +104,7 @@ function mergeRanges(ranges: Range[], maxGap: number): Range[] {
   return merged;
 }
 
-export function diffInline(leftLine: string, rightLine: string): InlineDiff {
+function diffInlineTypeScript(leftLine: string, rightLine: string): InlineDiff {
   if (leftLine === rightLine) {
     return { leftRanges: [], rightRanges: [] };
   }
@@ -117,6 +118,22 @@ export function diffInline(leftLine: string, rightLine: string): InlineDiff {
   const rightRanges = mergeRanges(buildRangesFromFlags(rightFlags), 1);
 
   return { leftRanges, rightRanges };
+}
+
+let activeDiffInlineCore: DiffInlineCore = diffInlineTypeScript;
+
+export function createDiffInline(
+  diffCore: DiffInlineCore = diffInlineTypeScript,
+): DiffInlineCore {
+  return (leftLine, rightLine) => diffCore(leftLine, rightLine);
+}
+
+export function setDiffInlineCore(diffCore: DiffInlineCore | null): void {
+  activeDiffInlineCore = diffCore ?? diffInlineTypeScript;
+}
+
+export function diffInline(leftLine: string, rightLine: string): InlineDiff {
+  return activeDiffInlineCore(leftLine, rightLine);
 }
 
 type RangeMap = {

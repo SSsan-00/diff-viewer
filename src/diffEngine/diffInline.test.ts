@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { diffInline, diffInlineWithAppendLiteral } from "./diffInline";
+import { describe, it, expect, vi } from "vitest";
+import { createDiffInline, diffInline, diffInlineWithAppendLiteral } from "./diffInline";
 
 describe("diffInline", () => {
   it("returns empty ranges for identical lines", () => {
@@ -193,5 +193,20 @@ describe("diffInline", () => {
 
     expect(result.leftRanges).toEqual([{ start: 2, end: 5 }]);
     expect(result.rightRanges).toEqual([{ start: 2, end: 5 }]);
+  });
+
+  it("lets callers replace the inline diff core", () => {
+    const diffCore = vi.fn(() => ({
+      leftRanges: [{ start: 1, end: 2 }],
+      rightRanges: [{ start: 3, end: 4 }],
+    }));
+    const diffWithCore = createDiffInline(diffCore);
+
+    expect(diffWithCore("left", "right")).toEqual({
+      leftRanges: [{ start: 1, end: 2 }],
+      rightRanges: [{ start: 3, end: 4 }],
+    });
+    expect(diffCore).toHaveBeenCalledOnce();
+    expect(diffCore).toHaveBeenCalledWith("left", "right");
   });
 });

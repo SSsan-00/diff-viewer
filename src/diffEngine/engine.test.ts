@@ -138,6 +138,7 @@ describe("createDiffEngine", () => {
     const diffLinesMock = vi.fn(
       (_leftText: string, _rightText: string, _options?: DiffLinesOptions) => diffLinesResult,
     );
+    const activateRuntimeFeatures = vi.fn();
     const diffWithAnchorsMock = vi.fn(
       (
         _leftText: string,
@@ -149,6 +150,7 @@ describe("createDiffEngine", () => {
     const loadWasmDiffEngine = vi
       .fn<() => Promise<DiffEngineBindings>>()
       .mockResolvedValue({
+        activateRuntimeFeatures,
         buildId: "test-wasm-build",
         diffLines: diffLinesMock,
         diffWithAnchors: diffWithAnchorsMock,
@@ -170,6 +172,7 @@ describe("createDiffEngine", () => {
       requestedMode: "wasm",
       wasmBuildId: "test-wasm-build",
     });
+    expect(activateRuntimeFeatures).toHaveBeenCalledOnce();
     expect(engine.diffLines("left", "right", diffLinesOptions)).toBe(diffLinesResult);
     expect(diffLinesMock).toHaveBeenCalledWith("left", "right", diffLinesOptions);
     expect(engine.diffWithAnchors("left", "right", anchors, diffLinesOptions)).toBe(
