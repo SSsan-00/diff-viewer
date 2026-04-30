@@ -25,6 +25,14 @@ type PairCandidate = {
   distance: number;
 };
 
+type PreparedPairLine = {
+  feature: ReturnType<typeof buildLineFeatures>;
+  indent: number;
+  text: string;
+  tokens: string[];
+  trimmed: string;
+};
+
 type MatchState = {
   score: number;
   pairCount: number;
@@ -84,44 +92,57 @@ function buildCandidateIndices(
 
 function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] {
   const candidates: PairCandidate[] = [];
-  const deleteFeatures = deletes.map((op) => buildLineFeatures(op.leftLine ?? ""));
-  const insertFeatures = inserts.map((op) => buildLineFeatures(op.rightLine ?? ""));
-  const insertIndex = buildIndexMap(insertFeatures);
+  const deletePrepared: PreparedPairLine[] = deletes.map((op) => {
+    const text = op.leftLine ?? "";
+    const feature = buildLineFeatures(text);
+    return {
+      feature,
+      indent: countIndent(text),
+      text,
+      tokens: extractIndexTokens(feature),
+      trimmed: text.trimStart(),
+    };
+  });
+  const insertPrepared: PreparedPairLine[] = inserts.map((op) => {
+    const text = op.rightLine ?? "";
+    const feature = buildLineFeatures(text);
+    return {
+      feature,
+      indent: countIndent(text),
+      text,
+      tokens: extractIndexTokens(feature),
+      trimmed: text.trimStart(),
+    };
+  });
+  const insertIndex = buildIndexMap(insertPrepared.map((entry) => entry.feature));
 
   for (let d = 0; d < deletes.length; d += 1) {
-    const leftText = deletes[d].leftLine ?? "";
-    const leftIndent = countIndent(leftText);
-    const leftFeature = deleteFeatures[d];
-    const tokens = extractIndexTokens(leftFeature);
+    const left = deletePrepared[d];
     const candidateIndices = buildCandidateIndices(
       d,
       inserts.length,
-      tokens,
+      left.tokens,
       insertIndex,
     );
 
     for (const i of candidateIndices) {
-      const rightText = inserts[i].rightLine ?? "";
-      const rightIndent = countIndent(rightText);
-      const leftTrimmed = leftText.trimStart();
-      const rightTrimmed = rightText.trimStart();
-      const rightFeature = insertFeatures[i];
+      const right = insertPrepared[i];
       const distance = Math.abs(d - i);
       if (
-        leftTrimmed === rightTrimmed &&
-        leftTrimmed !== "" &&
-        leftText !== rightText
+        left.trimmed === right.trimmed &&
+        left.trimmed !== "" &&
+        left.text !== right.text
       ) {
         candidates.push({
           deleteIndex: d,
           insertIndex: i,
-          indentDiff: Math.abs(leftIndent - rightIndent),
+          indentDiff: Math.abs(left.indent - right.indent),
           score: SCORE_THRESHOLD + 5,
           distance,
         });
         continue;
       }
-      const scored = scoreLinePair(leftFeature, rightFeature);
+      const scored = scoreLinePair(left.feature, right.feature);
       if (scored === null) {
         continue;
       }
@@ -131,7 +152,7 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
       candidates.push({
         deleteIndex: d,
         insertIndex: i,
-        indentDiff: Math.abs(leftIndent - rightIndent),
+        indentDiff: Math.abs(left.indent - right.indent),
         score: scored,
         distance,
       });
