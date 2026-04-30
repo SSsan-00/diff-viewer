@@ -58,25 +58,13 @@ const MODIFIER_KEYWORDS = new Set([
   "define",
 ]);
 
-const DECLARATION_KEYWORDS = new Set([
-  "function",
-  "fn",
-  "def",
-]);
-
-const DECLARATION_MODIFIERS = new Set([
-  "public",
-  "private",
-  "protected",
-  "internal",
-  "static",
-  "readonly",
-  "final",
-  "abstract",
-  "async",
-  "override",
-  "virtual",
-]);
+const DECLARATION_KEYWORD_PATTERN = /\b(?:function|fn|def)\b/i;
+const DECLARATION_MODIFIER_PATTERN =
+  /\b(?:public|private|protected|internal|static|readonly|final|abstract|async|override|virtual)\b/i;
+const CALL_LIKE_PATTERN = /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/;
+const FUNCTION_NAME_PATTERN = /\b(?:function|fn|def)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/i;
+const TYPED_FUNCTION_NAME_PATTERN =
+  /\b[A-Za-z_][A-Za-z0-9_<>,\[\]]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/;
 
 function stripStringLiterals(source: string): string {
   return source.replace(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g, "");
@@ -491,25 +479,21 @@ function extractNumbers(line: string): string[] {
   return line.match(/\b\d+(?:\.\d+)?\b/g) ?? [];
 }
 
-function extractIdentifiers(line: string): string[] {
-  const normalized = normalizeLine(line);
+function extractIdentifiersFromNormalized(normalized: string): string[] {
   const matches = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
   return matches
     .map((token) => token.toLowerCase())
     .filter((token) => !MODIFIER_KEYWORDS.has(token));
 }
 
-function extractFunctionName(line: string): string | null {
-  const normalized = normalizeLine(line);
-  const funcMatch = normalized.match(/\b(function|fn|def)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/i);
+function extractFunctionNameFromNormalized(normalized: string): string | null {
+  const funcMatch = normalized.match(FUNCTION_NAME_PATTERN);
   if (funcMatch) {
-    return funcMatch[2].toLowerCase();
+    return funcMatch[1].toLowerCase();
   }
-  const typeMatch = normalized.match(
-    /\b([A-Za-z_][A-Za-z0-9_<>,\[\]]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/,
-  );
+  const typeMatch = normalized.match(TYPED_FUNCTION_NAME_PATTERN);
   if (typeMatch) {
-    return typeMatch[2].toLowerCase();
+    return typeMatch[1].toLowerCase();
   }
   return null;
 }
@@ -528,21 +512,14 @@ function extractMemberAccessName(line: string): string | null {
   return match[1].toLowerCase();
 }
 
-function detectCategory(line: string): LineCategory {
-  const normalized = normalizeLine(line);
-  const hasDeclarationKeyword = Array.from(DECLARATION_KEYWORDS).some((keyword) =>
-    new RegExp(`\\b${keyword}\\b`, "i").test(normalized),
-  );
-  if (hasDeclarationKeyword) {
+function detectCategoryFromNormalized(normalized: string): LineCategory {
+  if (DECLARATION_KEYWORD_PATTERN.test(normalized)) {
     return "decl";
   }
-  const hasModifier = Array.from(DECLARATION_MODIFIERS).some((modifier) =>
-    new RegExp(`\\b${modifier}\\b`, "i").test(normalized),
-  );
-  if (hasModifier && /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(normalized)) {
+  if (DECLARATION_MODIFIER_PATTERN.test(normalized) && CALL_LIKE_PATTERN.test(normalized)) {
     return "decl";
   }
-  if (/\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(normalized)) {
+  if (CALL_LIKE_PATTERN.test(normalized)) {
     return "call";
   }
   return "other";
@@ -552,8 +529,9 @@ function pickPrimaryId(
   identifiers: string[],
   literals: string[],
   line: string,
+  normalizedLine: string,
 ): string | null {
-  const funcName = extractFunctionName(line);
+  const funcName = extractFunctionNameFromNormalized(normalizedLine);
   if (funcName && !MODIFIER_KEYWORDS.has(funcName)) {
     return funcName;
   }
@@ -586,7 +564,8 @@ export function buildLineFeatures(line: string): LineFeatures {
   const appendLike = detectAppendLike(normalizedLine);
   const appendLiteral = appendLike ? extractAppendLiteral(normalizedLine) : null;
   const featureLine = appendLiteral ?? normalizedLine;
-  const identifiers = extractIdentifiers(featureLine);
+  const normalizedFeatureLine = normalizeLine(featureLine);
+  const identifiers = extractIdentifiersFromNormalized(normalizedFeatureLine);
   const literals = extractLiterals(featureLine);
   const numbers = extractNumbers(featureLine);
   const embeddedOutputCall = extractEmbeddedOutputCall(normalizedLine);
@@ -627,10 +606,10 @@ export function buildLineFeatures(line: string): LineFeatures {
   if (braceToken) {
     identifiers.push(braceToken);
   }
-  const category = detectCategory(featureLine);
+  const category = detectCategoryFromNormalized(normalizedFeatureLine);
   const primaryId = embeddedOutputCall
     ? `embeddedcall:${embeddedOutputCall}`
-    : pickPrimaryId(identifiers, literals, featureLine);
+    : pickPrimaryId(identifiers, literals, featureLine, normalizedFeatureLine);
   extractEmbeddedHintTokens(featureLine).forEach((token) => identifiers.push(token));
   if (appendLike) {
     literals.forEach((literal) => {
