@@ -63,6 +63,7 @@ const INLINE_DIFF_WASM_INPUT_VERSION = 1;
 const INLINE_DIFF_WASM_OUTPUT_VERSION = 1;
 const INLINE_DIFF_BATCH_WASM_INPUT_VERSION = 1;
 const INLINE_DIFF_BATCH_WASM_OUTPUT_VERSION = 1;
+const INLINE_DIFF_BATCH_REQUEST_CHUNK_SIZE = 128;
 const DIFF_STEP_DELETE = 0;
 const DIFF_STEP_INSERT = 1;
 const DIFF_STEP_EQUAL = 2;
@@ -522,7 +523,7 @@ function runEmbeddedWasmInlineDiff(
   }
 }
 
-function runEmbeddedWasmInlineDiffBatch(
+function runEmbeddedWasmInlineDiffBatchRequest(
   exports: EmbeddedWasmExports,
   inputs: readonly DiffInlineBatchInput[],
 ): InlineDiff[] {
@@ -557,6 +558,26 @@ function runEmbeddedWasmInlineDiffBatch(
       exports.diff_engine_dealloc(ptr, request.length);
     }
   }
+}
+
+function runEmbeddedWasmInlineDiffBatch(
+  exports: EmbeddedWasmExports,
+  inputs: readonly DiffInlineBatchInput[],
+): InlineDiff[] {
+  if (inputs.length <= INLINE_DIFF_BATCH_REQUEST_CHUNK_SIZE) {
+    return runEmbeddedWasmInlineDiffBatchRequest(exports, inputs);
+  }
+
+  const results: InlineDiff[] = [];
+  for (
+    let offset = 0;
+    offset < inputs.length;
+    offset += INLINE_DIFF_BATCH_REQUEST_CHUNK_SIZE
+  ) {
+    const chunk = inputs.slice(offset, offset + INLINE_DIFF_BATCH_REQUEST_CHUNK_SIZE);
+    results.push(...runEmbeddedWasmInlineDiffBatchRequest(exports, chunk));
+  }
+  return results;
 }
 
 function buildLineOpsWithEmbeddedWasm(
