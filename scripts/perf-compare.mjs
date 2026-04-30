@@ -478,6 +478,12 @@ function printCompare(before, after) {
   const aRecalc = after.summary?.recalcWallMs?.median ?? 0;
   const bWorkspace = before.summary?.workspaceSwitchWallMs?.median ?? 0;
   const aWorkspace = after.summary?.workspaceSwitchWallMs?.median ?? 0;
+  const metricMedian = (payload, selector) => {
+    const values = (payload.runs ?? [])
+      .map((run) => selector(run))
+      .filter((value) => typeof value === "number" && Number.isFinite(value));
+    return values.length > 0 ? median(values) : null;
+  };
 
   function deltaLine(label, b, a) {
     const delta = a - b;
@@ -488,6 +494,31 @@ function printCompare(before, after) {
   console.log("Comparison (median wall time)");
   deltaLine("recalc", bRecalc, aRecalc);
   deltaLine("workspace-switch", bWorkspace, aWorkspace);
+
+  const bRecalcTotal = metricMedian(
+    before,
+    (run) => run.recalc?.perfSnapshot?.lastRecalc?.totalMs,
+  );
+  const aRecalcTotal = metricMedian(
+    after,
+    (run) => run.recalc?.perfSnapshot?.lastRecalc?.totalMs,
+  );
+  const bDiffCompute = metricMedian(
+    before,
+    (run) => run.recalc?.perfSnapshot?.lastRecalc?.phases?.diffComputeMs,
+  );
+  const aDiffCompute = metricMedian(
+    after,
+    (run) => run.recalc?.perfSnapshot?.lastRecalc?.phases?.diffComputeMs,
+  );
+
+  if (bRecalcTotal !== null && aRecalcTotal !== null) {
+    console.log("Comparison (median perf snapshot)");
+    deltaLine("recalc-total", bRecalcTotal, aRecalcTotal);
+  }
+  if (bDiffCompute !== null && aDiffCompute !== null) {
+    deltaLine("diff-compute", bDiffCompute, aDiffCompute);
+  }
 }
 
 async function main() {

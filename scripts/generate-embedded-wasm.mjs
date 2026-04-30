@@ -61,7 +61,30 @@ function writeModule(payload) {
   writeFileSync(outputPath, payload);
 }
 
+function readExistingStatus() {
+  if (!existsSync(outputPath)) {
+    return null;
+  }
+  const content = readFileSync(outputPath, "utf8");
+  const match = content.match(/EMBEDDED_DIFF_WASM_STATUS = "([^"]+)"/);
+  return match?.[1] ?? null;
+}
+
+function preserveExistingModule(reason) {
+  const existingStatus = readExistingStatus();
+  if (existingStatus !== "ready") {
+    return false;
+  }
+  console.log(
+    `[generate-embedded-wasm] preserved ${existingStatus} (${reason}) ${relative(repoRoot, outputPath)}.`,
+  );
+  return true;
+}
+
 function emitFallback(status) {
+  if (preserveExistingModule(status)) {
+    return;
+  }
   writeModule(
     renderModule({
       buildId: null,
@@ -119,16 +142,16 @@ try {
   );
   const wasm = readFileSync(wasmPath);
   const hash = createHash("sha256").update(wasm).digest("hex").slice(0, 16);
-  const status = "metadata_only";
+  const status = "ready";
   writeModule(
     renderModule({
-      buildId: `${buildId}-${hash}`,
+      buildId,
       bytes: Array.from(wasm),
       status,
     }),
   );
   console.log(
-    `[generate-embedded-wasm] ${status} ${relative(repoRoot, outputPath)} (${wasm.length} bytes).`,
+    `[generate-embedded-wasm] ${status} ${relative(repoRoot, outputPath)} (${wasm.length} bytes, sha256:${hash}).`,
   );
 } catch (error) {
   const status = "build_failed";

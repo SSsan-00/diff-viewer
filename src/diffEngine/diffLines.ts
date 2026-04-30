@@ -12,6 +12,20 @@ export type DiffLinesOptions = {
   rightLeadingFileWhitespaceEligible?: boolean;
 };
 
+export type DiffStep = {
+  type: "equal" | "insert" | "delete";
+  leftIndex?: number;
+  rightIndex?: number;
+};
+
+export type PreparedDiffLinesInput = {
+  leftCompare: string[];
+  leftLines: string[];
+  options: ResolvedDiffLinesOptions;
+  rightCompare: string[];
+  rightLines: string[];
+};
+
 type ResolvedDiffLinesOptions = {
   ignoreLeadingFileWhitespace: boolean;
   leftLeadingFileWhitespaceEligible: boolean;
@@ -325,6 +339,64 @@ function buildInsertOps(
       rightLineNo: rightOffset + index,
     });
   }
+  return ops;
+}
+
+export function buildLineOpsFromDiffSteps(
+  input: PreparedDiffLinesInput,
+  steps: DiffStep[],
+  offsets: {
+    leftOffset?: number;
+    rightOffset?: number;
+  } = {},
+): LineOp[] {
+  const leftOffset = offsets.leftOffset ?? 0;
+  const rightOffset = offsets.rightOffset ?? 0;
+  const ops: LineOp[] = [];
+
+  for (const step of steps) {
+    if (step.type === "equal") {
+      const leftIndex = step.leftIndex;
+      const rightIndex = step.rightIndex;
+      if (leftIndex === undefined || rightIndex === undefined) {
+        throw new Error("Equal diff steps require both indexes.");
+      }
+      ops.push(
+        ...buildMatchedLineOps(
+          input.leftLines[leftIndex] ?? "",
+          input.rightLines[rightIndex] ?? "",
+          leftOffset + leftIndex,
+          rightOffset + rightIndex,
+          input.options,
+        ),
+      );
+      continue;
+    }
+
+    if (step.type === "delete") {
+      const leftIndex = step.leftIndex;
+      if (leftIndex === undefined) {
+        throw new Error("Delete diff steps require a left index.");
+      }
+      ops.push({
+        type: "delete",
+        leftLine: input.leftLines[leftIndex] ?? "",
+        leftLineNo: leftOffset + leftIndex,
+      });
+      continue;
+    }
+
+    const rightIndex = step.rightIndex;
+    if (rightIndex === undefined) {
+      throw new Error("Insert diff steps require a right index.");
+    }
+    ops.push({
+      type: "insert",
+      rightLine: input.rightLines[rightIndex] ?? "",
+      rightLineNo: rightOffset + rightIndex,
+    });
+  }
+
   return ops;
 }
 
@@ -988,28 +1060,32 @@ function diffLinesPatience(
   return result;
 }
 
-export function diffLinesFromLines(
+export function prepareDiffLinesInputFromLines(
   leftLines: string[],
   rightLines: string[],
   options: DiffLinesOptions = {},
-): LineOp[] {
+): PreparedDiffLinesInput {
   const resolved = normalizeDiffLinesOptionsForLines(leftLines, rightLines, options);
-  const leftCompare = buildCompareLinesWithOptions(leftLines, resolved);
-  const rightCompare = buildCompareLinesWithOptions(rightLines, resolved);
-  return diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, 0, 0, resolved);
+  return {
+    leftCompare: buildCompareLinesWithOptions(leftLines, resolved),
+    leftLines,
+    options: resolved,
+    rightCompare: buildCompareLinesWithOptions(rightLines, resolved),
+    rightLines,
+  };
 }
 
-export function diffLines(
+export function prepareDiffLinesInput(
   leftText: string,
   rightText: string,
   options: DiffLinesOptions = {},
-): LineOp[] {
+): PreparedDiffLinesInput {
   const leftNormalized = normalizeText(leftText);
   const rightNormalized = normalizeText(rightText);
   const leftLines = splitLines(leftNormalized);
   const rightLines = splitLines(rightNormalized);
 
-  return diffLinesFromLines(leftLines, rightLines, {
+  return prepareDiffLinesInputFromLines(leftLines, rightLines, {
     ...options,
     leftLeadingFileWhitespaceEligible:
       options.leftLeadingFileWhitespaceEligible ??
@@ -1018,4 +1094,38 @@ export function diffLines(
       options.rightLeadingFileWhitespaceEligible ??
       canIgnoreLeadingFileWhitespaceFromText(rightNormalized),
   });
+}
+
+export function diffLinesFromLines(
+  leftLines: string[],
+  rightLines: string[],
+  options: DiffLinesOptions = {},
+): LineOp[] {
+  const prepared = prepareDiffLinesInputFromLines(leftLines, rightLines, options);
+  return diffLinesPatience(
+    prepared.leftLines,
+    prepared.rightLines,
+    prepared.leftCompare,
+    prepared.rightCompare,
+    0,
+    0,
+    prepared.options,
+  );
+}
+
+export function diffLines(
+  leftText: string,
+  rightText: string,
+  options: DiffLinesOptions = {},
+): LineOp[] {
+  const prepared = prepareDiffLinesInput(leftText, rightText, options);
+  return diffLinesPatience(
+    prepared.leftLines,
+    prepared.rightLines,
+    prepared.leftCompare,
+    prepared.rightCompare,
+    0,
+    0,
+    prepared.options,
+  );
 }

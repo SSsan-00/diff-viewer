@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { diffLines } from "./diffLines";
 import { diffWithAnchors, type Anchor } from "./anchors";
-import { EMBEDDED_DIFF_WASM_STATUS } from "./embeddedDiffWasm";
+import {
+  EMBEDDED_DIFF_WASM_BUILD_ID,
+  EMBEDDED_DIFF_WASM_STATUS,
+} from "./embeddedDiffWasm";
 import type { DiffLinesOptions, DiffEngineBindings, DiffEngineMode } from "./engine";
 import { createDiffEngine, loadEmbeddedWasmDiffEngine } from "./engine";
 import type { LineOp, PairedOp } from "./types";
@@ -16,17 +19,51 @@ function createNow(values: number[]) {
 }
 
 describe("createDiffEngine", () => {
-  it("reports the current embedded wasm availability state", async () => {
-    const expectedMessage = {
-      build_failed: "embedded wasm build failed",
-      metadata_only: "embedded wasm diff bridge is not implemented",
-      missing_manifest: "embedded wasm manifest is missing",
-      missing_target: "wasm32 target is not installed",
-      not_generated: "embedded wasm is not generated",
-      ready: "embedded wasm bridge is not implemented",
-    }[EMBEDDED_DIFF_WASM_STATUS];
+  it("loads the embedded wasm diff engine", async () => {
+    expect(EMBEDDED_DIFF_WASM_STATUS).toBe("ready");
 
-    await expect(loadEmbeddedWasmDiffEngine()).rejects.toThrow(expectedMessage);
+    const bindings = await loadEmbeddedWasmDiffEngine();
+
+    expect(bindings.buildId).toBe(EMBEDDED_DIFF_WASM_BUILD_ID);
+  });
+
+  it("keeps embedded wasm diff output aligned with the TypeScript implementation", async () => {
+    const bindings = await loadEmbeddedWasmDiffEngine();
+    const cases: Array<{
+      left: string;
+      options?: DiffLinesOptions;
+      right: string;
+    }> = [
+      { left: "a\nb", right: "a\nb" },
+      { left: "a", right: "a\nb" },
+      { left: "a\nx\nb", right: "a\ny\nb" },
+      {
+        left: "  <head>\n<body>",
+        options: { ignoreLeadingFileWhitespace: true },
+        right: "<head>\n<body>",
+      },
+      {
+        left: Array.from({ length: 60 }, (_, index) => `left-${index % 7}`).join("\n"),
+        right: Array.from({ length: 65 }, (_, index) => `left-${(index + 2) % 7}`).join("\n"),
+      },
+    ];
+
+    for (const testCase of cases) {
+      expect(
+        bindings.diffLines(testCase.left, testCase.right, testCase.options),
+      ).toEqual(diffLines(testCase.left, testCase.right, testCase.options));
+    }
+  });
+
+  it("keeps anchor-aware diffing on the TypeScript path when wasm is active", async () => {
+    const bindings = await loadEmbeddedWasmDiffEngine();
+    const anchors: Anchor[] = [{ leftLineNo: 1, rightLineNo: 1 }];
+    const left = "alpha\nbeta\ngamma";
+    const right = "alpha\ndelta\ngamma";
+
+    expect(bindings.diffWithAnchors(left, right, anchors)).toEqual(
+      diffWithAnchors(left, right, anchors),
+    );
   });
 
   it("keeps the TypeScript engine as the default implementation", async () => {
