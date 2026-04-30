@@ -19,6 +19,12 @@ export type AnchorValidationResult = {
   invalid: AnchorValidationIssue[];
 };
 
+export type AnchorSegmentDiffer = (
+  leftLines: string[],
+  rightLines: string[],
+  options: DiffLinesOptions,
+) => LineOp[];
+
 export function addAnchor(anchors: Anchor[], anchor: Anchor): Anchor[] {
   return [...anchors, anchor];
 }
@@ -141,24 +147,6 @@ function offsetOps(ops: PairedOp[], leftOffset: number, rightOffset: number): Pa
   });
 }
 
-function diffSegment(
-  leftLines: string[],
-  rightLines: string[],
-  leftOffset: number,
-  rightOffset: number,
-  options: DiffLinesOptions,
-): PairedOp[] {
-  if (leftLines.length === 0 && rightLines.length === 0) {
-    return [];
-  }
-
-  const ops: LineOp[] = diffLinesFromLines(leftLines, rightLines, {
-    ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace === true,
-  });
-  const paired = pairReplace(ops);
-  return offsetOps(paired, leftOffset, rightOffset);
-}
-
 function stripLeadingTabsAndSpaces(value: string): string {
   return value.replace(/^[ \t]+/, "");
 }
@@ -209,56 +197,85 @@ function isSameLineForMatch(
   return hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(leftLine, rightLine);
 }
 
-export function diffWithAnchors(
+export function createDiffWithAnchors(
+  diffSegmentLines: AnchorSegmentDiffer = diffLinesFromLines,
+): (
   leftText: string,
   rightText: string,
   anchors: Anchor[],
-  options: DiffLinesOptions = {},
-): PairedOp[] {
-  const leftNormalized = normalizeText(leftText);
-  const rightNormalized = normalizeText(rightText);
-  const leftLines = leftNormalized.split("\n");
-  const rightLines = rightNormalized.split("\n");
-  const leftLeadingFileWhitespaceEligible =
-    leftNormalized.length === 0 || leftNormalized[0] !== "\n";
-  const rightLeadingFileWhitespaceEligible =
-    rightNormalized.length === 0 || rightNormalized[0] !== "\n";
-  const result: PairedOp[] = [];
-  let leftStart = 0;
-  let rightStart = 0;
+  options?: DiffLinesOptions,
+) => PairedOp[] {
+  function diffSegment(
+    leftLines: string[],
+    rightLines: string[],
+    leftOffset: number,
+    rightOffset: number,
+    options: DiffLinesOptions,
+  ): PairedOp[] {
+    if (leftLines.length === 0 && rightLines.length === 0) {
+      return [];
+    }
 
-  for (const anchor of anchors) {
-    const leftSegment = leftLines.slice(leftStart, anchor.leftLineNo);
-    const rightSegment = rightLines.slice(rightStart, anchor.rightLineNo);
-    result.push(...diffSegment(leftSegment, rightSegment, leftStart, rightStart, options));
-
-    const leftLine = leftLines[anchor.leftLineNo] ?? "";
-    const rightLine = rightLines[anchor.rightLineNo] ?? "";
-    result.push({
-      type: isSameLineForMatch(
-        leftLine,
-        rightLine,
-        anchor.leftLineNo,
-        anchor.rightLineNo,
-        options,
-        leftLeadingFileWhitespaceEligible,
-        rightLeadingFileWhitespaceEligible,
-      )
-        ? "equal"
-        : "replace",
-      leftLine,
-      rightLine,
-      leftLineNo: anchor.leftLineNo,
-      rightLineNo: anchor.rightLineNo,
+    const ops: LineOp[] = diffSegmentLines(leftLines, rightLines, {
+      ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace === true,
     });
-
-    leftStart = anchor.leftLineNo + 1;
-    rightStart = anchor.rightLineNo + 1;
+    const paired = pairReplace(ops);
+    return offsetOps(paired, leftOffset, rightOffset);
   }
 
-  const tailLeft = leftLines.slice(leftStart);
-  const tailRight = rightLines.slice(rightStart);
-  result.push(...diffSegment(tailLeft, tailRight, leftStart, rightStart, options));
+  return function diffWithAnchorsImpl(
+    leftText: string,
+    rightText: string,
+    anchors: Anchor[],
+    options: DiffLinesOptions = {},
+  ): PairedOp[] {
+    const leftNormalized = normalizeText(leftText);
+    const rightNormalized = normalizeText(rightText);
+    const leftLines = leftNormalized.split("\n");
+    const rightLines = rightNormalized.split("\n");
+    const leftLeadingFileWhitespaceEligible =
+      leftNormalized.length === 0 || leftNormalized[0] !== "\n";
+    const rightLeadingFileWhitespaceEligible =
+      rightNormalized.length === 0 || rightNormalized[0] !== "\n";
+    const result: PairedOp[] = [];
+    let leftStart = 0;
+    let rightStart = 0;
 
-  return result;
+    for (const anchor of anchors) {
+      const leftSegment = leftLines.slice(leftStart, anchor.leftLineNo);
+      const rightSegment = rightLines.slice(rightStart, anchor.rightLineNo);
+      result.push(...diffSegment(leftSegment, rightSegment, leftStart, rightStart, options));
+
+      const leftLine = leftLines[anchor.leftLineNo] ?? "";
+      const rightLine = rightLines[anchor.rightLineNo] ?? "";
+      result.push({
+        type: isSameLineForMatch(
+          leftLine,
+          rightLine,
+          anchor.leftLineNo,
+          anchor.rightLineNo,
+          options,
+          leftLeadingFileWhitespaceEligible,
+          rightLeadingFileWhitespaceEligible,
+        )
+          ? "equal"
+          : "replace",
+        leftLine,
+        rightLine,
+        leftLineNo: anchor.leftLineNo,
+        rightLineNo: anchor.rightLineNo,
+      });
+
+      leftStart = anchor.leftLineNo + 1;
+      rightStart = anchor.rightLineNo + 1;
+    }
+
+    const tailLeft = leftLines.slice(leftStart);
+    const tailRight = rightLines.slice(rightStart);
+    result.push(...diffSegment(tailLeft, tailRight, leftStart, rightStart, options));
+
+    return result;
+  };
 }
+
+export const diffWithAnchors = createDiffWithAnchors();

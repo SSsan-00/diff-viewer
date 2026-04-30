@@ -1,8 +1,9 @@
-import { diffWithAnchors, type Anchor } from "./anchors";
+import { createDiffWithAnchors, diffWithAnchors, type Anchor } from "./anchors";
 import {
   buildLineOpsFromDiffSteps,
   diffLines,
   prepareDiffLinesInput,
+  prepareDiffLinesInputFromLines,
   type DiffLinesOptions,
   type DiffStep,
 } from "./diffLines";
@@ -324,6 +325,14 @@ function runEmbeddedWasmDiff(
   }
 }
 
+function buildLineOpsWithEmbeddedWasm(
+  exports: EmbeddedWasmExports,
+  prepared: ReturnType<typeof prepareDiffLinesInput>,
+): LineOp[] {
+  const steps = runEmbeddedWasmDiff(exports, prepared.leftCompare, prepared.rightCompare);
+  return buildLineOpsFromDiffSteps(prepared, steps);
+}
+
 export function isDiffEngineMode(value: string | null | undefined): value is DiffEngineMode {
   return value === "auto" || value === "ts" || value === "wasm";
 }
@@ -362,18 +371,27 @@ export async function loadEmbeddedWasmDiffEngine(): Promise<DiffEngineBindings> 
     throw new Error("embedded wasm build id does not match the bundled bytes");
   }
 
+  const diffLinesWithEmbeddedWasm = (
+    leftText: string,
+    rightText: string,
+    options?: DiffLinesOptions,
+  ): LineOp[] => {
+    const prepared = prepareDiffLinesInput(leftText, rightText, options);
+    return buildLineOpsWithEmbeddedWasm(exports, prepared);
+  };
+  const diffSegmentLinesWithEmbeddedWasm = (
+    leftLines: string[],
+    rightLines: string[],
+    options: DiffLinesOptions,
+  ): LineOp[] => {
+    const prepared = prepareDiffLinesInputFromLines(leftLines, rightLines, options);
+    return buildLineOpsWithEmbeddedWasm(exports, prepared);
+  };
+
   return {
     buildId,
-    diffLines: (leftText, rightText, options) => {
-      const prepared = prepareDiffLinesInput(leftText, rightText, options);
-      const steps = runEmbeddedWasmDiff(
-        exports,
-        prepared.leftCompare,
-        prepared.rightCompare,
-      );
-      return buildLineOpsFromDiffSteps(prepared, steps);
-    },
-    diffWithAnchors,
+    diffLines: diffLinesWithEmbeddedWasm,
+    diffWithAnchors: createDiffWithAnchors(diffSegmentLinesWithEmbeddedWasm),
   };
 }
 

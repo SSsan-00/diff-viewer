@@ -83,6 +83,14 @@ function summary(values) {
   };
 }
 
+function selectLastRecalcSnapshot(run) {
+  const snapshots = [
+    run?.recalc?.perfSnapshot?.lastRecalc ?? null,
+    run?.workspaceSwitch?.perfSnapshot?.lastRecalc ?? null,
+  ];
+  return snapshots.find((snapshot) => snapshot !== null) ?? null;
+}
+
 function sleep(ms) {
   return delay(ms);
 }
@@ -497,19 +505,19 @@ function printCompare(before, after) {
 
   const bRecalcTotal = metricMedian(
     before,
-    (run) => run.recalc?.perfSnapshot?.lastRecalc?.totalMs,
+    (run) => selectLastRecalcSnapshot(run)?.totalMs,
   );
   const aRecalcTotal = metricMedian(
     after,
-    (run) => run.recalc?.perfSnapshot?.lastRecalc?.totalMs,
+    (run) => selectLastRecalcSnapshot(run)?.totalMs,
   );
   const bDiffCompute = metricMedian(
     before,
-    (run) => run.recalc?.perfSnapshot?.lastRecalc?.phases?.diffComputeMs,
+    (run) => selectLastRecalcSnapshot(run)?.phases?.diffComputeMs,
   );
   const aDiffCompute = metricMedian(
     after,
-    (run) => run.recalc?.perfSnapshot?.lastRecalc?.phases?.diffComputeMs,
+    (run) => selectLastRecalcSnapshot(run)?.phases?.diffComputeMs,
   );
 
   if (bRecalcTotal !== null && aRecalcTotal !== null) {

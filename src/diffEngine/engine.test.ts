@@ -55,11 +55,11 @@ describe("createDiffEngine", () => {
     }
   });
 
-  it("keeps anchor-aware diffing on the TypeScript path when wasm is active", async () => {
+  it("keeps anchor-aware diff output aligned when wasm is active", async () => {
     const bindings = await loadEmbeddedWasmDiffEngine();
-    const anchors: Anchor[] = [{ leftLineNo: 1, rightLineNo: 1 }];
-    const left = "alpha\nbeta\ngamma";
-    const right = "alpha\ndelta\ngamma";
+    const anchors: Anchor[] = [{ leftLineNo: 2, rightLineNo: 3 }];
+    const left = "head\nalpha\nbeta\ngamma";
+    const right = "head\ninserted\nalpha\ndelta\ngamma";
 
     expect(bindings.diffWithAnchors(left, right, anchors)).toEqual(
       diffWithAnchors(left, right, anchors),

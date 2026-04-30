@@ -1,6 +1,7 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
   addAnchor,
+  createDiffWithAnchors,
   diffWithAnchors,
   removeAnchorByLeft,
   removeAnchorByRight,
@@ -123,6 +124,55 @@ describe("diffWithAnchors", () => {
       leftLineNo: 1,
       rightLineNo: 1,
     });
+  });
+
+  it("lets callers replace the per-segment diff implementation", () => {
+    const diffSegmentLines = vi.fn(() => [
+      {
+        type: "equal" as const,
+        leftLine: "before",
+        rightLine: "before",
+        leftLineNo: 0,
+        rightLineNo: 0,
+      },
+      {
+        type: "insert" as const,
+        rightLine: "middle",
+        rightLineNo: 1,
+      },
+    ]);
+    const diffWithCustomSegments = createDiffWithAnchors(diffSegmentLines);
+    const left = "before\nafter";
+    const right = "before\nmiddle\nafter";
+    const anchors: Anchor[] = [{ leftLineNo: 1, rightLineNo: 2 }];
+
+    expect(diffWithCustomSegments(left, right, anchors)).toEqual([
+      {
+        type: "equal",
+        leftLine: "before",
+        rightLine: "before",
+        leftLineNo: 0,
+        rightLineNo: 0,
+      },
+      {
+        type: "insert",
+        rightLine: "middle",
+        rightLineNo: 1,
+      },
+      {
+        type: "equal",
+        leftLine: "after",
+        rightLine: "after",
+        leftLineNo: 1,
+        rightLineNo: 2,
+      },
+    ]);
+    expect(diffSegmentLines).toHaveBeenCalledOnce();
+    expect(diffSegmentLines).toHaveBeenCalledWith(
+      ["before"],
+      ["before", "middle"],
+      { ignoreLeadingFileWhitespace: false },
+    );
   });
 });
 
