@@ -1,11 +1,15 @@
 mod diff_steps;
+mod inline_diff;
 
 use diff_steps::{diff_compare_ids, DiffStep, DiffStepType};
+use inline_diff::{diff_inline_units, InlineDiffRanges};
 use std::{mem, ptr, slice};
 
 const ABI_VERSION: u32 = 1;
 const INPUT_VERSION: u32 = 1;
 const OUTPUT_VERSION: u32 = 1;
+const INLINE_INPUT_VERSION: u32 = 1;
+const INLINE_OUTPUT_VERSION: u32 = 1;
 const STATUS_OK: u32 = 0;
 const STATUS_ERROR: u32 = 1;
 const STEP_DELETE: u32 = 0;
@@ -116,6 +120,15 @@ fn read_u32(bytes: &[u8], offset: &mut usize) -> Result<u32, String> {
     Ok(u32::from_le_bytes(chunk))
 }
 
+fn read_u16(bytes: &[u8], offset: &mut usize) -> Result<u16, String> {
+    if *offset + 2 > bytes.len() {
+        return Err("embedded wasm inline input is truncated".to_string());
+    }
+    let chunk = [bytes[*offset], bytes[*offset + 1]];
+    *offset += 2;
+    Ok(u16::from_le_bytes(chunk))
+}
+
 fn parse_diff_steps_input(bytes: &[u8]) -> Result<(Vec<u32>, Vec<u32>), String> {
     let mut offset = 0usize;
     let version = read_u32(bytes, &mut offset)?;
@@ -141,6 +154,31 @@ fn parse_diff_steps_input(bytes: &[u8]) -> Result<(Vec<u32>, Vec<u32>), String> 
     Ok((left, right))
 }
 
+fn parse_inline_diff_input(bytes: &[u8]) -> Result<(Vec<u16>, Vec<u16>), String> {
+    let mut offset = 0usize;
+    let version = read_u32(bytes, &mut offset)?;
+    if version != INLINE_INPUT_VERSION {
+        return Err("embedded wasm inline input version is unsupported".to_string());
+    }
+    let left_len = read_u32(bytes, &mut offset)? as usize;
+    let right_len = read_u32(bytes, &mut offset)? as usize;
+    let expected = 12usize + (left_len + right_len) * 2;
+    if bytes.len() != expected {
+        return Err("embedded wasm inline input size is invalid".to_string());
+    }
+
+    let mut left = Vec::with_capacity(left_len);
+    let mut right = Vec::with_capacity(right_len);
+    for _ in 0..left_len {
+        left.push(read_u16(bytes, &mut offset)?);
+    }
+    for _ in 0..right_len {
+        right.push(read_u16(bytes, &mut offset)?);
+    }
+
+    Ok((left, right))
+}
+
 fn step_type_code(step_type: DiffStepType) -> u32 {
     match step_type {
         DiffStepType::Delete => STEP_DELETE,
@@ -151,6 +189,33 @@ fn step_type_code(step_type: DiffStepType) -> u32 {
 
 fn push_u32(bytes: &mut Vec<u8>, value: u32) {
     bytes.extend_from_slice(&value.to_le_bytes());
+}
+
+fn encode_range_ranges_output(ranges: &InlineDiffRanges) -> Result<Vec<u8>, String> {
+    let left_count = u32::try_from(ranges.left_ranges.len())
+        .map_err(|_| "embedded wasm inline left range count exceeds the wire format".to_string())?;
+    let right_count = u32::try_from(ranges.right_ranges.len())
+        .map_err(|_| "embedded wasm inline right range count exceeds the wire format".to_string())?;
+    let mut bytes =
+        Vec::with_capacity(12 + (ranges.left_ranges.len() + ranges.right_ranges.len()) * 8);
+    push_u32(&mut bytes, INLINE_OUTPUT_VERSION);
+    push_u32(&mut bytes, left_count);
+    push_u32(&mut bytes, right_count);
+
+    for range in ranges.left_ranges.iter().chain(ranges.right_ranges.iter()) {
+        push_u32(
+            &mut bytes,
+            u32::try_from(range.start)
+                .map_err(|_| "embedded wasm inline range start exceeds the wire format".to_string())?,
+        );
+        push_u32(
+            &mut bytes,
+            u32::try_from(range.end)
+                .map_err(|_| "embedded wasm inline range end exceeds the wire format".to_string())?,
+        );
+    }
+
+    Ok(bytes)
 }
 
 fn encode_diff_steps_output(steps: &[DiffStep]) -> Result<Vec<u8>, String> {
@@ -195,6 +260,17 @@ fn diff_steps_impl(ptr: *const u8, len: usize) -> Result<(), String> {
     Ok(())
 }
 
+fn diff_inline_impl(ptr: *const u8, len: usize) -> Result<(), String> {
+    if ptr.is_null() && len > 0 {
+        return Err("embedded wasm inline input pointer is null".to_string());
+    }
+    let bytes = unsafe { slice::from_raw_parts(ptr, len) };
+    let (left, right) = parse_inline_diff_input(bytes)?;
+    let output = encode_range_ranges_output(&diff_inline_units(&left, &right))?;
+    store_result(output);
+    Ok(())
+}
+
 #[no_mangle]
 pub extern "C" fn diff_engine_abi_version() -> u32 {
     ABI_VERSION
@@ -234,6 +310,17 @@ pub extern "C" fn diff_engine_dealloc(ptr: *mut u8, len: usize) {
 #[no_mangle]
 pub extern "C" fn diff_engine_diff_steps(ptr: *const u8, len: usize) -> u32 {
     match diff_steps_impl(ptr, len) {
+        Ok(()) => STATUS_OK,
+        Err(message) => {
+            store_error(message);
+            STATUS_ERROR
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn diff_engine_inline_diff(ptr: *const u8, len: usize) -> u32 {
+    match diff_inline_impl(ptr, len) {
         Ok(()) => STATUS_OK,
         Err(message) => {
             store_error(message);
@@ -311,5 +398,35 @@ mod tests {
         let mut offset = 0usize;
         assert_eq!(read_u32(&bytes, &mut offset).unwrap(), OUTPUT_VERSION);
         assert_eq!(read_u32(&bytes, &mut offset).unwrap(), 4);
+    }
+
+    #[test]
+    fn computes_inline_ranges_and_exposes_the_result_buffer() {
+        let left = "a1b2c3".encode_utf16().collect::<Vec<u16>>();
+        let right = "a1x2y3".encode_utf16().collect::<Vec<u16>>();
+        let mut input = Vec::new();
+        push_u32(&mut input, INLINE_INPUT_VERSION);
+        push_u32(&mut input, left.len() as u32);
+        push_u32(&mut input, right.len() as u32);
+        for value in &left {
+            input.extend_from_slice(&value.to_le_bytes());
+        }
+        for value in &right {
+            input.extend_from_slice(&value.to_le_bytes());
+        }
+
+        assert_eq!(diff_engine_inline_diff(input.as_ptr(), input.len()), STATUS_OK);
+
+        let ptr = diff_engine_take_result_ptr();
+        let len = diff_engine_take_result_len();
+        assert!(!ptr.is_null());
+        assert!(len >= 12);
+        let bytes = unsafe { Vec::from_raw_parts(ptr, len, len) };
+        let mut offset = 0usize;
+        assert_eq!(read_u32(&bytes, &mut offset).unwrap(), INLINE_OUTPUT_VERSION);
+        assert_eq!(read_u32(&bytes, &mut offset).unwrap(), 1);
+        assert_eq!(read_u32(&bytes, &mut offset).unwrap(), 1);
+        assert_eq!(read_u32(&bytes, &mut offset).unwrap(), 2);
+        assert_eq!(read_u32(&bytes, &mut offset).unwrap(), 5);
     }
 }

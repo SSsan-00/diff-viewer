@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { diffLines } from "./diffLines";
+import { diffInline } from "./diffInline";
 import { diffWithAnchors, type Anchor } from "./anchors";
 import {
   EMBEDDED_DIFF_WASM_BUILD_ID,
@@ -53,6 +54,20 @@ describe("createDiffEngine", () => {
         bindings.diffLines(testCase.left, testCase.right, testCase.options),
       ).toEqual(diffLines(testCase.left, testCase.right, testCase.options));
     }
+  });
+
+  it("keeps embedded wasm inline diff output aligned with the TypeScript implementation", async () => {
+    const left = '    <div class="a  b" id="x"></div>';
+    const right = '<div class="a b" id="x"></div>';
+    const baseline = diffInline(left, right);
+
+    const engine = await createDiffEngine({
+      mode: "wasm",
+      loadWasmDiffEngine: loadEmbeddedWasmDiffEngine,
+    });
+
+    expect(engine.getStatus().activeMode).toBe("wasm");
+    expect(diffInline(left, right)).toEqual(baseline);
   });
 
   it("keeps anchor-aware diff output aligned when wasm is active", async () => {

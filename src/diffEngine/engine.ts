@@ -13,7 +13,7 @@ import {
   EMBEDDED_DIFF_WASM_BYTES,
   EMBEDDED_DIFF_WASM_STATUS,
 } from "./embeddedDiffWasm";
-import type { LineOp, PairedOp } from "./types";
+import type { InlineDiff, LineOp, PairedOp, Range } from "./types";
 
 export type { DiffLinesOptions } from "./diffLines";
 
@@ -58,6 +58,8 @@ type CreateDiffEngineOptions = {
 const DIFF_ENGINE_WASM_ABI_VERSION = 1;
 const DIFF_ENGINE_WASM_INPUT_VERSION = 1;
 const DIFF_ENGINE_WASM_OUTPUT_VERSION = 1;
+const INLINE_DIFF_WASM_INPUT_VERSION = 1;
+const INLINE_DIFF_WASM_OUTPUT_VERSION = 1;
 const DIFF_STEP_DELETE = 0;
 const DIFF_STEP_INSERT = 1;
 const DIFF_STEP_EQUAL = 2;
@@ -70,6 +72,7 @@ type EmbeddedWasmExports = WebAssembly.Exports & {
   diff_engine_build_id_ptr: () => number;
   diff_engine_dealloc: (ptr: number, len: number) => void;
   diff_engine_diff_steps: (ptr: number, len: number) => number;
+  diff_engine_inline_diff: (ptr: number, len: number) => number;
   diff_engine_take_error_len: () => number;
   diff_engine_take_error_ptr: () => number;
   diff_engine_take_result_len: () => number;
@@ -147,6 +150,7 @@ function createEmbeddedWasmExports(instance: WebAssembly.Instance): EmbeddedWasm
     diff_engine_build_id_ptr: requireFunctionExport(exports, "diff_engine_build_id_ptr"),
     diff_engine_dealloc: requireFunctionExport(exports, "diff_engine_dealloc"),
     diff_engine_diff_steps: requireFunctionExport(exports, "diff_engine_diff_steps"),
+    diff_engine_inline_diff: requireFunctionExport(exports, "diff_engine_inline_diff"),
     diff_engine_take_error_len: requireFunctionExport(exports, "diff_engine_take_error_len"),
     diff_engine_take_error_ptr: requireFunctionExport(exports, "diff_engine_take_error_ptr"),
     diff_engine_take_result_len: requireFunctionExport(exports, "diff_engine_take_result_len"),
@@ -240,6 +244,33 @@ function encodeDiffStepRequest(leftIds: number[], rightIds: number[]): Uint8Arra
   return bytes;
 }
 
+function encodeInlineDiffRequest(leftLine: string, rightLine: string): Uint8Array {
+  const bytes = new Uint8Array(12 + (leftLine.length + rightLine.length) * 2);
+  const view = new DataView(bytes.buffer);
+  let offset = 0;
+
+  const writeU32 = (value: number) => {
+    view.setUint32(offset, value, true);
+    offset += 4;
+  };
+  const writeU16 = (value: number) => {
+    view.setUint16(offset, value, true);
+    offset += 2;
+  };
+
+  writeU32(INLINE_DIFF_WASM_INPUT_VERSION);
+  writeU32(leftLine.length);
+  writeU32(rightLine.length);
+  for (let index = 0; index < leftLine.length; index += 1) {
+    writeU16(leftLine.charCodeAt(index));
+  }
+  for (let index = 0; index < rightLine.length; index += 1) {
+    writeU16(rightLine.charCodeAt(index));
+  }
+
+  return bytes;
+}
+
 function parseDiffStepResponse(bytes: Uint8Array): DiffStep[] {
   if (bytes.length < 8) {
     throw new Error("embedded wasm diff response is truncated");
@@ -295,6 +326,49 @@ function parseDiffStepResponse(bytes: Uint8Array): DiffStep[] {
   }));
 }
 
+function parseRanges(
+  view: DataView,
+  offset: number,
+  count: number,
+): { nextOffset: number; ranges: Range[] } {
+  const ranges: Range[] = [];
+  let nextOffset = offset;
+
+  for (let index = 0; index < count; index += 1) {
+    ranges.push({
+      start: view.getUint32(nextOffset, true),
+      end: view.getUint32(nextOffset + 4, true),
+    });
+    nextOffset += 8;
+  }
+
+  return { nextOffset, ranges };
+}
+
+function parseInlineDiffResponse(bytes: Uint8Array): InlineDiff {
+  if (bytes.length < 12) {
+    throw new Error("embedded wasm inline response is truncated");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const version = view.getUint32(0, true);
+  if (version !== INLINE_DIFF_WASM_OUTPUT_VERSION) {
+    throw new Error("embedded wasm inline response version is unsupported");
+  }
+  const leftRangeCount = view.getUint32(4, true);
+  const rightRangeCount = view.getUint32(8, true);
+  const expectedBytes = 12 + (leftRangeCount + rightRangeCount) * 8;
+  if (bytes.length !== expectedBytes) {
+    throw new Error("embedded wasm inline response size is invalid");
+  }
+
+  const left = parseRanges(view, 12, leftRangeCount);
+  const right = parseRanges(view, left.nextOffset, rightRangeCount);
+  return {
+    leftRanges: left.ranges,
+    rightRanges: right.ranges,
+  };
+}
+
 function runEmbeddedWasmDiff(
   exports: EmbeddedWasmExports,
   leftCompare: string[],
@@ -324,6 +398,41 @@ function runEmbeddedWasmDiff(
       () => exports.diff_engine_take_result_len(),
     );
     return parseDiffStepResponse(response);
+  } finally {
+    if (ptr !== 0) {
+      exports.diff_engine_dealloc(ptr, request.length);
+    }
+  }
+}
+
+function runEmbeddedWasmInlineDiff(
+  exports: EmbeddedWasmExports,
+  leftLine: string,
+  rightLine: string,
+): InlineDiff {
+  const request = encodeInlineDiffRequest(leftLine, rightLine);
+  const ptr = exports.diff_engine_alloc(request.length);
+  if (ptr === 0 && request.length > 0) {
+    throw new Error("embedded wasm allocation failed");
+  }
+
+  try {
+    new Uint8Array(exports.memory.buffer, ptr, request.length).set(request);
+    const status = exports.diff_engine_inline_diff(ptr, request.length);
+    if (status !== 0) {
+      const message = takeOwnedString(
+        exports,
+        () => exports.diff_engine_take_error_ptr(),
+        () => exports.diff_engine_take_error_len(),
+      );
+      throw new Error(message || "embedded wasm inline computation failed");
+    }
+    const response = takeOwnedBytes(
+      exports,
+      () => exports.diff_engine_take_result_ptr(),
+      () => exports.diff_engine_take_result_len(),
+    );
+    return parseInlineDiffResponse(response);
   } finally {
     if (ptr !== 0) {
       exports.diff_engine_dealloc(ptr, request.length);
@@ -393,10 +502,14 @@ export async function loadEmbeddedWasmDiffEngine(): Promise<DiffEngineBindings> 
     const prepared = prepareDiffLinesInputFromLines(leftLines, rightLines, options);
     return buildLineOpsWithEmbeddedWasm(exports, prepared);
   };
+  const diffInlineWithEmbeddedWasm = (
+    leftLine: string,
+    rightLine: string,
+  ): InlineDiff => runEmbeddedWasmInlineDiff(exports, leftLine, rightLine);
 
   return {
     activateRuntimeFeatures: () => {
-      setDiffInlineCore(null);
+      setDiffInlineCore(diffInlineWithEmbeddedWasm);
     },
     buildId,
     diffLines: diffLinesWithEmbeddedWasm,
