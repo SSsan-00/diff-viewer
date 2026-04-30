@@ -345,6 +345,8 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
         <div
           id="left-file-cards"
           class="file-cards-bar file-cards-bar--horizontal"
+          data-has-files="false"
+          aria-hidden="true"
           aria-label="files"
         ></div>
         <div
@@ -492,6 +494,8 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
         <div
           id="right-file-cards"
           class="file-cards-bar file-cards-bar--horizontal"
+          data-has-files="false"
+          aria-hidden="true"
           aria-label="files"
         ></div>
         <div

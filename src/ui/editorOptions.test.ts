@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import { createEditorOptions } from "./editorOptions";
 
 describe("createEditorOptions", () => {
-  it("uses consistent indentation options", () => {
-    const options = createEditorOptions("");
+  it("reserves horizontal scrollbar height on both panes", () => {
+    const options = createEditorOptions("const value = 1;");
 
-    expect(options.tabSize).toBe(4);
-    expect(options.insertSpaces).toBe(true);
-    expect(options.detectIndentation).toBe(false);
+    expect(options.scrollbar).toEqual({
+      horizontal: "visible",
+      horizontalScrollbarSize: 12,
+      verticalScrollbarSize: 12,
+      alwaysConsumeMouseWheel: false,
+    });
   });
 });

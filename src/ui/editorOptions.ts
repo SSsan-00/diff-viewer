@@ -13,6 +13,12 @@ export function createEditorOptions(
     wrappingStrategy: "advanced",
     glyphMargin: true,
     minimap: { enabled: false },
+    scrollbar: {
+      horizontal: "visible",
+      horizontalScrollbarSize: 12,
+      verticalScrollbarSize: 12,
+      alwaysConsumeMouseWheel: false,
+    },
     lineNumbers: "on",
     stickyScroll: { enabled: false },
     tabSize: 4,

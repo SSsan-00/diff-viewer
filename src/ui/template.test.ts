@@ -242,6 +242,8 @@ describe("pane action layout", () => {
     expect(leftBar?.classList.contains("file-cards-bar--horizontal")).toBe(
       true,
     );
+    expect(leftBar?.getAttribute("data-has-files")).toBe("false");
+    expect(rightBar?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("renders a pane divider and keeps widths at the default split on first load", () => {

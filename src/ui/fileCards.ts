@@ -3,6 +3,8 @@ export function renderFileCards(
   names: readonly string[],
 ): void {
   const doc = container.ownerDocument;
+  container.dataset.hasFiles = names.length > 0 ? "true" : "false";
+  container.setAttribute("aria-hidden", names.length === 0 ? "true" : "false");
   container.textContent = "";
 
   const fragment = doc.createDocumentFragment();

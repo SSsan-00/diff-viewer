@@ -22,5 +22,23 @@ describe("renderFileCards", () => {
     expect(cards[1]?.textContent).toBe("beta.txt");
     expect(cards[1]?.getAttribute("aria-label")).toBe("beta.txt");
     expect(cards[1]?.getAttribute("data-file")).toBe("beta.txt");
+    expect(container.dataset.hasFiles).toBe("true");
+    expect(container.getAttribute("aria-hidden")).toBe("false");
+  });
+
+  it("marks the bar as empty when no files are loaded", () => {
+    const dom = new JSDOM(`<div id="cards"></div>`);
+    const doc = dom.window.document;
+    const container = doc.querySelector<HTMLDivElement>("#cards");
+
+    if (!container) {
+      throw new Error("Missing test container.");
+    }
+
+    renderFileCards(container, []);
+
+    expect(container.querySelectorAll("button.file-card")).toHaveLength(0);
+    expect(container.dataset.hasFiles).toBe("false");
+    expect(container.getAttribute("aria-hidden")).toBe("true");
   });
 });
