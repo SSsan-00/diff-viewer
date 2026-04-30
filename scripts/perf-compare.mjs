@@ -16,7 +16,7 @@ const PERF_OUT_DIR = "perf-results";
 
 function usage() {
   console.log(`Usage:
-  node scripts/perf-compare.mjs capture [--label LABEL] [--out FILE] [--runs N] [--lines N] [--port N] [--settle-ms N] [--auto-dev]
+  node scripts/perf-compare.mjs capture [--label LABEL] [--out FILE] [--runs N] [--lines N] [--port N] [--settle-ms N] [--engine auto|ts|wasm] [--auto-dev]
   node scripts/perf-compare.mjs compare <before.json> <after.json>
 `);
 }
@@ -304,12 +304,17 @@ async function runProfile(cdp, label, expression, settleMs) {
     returnByValue: true,
   });
   await sleep(settleMs);
+  const snapshot = await cdp.send("Runtime.evaluate", {
+    expression: `window.__diffViewerPerf?.getSnapshot?.() ?? null`,
+    returnByValue: true,
+  });
   const stopped = await cdp.send("Profiler.stop");
   const end = performance.now();
   return {
     label,
     wallMs: round(end - start),
     actionResult: action.result?.value ?? null,
+    perfSnapshot: snapshot.result?.value ?? null,
     topSelf: summarizeCpuProfile(stopped.profile),
   };
 }
@@ -344,8 +349,9 @@ async function runCaptureOnce(options) {
   let cdp = null;
   try {
     await waitForDevTools(chromePort);
+    const appUrl = `http://127.0.0.1:${options.port}/?engine=${encodeURIComponent(options.engine)}`;
     const target = await fetchJson(
-      `http://127.0.0.1:${chromePort}/json/new?${encodeURIComponent(`http://127.0.0.1:${options.port}/`)}`,
+      `http://127.0.0.1:${chromePort}/json/new?${encodeURIComponent(appUrl)}`,
       { method: "PUT" },
     );
     cdp = createCdp(target.webSocketDebuggerUrl);
@@ -354,10 +360,14 @@ async function runCaptureOnce(options) {
     await cdp.send("Runtime.enable");
     await cdp.send("DOM.enable");
     await cdp.send("Profiler.enable");
-    await cdp.send("Page.navigate", { url: `http://127.0.0.1:${options.port}/` });
+    await cdp.send("Page.navigate", { url: appUrl });
     await sleep(2500);
     await waitForSelector(cdp, "#left-file");
     await waitForSelector(cdp, "#right-file");
+    const startupPerf = await cdp.send("Runtime.evaluate", {
+      expression: `window.__diffViewerPerf?.getSnapshot?.() ?? null`,
+      returnByValue: true,
+    });
 
     await setFileInput(cdp, "#left-file", leftFile);
     await sleep(1200);
@@ -367,7 +377,11 @@ async function runCaptureOnce(options) {
     const recalc = await runProfile(
       cdp,
       "recalc-large",
-      `(() => { document.querySelector('#recalc')?.click(); return true; })()`,
+      `(() => {
+        window.__diffViewerPerf?.clearLastRecalc?.();
+        document.querySelector('#recalc')?.click();
+        return true;
+      })()`,
       options.settleMs,
     );
     await cdp.send("Runtime.evaluate", {
@@ -386,6 +400,7 @@ async function runCaptureOnce(options) {
       cdp,
       "workspace-switch",
       `(() => {
+        window.__diffViewerPerf?.clearLastRecalc?.();
         const toggle = document.querySelector('#workspace-toggle');
         toggle?.click();
         const buttons = [...document.querySelectorAll('.workspace-item .workspace-item__name')];
@@ -397,6 +412,7 @@ async function runCaptureOnce(options) {
       options.settleMs,
     );
     return {
+      engine: startupPerf.result?.value?.engine ?? null,
       lines: options.lines,
       recalc,
       workspaceSwitch,
@@ -496,6 +512,7 @@ async function main() {
   }
 
   const captureOptions = {
+    engine: String(options.engine ?? "auto"),
     label: String(options.label ?? "capture"),
     lines: toNumber(options.lines, DEFAULT_LINES),
     runs: toNumber(options.runs, DEFAULT_RUNS),

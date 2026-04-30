@@ -1,4 +1,7 @@
+import { isDiffEngineMode, type DiffEngineMode } from "./diffEngine/engine";
+
 export type AppMode = {
+  diffEngineMode: DiffEngineMode;
   writebackEnabled: boolean;
 };
 
@@ -53,16 +56,23 @@ function readWritebackEnabled(params: URLSearchParams): boolean | null {
   return null;
 }
 
+function readDiffEngineMode(params: URLSearchParams): DiffEngineMode | null {
+  const engine = normalizeValue(params.get("engine"));
+  return isDiffEngineMode(engine) ? engine : null;
+}
+
 export function resolveAppMode(location: LocationLike): AppMode {
-  const searchMode = readWritebackEnabled(parseParams(location.search));
-  if (searchMode !== null) {
-    return { writebackEnabled: searchMode };
-  }
+  const searchParams = parseParams(location.search);
+  const hashParams = parseParams(location.hash);
 
-  const hashMode = readWritebackEnabled(parseParams(location.hash));
-  if (hashMode !== null) {
-    return { writebackEnabled: hashMode };
-  }
-
-  return { writebackEnabled: false };
+  return {
+    diffEngineMode:
+      readDiffEngineMode(searchParams) ??
+      readDiffEngineMode(hashParams) ??
+      "auto",
+    writebackEnabled:
+      readWritebackEnabled(searchParams) ??
+      readWritebackEnabled(hashParams) ??
+      false,
+  };
 }

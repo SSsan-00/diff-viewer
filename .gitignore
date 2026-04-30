@@ -9,6 +9,9 @@ lerna-debug.log*
 
 node_modules
 perf-results
+.wasm-target
+rust/**/target
+rust/**/Cargo.lock
 # dist
 dist-ssr
 *.local

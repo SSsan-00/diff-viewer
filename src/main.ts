@@ -2,9 +2,9 @@ import "./style.css";
 import "monaco-editor/min/vs/editor/editor.main.css";
 import * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import { resolveAppMode } from "./appMode";
+import { createDiffEngine } from "./diffEngine/engine";
 import { setupMonacoWorkers } from "./monaco/monacoWorkers";
 import { registerBasicLanguages } from "./monaco/basicLanguages";
-import { diffLines } from "./diffEngine/diffLines";
 import { pairReplace } from "./diffEngine/pairReplace";
 import { diffInlineWithAppendLiteral } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
@@ -46,7 +46,6 @@ import { pairFilesWithHandlesInDisplayOrder, reorderRazorPairs } from "./file/fi
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
   addAnchor,
-  diffWithAnchors,
   removeAnchorByLeft,
   removeAnchorByRight,
   validateAnchors,
@@ -199,6 +198,7 @@ import {
 } from "./file/segmentIndex";
 import { clearPaneMessage, setPaneMessage } from "./ui/paneMessages";
 import { inferPaneLanguage } from "./file/language";
+import { createDiffViewerPerfMonitor } from "./perf/runtimePerf";
 
 // Run once before creating any editor instances.
 setupMonacoWorkers();
@@ -299,6 +299,11 @@ if (!app) {
 
 const appMode = resolveAppMode(window.location);
 const writebackEnabled = appMode.writebackEnabled;
+const diffEngine = await createDiffEngine({
+  mode: appMode.diffEngineMode,
+});
+const diffViewerPerf = createDiffViewerPerfMonitor(() => diffEngine.getStatus());
+window.__diffViewerPerf = diffViewerPerf;
 app.innerHTML = createAppTemplate({
   writebackEnabled,
 });
@@ -4409,6 +4414,7 @@ function setEditorHiddenAreas(
 }
 
 function recalcDiff() {
+  const recalcStartedAt = performance.now();
   const leftText = leftEditor.getValue();
   const rightText = rightEditor.getValue();
   const leftLeadingFileWhitespaceEligible =
@@ -4420,6 +4426,7 @@ function recalcDiff() {
     leftLeadingFileWhitespaceEligible ? "1" : "0",
     rightLeadingFileWhitespaceEligible ? "1" : "0",
   ].join("|");
+  const anchorValidationStartedAt = performance.now();
   const validation = validateAnchors(
     manualAnchors,
     getNormalizedLineCount(leftText),
@@ -4463,20 +4470,31 @@ function recalcDiff() {
 
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
+  const anchorValidationMs = performance.now() - anchorValidationStartedAt;
 
+  const diffComputeStartedAt = performance.now();
   if (anchorsForDiff.length > 0) {
-    pairedOps = diffWithAnchors(leftText, rightText, anchorsForDiff, {
+    pairedOps = diffEngine.diffWithAnchors(leftText, rightText, anchorsForDiff, {
       ignoreLeadingFileWhitespace,
     });
   } else {
-    pairedOps = pairReplace(diffLines(leftText, rightText, { ignoreLeadingFileWhitespace }));
+    pairedOps = pairReplace(
+      diffEngine.diffLines(leftText, rightText, {
+        ignoreLeadingFileWhitespace,
+      }),
+    );
   }
+  const diffComputeMs = performance.now() - diffComputeStartedAt;
+
+  const normalizeStartedAt = performance.now();
   pairedOps = normalizeReplaceOpsForDisplay(pairedOps, {
     ignoreLeadingFileWhitespace,
     leftLeadingFileWhitespaceEligible,
     rightLeadingFileWhitespaceEligible,
   });
+  const normalizeMs = performance.now() - normalizeStartedAt;
 
+  const deriveStartedAt = performance.now();
   const opsSignature = buildPairedOpsSignature(pairedOps);
   const segmentSignature = `${buildSegmentsSignature(leftSegments)}\n---\n${buildSegmentsSignature(rightSegments)}`;
   const useCachedDerived =
@@ -4518,6 +4536,9 @@ function recalcDiff() {
   const findOffsets = buildFindWidgetOffsetZones(leftEditor, rightEditor);
   const leftZones = findOffsets.left.concat(zones.left, fileZones.left);
   const rightZones = findOffsets.right.concat(zones.right, fileZones.right);
+  const deriveMs = performance.now() - deriveStartedAt;
+
+  const renderStartedAt = performance.now();
   const forceRenderRefresh = diffRenderingInvalidated;
   const nextLeftDecorationSignatures = buildDecorationSignatures(left);
   if (
@@ -4602,6 +4623,21 @@ function recalcDiff() {
   updateDiffJumpButtons(prevButton, nextButton, diffBlockStarts.length > 0);
   applyFolding();
   focusDiffLines(null, null);
+  const renderMs = performance.now() - renderStartedAt;
+
+  diffViewerPerf.recordRecalc({
+    diffBlockCount: diffBlockStarts.length,
+    pairedOpCount: pairedOps.length,
+    phases: {
+      anchorValidationMs,
+      deriveMs,
+      diffComputeMs,
+      normalizeMs,
+      renderMs,
+    },
+    totalMs: performance.now() - recalcStartedAt,
+    usedCachedDerived: useCachedDerived,
+  });
 }
 
 function buildPaneClearOptions(

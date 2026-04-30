@@ -131879,6 +131879,2244 @@ if (monacoEnvironment?.globalAPI) {
     globalThis.monaco = getGlobalMonaco();
 }
 
+function normalizeText(text2) {
+    return text2.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+}
+
+const DISALLOWED_CALL_NAMES = new Set([ "echo", "if", "for", "foreach", "while", "switch", "case", "return" ]);
+
+function normalizeCallName(name) {
+    if (!name) {
+        return null;
+    }
+    const normalized = name.toLowerCase();
+    if (DISALLOWED_CALL_NAMES.has(normalized)) {
+        return null;
+    }
+    return normalized;
+}
+
+function extractPhpEmbeddedOutputCall(line) {
+    const match2 = line.trim().match(/^<\?(?:php\b)?([\s\S]*?)\?>$/i);
+    if (!match2) {
+        return null;
+    }
+    let body = match2[1]?.trim() ?? "";
+    if (body.startsWith("=")) {
+        body = body.slice(1).trimStart();
+    } else if (/^echo\b/i.test(body)) {
+        body = body.replace(/^echo\b/i, "").trimStart();
+    }
+    const callMatch = body.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+    return normalizeCallName(callMatch?.[1]);
+}
+
+function extractRazorEmbeddedOutputCall(line) {
+    const trimmed = line.trim();
+    const rawMatch = trimmed.match(/^@\s*(?:Html\.)?Raw\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+    if (rawMatch) {
+        return normalizeCallName(rawMatch[1]);
+    }
+    return null;
+}
+
+function extractEmbeddedOutputCall(line) {
+    return extractPhpEmbeddedOutputCall(line) ?? extractRazorEmbeddedOutputCall(line);
+}
+
+const KEYWORDS = new Set([ "var", "let", "const", "function", "fn", "string", "int", "float", "double", "bool", "boolean", "void", "public", "private", "protected", "static", "final", "abstract", "async", "await", "return", "class", "interface", "trait", "extends", "implements", "new", "namespace", "using", "if", "else", "elseif", "for", "foreach", "while", "do", "switch", "case", "break", "continue", "try", "catch", "finally", "throw", "include", "require", "global" ]);
+
+function stripDollarIdentifiers(line) {
+    return line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, "$1");
+}
+
+function stripRazorLinePrefix$2(line) {
+    const match2 = line.match(/^(\s*)@:\s*/);
+    if (!match2) {
+        return line;
+    }
+    return match2[1] + line.slice(match2[0].length);
+}
+
+function extractBraceToken$1(line) {
+    const trimmed = line.trim();
+    if (trimmed === "{") {
+        return "brace_open";
+    }
+    if (trimmed === "}") {
+        return "brace_close";
+    }
+    const phpMatch = trimmed.match(/^<\?\s*(?:php\s*)?([{}])\s*\?\s*>?$/i);
+    if (phpMatch?.[1] === "{") {
+        return "brace_open";
+    }
+    if (phpMatch?.[1] === "}") {
+        return "brace_close";
+    }
+    return null;
+}
+
+function extractLineKey(line) {
+    const normalizedLine = stripRazorLinePrefix$2(line);
+    const braceToken = extractBraceToken$1(normalizedLine);
+    if (braceToken) {
+        return braceToken;
+    }
+    const embeddedOutputCall = extractEmbeddedOutputCall(normalizedLine);
+    if (embeddedOutputCall) {
+        return embeddedOutputCall;
+    }
+    const normalized = stripDollarIdentifiers(normalizedLine.trimStart());
+    const funcMatch = normalized.match(/([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+    if (funcMatch) {
+        const candidate = funcMatch[1].toLowerCase();
+        if (!KEYWORDS.has(candidate)) {
+            return candidate;
+        }
+    }
+    const tokens = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
+    const filtered = tokens.map(token => token.toLowerCase()).filter(token => !KEYWORDS.has(token));
+    if (filtered.length > 0) {
+        return filtered[0];
+    }
+    return null;
+}
+
+function extractAppendLiteral(line) {
+    return extractAppendLiteralWithMap(line)?.payload ?? null;
+}
+
+function parseAppendLiteral(line, options) {
+    const callMatch = line.match(/\.(?:append|appendline|appendformat)\s*\(/i);
+    if (!callMatch || callMatch.index === void 0) {
+        return null;
+    }
+    const startFrom = callMatch.index + callMatch[0].length;
+    const quoteIndex = line.indexOf('"', startFrom);
+    if (quoteIndex === -1) {
+        return null;
+    }
+    const prefix = line.slice(startFrom, quoteIndex);
+    const isInterpolated = prefix.includes("$");
+    const isVerbatim = prefix.includes("@");
+    const result = [];
+    const indices = [];
+    const pushChar = (value, index) => {
+        if (value.length === 0) {
+            return;
+        }
+        result.push(value);
+        indices.push(index);
+    };
+    const pushRepeated = (value, index) => {
+        if (value.length === 0) {
+            return;
+        }
+        for (let j = 0; j < value.length; j += 1) {
+            result.push(value[j]);
+            indices.push(index);
+        }
+    };
+    let i2 = quoteIndex + 1;
+    let endQuote = -1;
+    while (i2 < line.length) {
+        const ch = line[i2];
+        if (!isVerbatim && ch === "\\" && i2 + 1 < line.length) {
+            const next = line[i2 + 1];
+            if (options.preserveEscapes) {
+                pushChar("\\", i2);
+                pushChar(next, i2 + 1);
+            } else if (next === "t") {
+                pushChar("\t", i2);
+            } else if (next === "n") {
+                pushChar("\n", i2);
+            } else if (next === "r") {
+                pushChar("\r", i2);
+            } else {
+                pushChar(next, i2);
+            }
+            i2 += 2;
+            continue;
+        }
+        if (isVerbatim && ch === '"' && line[i2 + 1] === '"') {
+            pushChar('"', i2);
+            i2 += 2;
+            continue;
+        }
+        if (ch === '"') {
+            endQuote = i2;
+            break;
+        }
+        if (isInterpolated && ch === "{") {
+            if (line[i2 + 1] === "{") {
+                pushChar("{", i2);
+                i2 += 2;
+                continue;
+            }
+            pushRepeated("{expr}", i2);
+            i2 += 1;
+            let depth = 1;
+            while (i2 < line.length && depth > 0) {
+                const c = line[i2];
+                if (c === "{" && line[i2 + 1] !== "{") {
+                    depth += 1;
+                } else if (c === "}" && line[i2 + 1] !== "}") {
+                    depth -= 1;
+                }
+                if (c === '"' && !isVerbatim) {
+                    i2 += 1;
+                    while (i2 < line.length) {
+                        if (line[i2] === "\\" && i2 + 1 < line.length) {
+                            i2 += 2;
+                            continue;
+                        }
+                        if (line[i2] === '"') {
+                            i2 += 1;
+                            break;
+                        }
+                        i2 += 1;
+                    }
+                    continue;
+                }
+                i2 += 1;
+            }
+            continue;
+        }
+        if (isInterpolated && ch === "}" && line[i2 + 1] === "}") {
+            pushChar("}", i2);
+            i2 += 2;
+            continue;
+        }
+        pushChar(ch, i2);
+        i2 += 1;
+    }
+    if (endQuote === -1) {
+        return null;
+    }
+    return {
+        payload: result.join(""),
+        indices: indices,
+        startQuote: quoteIndex,
+        endQuote: endQuote
+    };
+}
+
+function extractAppendLiteralWithMap(line) {
+    const parsed = parseAppendLiteral(line, {
+        preserveEscapes: false
+    });
+    if (!parsed || parsed.payload.trim().length === 0) {
+        return null;
+    }
+    return {
+        payload: parsed.payload,
+        indices: parsed.indices
+    };
+}
+
+function extractAppendLiteralInlineMap(line) {
+    const parsed = parseAppendLiteral(line, {
+        preserveEscapes: true
+    });
+    if (!parsed || parsed.payload.trim().length === 0) {
+        return null;
+    }
+    const payloadStart = parsed.startQuote + 1;
+    const payloadEnd = parsed.endQuote;
+    const wrapperRanges = [];
+    if (payloadStart > 0) {
+        wrapperRanges.push({
+            start: 0,
+            end: payloadStart
+        });
+    }
+    if (parsed.endQuote < line.length) {
+        wrapperRanges.push({
+            start: parsed.endQuote,
+            end: line.length
+        });
+    }
+    return {
+        payload: parsed.payload,
+        indices: parsed.indices,
+        wrapperRanges: wrapperRanges,
+        payloadRange: {
+            start: payloadStart,
+            end: payloadEnd
+        }
+    };
+}
+
+function toAppendLiteralOrLine(line) {
+    return extractAppendLiteral(line) ?? line;
+}
+
+function splitLines(text2) {
+    return text2.split("\n");
+}
+
+function normalizeForMatch(line) {
+    const trimmed = stripRazorLinePrefix$1(line).replace(/^\s+/, "");
+    if (isBlankLine(trimmed)) {
+        return "";
+    }
+    const embeddedOutputCall = extractEmbeddedOutputCall(trimmed);
+    if (embeddedOutputCall) {
+        return `embeddedcall:${embeddedOutputCall}`;
+    }
+    const initVar = extractInitVariable$1(trimmed);
+    if (initVar) {
+        return `init:${initVar}`;
+    }
+    const appendLiteral = isAppendLike(trimmed) ? extractAppendLiteral(trimmed) : null;
+    if (appendLiteral) {
+        return `append:${appendLiteral.toLowerCase()}`;
+    }
+    const literal = extractFirstLiteral(trimmed);
+    if (literal && isAppendLike(trimmed)) {
+        return `append:${literal}`;
+    }
+    return trimmed;
+}
+
+function stripRazorLinePrefix$1(line) {
+    const match2 = line.match(/^(\s*)@:\s*/);
+    if (!match2) {
+        return line;
+    }
+    return match2[1] + line.slice(match2[0].length);
+}
+
+function isBlankLine(line) {
+    return line.trim().length === 0;
+}
+
+function buildCompareLines(lines) {
+    return lines.map(line => normalizeForMatch(line));
+}
+
+function stripLeadingTabsAndSpaces$1(value) {
+    return value.replace(/^[ \t]+/, "");
+}
+
+function adjustLeadingFileWhitespaceCompareKey(value) {
+    if (value.startsWith("append:")) {
+        return `append:${stripLeadingTabsAndSpaces$1(value.slice("append:".length))}`;
+    }
+    return stripLeadingTabsAndSpaces$1(value);
+}
+
+function buildCompareLinesWithOptions(lines, options) {
+    const compare2 = buildCompareLines(lines);
+    if (!options.ignoreLeadingFileWhitespace || compare2.length === 0) {
+        return compare2;
+    }
+    return compare2.map(value => adjustLeadingFileWhitespaceCompareKey(value));
+}
+
+function canIgnoreLeadingFileWhitespaceFromText(text2) {
+    if (text2.length === 0) {
+        return true;
+    }
+    return text2[0] !== "\n";
+}
+
+function canIgnoreLeadingFileWhitespaceFromLines(lines) {
+    if (lines.length === 0) {
+        return true;
+    }
+    return (lines[0] ?? "") !== "";
+}
+
+function normalizeDiffLinesOptionsForLines(leftLines, rightLines, options) {
+    return {
+        ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace === true,
+        leftLeadingFileWhitespaceEligible: options.leftLeadingFileWhitespaceEligible ?? canIgnoreLeadingFileWhitespaceFromLines(leftLines),
+        rightLeadingFileWhitespaceEligible: options.rightLeadingFileWhitespaceEligible ?? canIgnoreLeadingFileWhitespaceFromLines(rightLines)
+    };
+}
+
+function hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload$1(leftLine, rightLine) {
+    const leftMap = extractAppendLiteralInlineMap(leftLine);
+    const rightMap = extractAppendLiteralInlineMap(rightLine);
+    if (!leftMap || !rightMap) {
+        return false;
+    }
+    const leftWrapper = leftLine.slice(0, leftMap.payloadRange.start) + leftLine.slice(leftMap.payloadRange.end);
+    const rightWrapper = rightLine.slice(0, rightMap.payloadRange.start) + rightLine.slice(rightMap.payloadRange.end);
+    if (leftWrapper !== rightWrapper) {
+        return false;
+    }
+    if (leftMap.payload === rightMap.payload) {
+        return false;
+    }
+    return stripLeadingTabsAndSpaces$1(leftMap.payload) === stripLeadingTabsAndSpaces$1(rightMap.payload);
+}
+
+function isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options) {
+    if (!options.ignoreLeadingFileWhitespace) {
+        return false;
+    }
+    if (leftLine === rightLine) {
+        return false;
+    }
+    if (stripLeadingTabsAndSpaces$1(leftLine) === stripLeadingTabsAndSpaces$1(rightLine)) {
+        return true;
+    }
+    return hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload$1(leftLine, rightLine);
+}
+
+function extractFirstLiteral(line) {
+    const match2 = line.match(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/);
+    if (!match2) {
+        return null;
+    }
+    return match2[0].slice(1, -1).replace(/\s+/g, " ").toLowerCase();
+}
+
+function hasStringLiteral$1(line) {
+    return /'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/.test(line);
+}
+
+function isAppendLike(line) {
+    return /\.(?:append|appendline|appendformat)\s*\(/i.test(line) || /\.\=/.test(line) || /\+=/.test(line) && hasStringLiteral$1(line);
+}
+
+function extractInitVariable$1(line) {
+    const csharpMatch = line.match(/\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\b/i);
+    if (csharpMatch) {
+        return csharpMatch[1].toLowerCase();
+    }
+    const phpMatch = line.match(/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(['"])\s*\2/);
+    if (phpMatch) {
+        return phpMatch[1].toLowerCase();
+    }
+    return null;
+}
+
+const MYERS_TRACE_SAFE_LENGTH_SUM = 256;
+
+function buildMyersTrace(left, right) {
+    const n2 = left.length;
+    const m = right.length;
+    const max = n2 + m;
+    const offset = max;
+    const v = new Array(2 * max + 1).fill(0);
+    const trace = [];
+    let found = false;
+    for (let d = 0; d <= max; d += 1) {
+        for (let k = -d; k <= d; k += 2) {
+            const kIndex = k + offset;
+            let x;
+            if (k === -d || k !== d && v[kIndex - 1] < v[kIndex + 1]) {
+                x = v[kIndex + 1];
+            } else {
+                x = v[kIndex - 1] + 1;
+            }
+            let y = x - k;
+            while (x < n2 && y < m && left[x] === right[y]) {
+                x += 1;
+                y += 1;
+            }
+            v[kIndex] = x;
+            if (x >= n2 && y >= m) {
+                found = true;
+                break;
+            }
+        }
+        trace.push(v.slice());
+        if (found) {
+            break;
+        }
+    }
+    return trace;
+}
+
+function buildMatchedLineOps(leftLine, rightLine, leftLineNo, rightLineNo, options) {
+    if (leftLine === rightLine) {
+        return [ {
+            type: "equal",
+            leftLine: leftLine,
+            rightLine: rightLine,
+            leftLineNo: leftLineNo,
+            rightLineNo: rightLineNo
+        } ];
+    }
+    if (isBlankLine(leftLine) && isBlankLine(rightLine)) {
+        return [ {
+            type: "equal",
+            leftLine: leftLine,
+            rightLine: rightLine,
+            leftLineNo: leftLineNo,
+            rightLineNo: rightLineNo
+        } ];
+    }
+    if (isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options)) {
+        return [ {
+            type: "equal",
+            leftLine: leftLine,
+            rightLine: rightLine,
+            leftLineNo: leftLineNo,
+            rightLineNo: rightLineNo
+        } ];
+    }
+    return [ {
+        type: "delete",
+        leftLine: leftLine,
+        leftLineNo: leftLineNo
+    }, {
+        type: "insert",
+        rightLine: rightLine,
+        rightLineNo: rightLineNo
+    } ];
+}
+
+function buildDeleteOps(leftLines, leftStart, leftEnd, leftOffset) {
+    const ops = [];
+    for (let index = leftStart; index < leftEnd; index += 1) {
+        ops.push({
+            type: "delete",
+            leftLine: leftLines[index],
+            leftLineNo: leftOffset + index
+        });
+    }
+    return ops;
+}
+
+function buildInsertOps(rightLines, rightStart, rightEnd, rightOffset) {
+    const ops = [];
+    for (let index = rightStart; index < rightEnd; index += 1) {
+        ops.push({
+            type: "insert",
+            rightLine: rightLines[index],
+            rightLineNo: rightOffset + index
+        });
+    }
+    return ops;
+}
+
+function backtrackOps(left, right, trace, leftOffset, rightOffset, options) {
+    const n2 = left.length;
+    const m = right.length;
+    const max = n2 + m;
+    const offset = max;
+    const ops = [];
+    let x = n2;
+    let y = m;
+    for (let d = trace.length - 1; d >= 0; d -= 1) {
+        const v = trace[d];
+        const k = x - y;
+        const kIndex = k + offset;
+        let prevK;
+        if (k === -d || k !== d && v[kIndex - 1] < v[kIndex + 1]) {
+            prevK = k + 1;
+        } else {
+            prevK = k - 1;
+        }
+        const prevX = v[prevK + offset];
+        const prevY = prevX - prevK;
+        while (x > prevX && y > prevY) {
+            const leftLine = left[x - 1];
+            const rightLine = right[y - 1];
+            const globalLeftLineNo = leftOffset + (x - 1);
+            const globalRightLineNo = rightOffset + (y - 1);
+            const matchedOps = buildMatchedLineOps(leftLine, rightLine, globalLeftLineNo, globalRightLineNo, options);
+            for (let index = matchedOps.length - 1; index >= 0; index -= 1) {
+                const op = matchedOps[index];
+                if (op.type === "equal") {
+                    ops.push({
+                        ...op,
+                        leftLineNo: x - 1,
+                        rightLineNo: y - 1
+                    });
+                    continue;
+                }
+                if (op.type === "delete") {
+                    ops.push({
+                        ...op,
+                        leftLineNo: x - 1
+                    });
+                    continue;
+                }
+                ops.push({
+                    ...op,
+                    rightLineNo: y - 1
+                });
+            }
+            x -= 1;
+            y -= 1;
+        }
+        if (d === 0) {
+            break;
+        }
+        if (x === prevX) {
+            ops.push({
+                type: "insert",
+                rightLine: right[y - 1],
+                rightLineNo: y - 1
+            });
+            y -= 1;
+        } else {
+            ops.push({
+                type: "delete",
+                leftLine: left[x - 1],
+                leftLineNo: x - 1
+            });
+            x -= 1;
+        }
+    }
+    return ops.reverse();
+}
+
+function shouldUseMyersTrace(leftLength, rightLength) {
+    return leftLength + rightLength <= MYERS_TRACE_SAFE_LENGTH_SUM;
+}
+
+function findMyersBisect(leftCompare, rightCompare, leftStart, leftEnd, rightStart, rightEnd) {
+    const leftLength = leftEnd - leftStart;
+    const rightLength = rightEnd - rightStart;
+    const maxD = Math.ceil((leftLength + rightLength) / 2);
+    const vOffset = maxD;
+    const vLength = 2 * maxD + 2;
+    const forward = new Int32Array(vLength).fill(-1);
+    const reverse = new Int32Array(vLength).fill(-1);
+    const delta = leftLength - rightLength;
+    const front = delta % 2 !== 0;
+    forward[vOffset + 1] = 0;
+    reverse[vOffset + 1] = 0;
+    let forwardStart = 0;
+    let forwardEnd = 0;
+    let reverseStart = 0;
+    let reverseEnd = 0;
+    for (let d = 0; d <= maxD; d += 1) {
+        for (let k = -d + forwardStart; k <= d - forwardEnd; k += 2) {
+            const kOffset = vOffset + k;
+            let x;
+            if (k === -d || k !== d && forward[kOffset - 1] < forward[kOffset + 1]) {
+                x = forward[kOffset + 1];
+            } else {
+                x = forward[kOffset - 1] + 1;
+            }
+            let y = x - k;
+            while (x < leftLength && y < rightLength && leftCompare[leftStart + x] === rightCompare[rightStart + y]) {
+                x += 1;
+                y += 1;
+            }
+            forward[kOffset] = x;
+            if (x > leftLength) {
+                forwardEnd += 2;
+            } else if (y > rightLength) {
+                forwardStart += 2;
+            } else if (front) {
+                const reverseOffset = vOffset + delta - k;
+                if (reverseOffset >= 0 && reverseOffset < vLength && reverse[reverseOffset] !== -1) {
+                    const reverseX = leftLength - reverse[reverseOffset];
+                    if (x >= reverseX) {
+                        return {
+                            leftMid: leftStart + x,
+                            rightMid: rightStart + y
+                        };
+                    }
+                }
+            }
+        }
+        for (let k = -d + reverseStart; k <= d - reverseEnd; k += 2) {
+            const kOffset = vOffset + k;
+            let x;
+            if (k === -d || k !== d && reverse[kOffset - 1] < reverse[kOffset + 1]) {
+                x = reverse[kOffset + 1];
+            } else {
+                x = reverse[kOffset - 1] + 1;
+            }
+            let y = x - k;
+            while (x < leftLength && y < rightLength && leftCompare[leftEnd - x - 1] === rightCompare[rightEnd - y - 1]) {
+                x += 1;
+                y += 1;
+            }
+            reverse[kOffset] = x;
+            if (x > leftLength) {
+                reverseEnd += 2;
+            } else if (y > rightLength) {
+                reverseStart += 2;
+            } else if (!front) {
+                const forwardOffset = vOffset + delta - k;
+                if (forwardOffset >= 0 && forwardOffset < vLength && forward[forwardOffset] !== -1) {
+                    const forwardX = forward[forwardOffset];
+                    const forwardK = forwardOffset - vOffset;
+                    const forwardY = forwardX - forwardK;
+                    const reverseX = leftLength - x;
+                    if (forwardX >= reverseX) {
+                        return {
+                            leftMid: leftStart + forwardX,
+                            rightMid: rightStart + forwardY
+                        };
+                    }
+                }
+            }
+        }
+    }
+    return {
+        leftMid: leftStart + Math.floor(leftLength / 2),
+        rightMid: rightStart + Math.floor(rightLength / 2)
+    };
+}
+
+function hasSharedCompareKey(leftCompare, rightCompare, leftStart, leftEnd, rightStart, rightEnd) {
+    const leftLength = leftEnd - leftStart;
+    const rightLength = rightEnd - rightStart;
+    const scanLeftFirst = leftLength <= rightLength;
+    const smallerStart = scanLeftFirst ? leftStart : rightStart;
+    const smallerEnd = scanLeftFirst ? leftEnd : rightEnd;
+    const smallerSource = scanLeftFirst ? leftCompare : rightCompare;
+    const largerStart = scanLeftFirst ? rightStart : leftStart;
+    const largerEnd = scanLeftFirst ? rightEnd : leftEnd;
+    const largerSource = scanLeftFirst ? rightCompare : leftCompare;
+    const keys = new Set;
+    for (let index = smallerStart; index < smallerEnd; index += 1) {
+        keys.add(smallerSource[index]);
+    }
+    for (let index = largerStart; index < largerEnd; index += 1) {
+        if (keys.has(largerSource[index])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function buildKeyMap(lines) {
+    const map = new Map;
+    lines.forEach((line, index) => {
+        const compareLine = toAppendLiteralOrLine(line);
+        const rawKey = extractLineKey(compareLine);
+        const key = rawKey ?? compareLine.trimStart();
+        const entry = map.get(key);
+        if (entry) {
+            entry.count += 1;
+        } else {
+            map.set(key, {
+                key: key,
+                index: index,
+                count: 1
+            });
+        }
+    });
+    return map;
+}
+
+function buildUniquePairs(left, right) {
+    const leftMap = buildKeyMap(left);
+    const rightMap = buildKeyMap(right);
+    const pairs = [];
+    leftMap.forEach((leftEntry, line) => {
+        if (leftEntry.count !== 1) {
+            return;
+        }
+        const rightEntry = rightMap.get(line);
+        if (!rightEntry || rightEntry.count !== 1) {
+            return;
+        }
+        pairs.push({
+            leftIndex: leftEntry.index,
+            rightIndex: rightEntry.index
+        });
+    });
+    return pairs.sort((a, b) => a.leftIndex - b.leftIndex);
+}
+
+function longestIncreasingPairs(pairs) {
+    if (pairs.length === 0) {
+        return [];
+    }
+    const tailValues = [];
+    const tailIndices = [];
+    const prevIndices = new Array(pairs.length).fill(-1);
+    const lowerBound = value => {
+        let low = 0;
+        let high = tailValues.length;
+        while (low < high) {
+            const mid = Math.floor((low + high) / 2);
+            if (tailValues[mid] < value) {
+                low = mid + 1;
+            } else {
+                high = mid;
+            }
+        }
+        return low;
+    };
+    for (let i2 = 0; i2 < pairs.length; i2 += 1) {
+        const value = pairs[i2].rightIndex;
+        const pos = lowerBound(value);
+        if (pos === tailValues.length) {
+            tailValues.push(value);
+            tailIndices.push(i2);
+        } else {
+            tailValues[pos] = value;
+            tailIndices[pos] = i2;
+        }
+        if (pos > 0) {
+            prevIndices[i2] = tailIndices[pos - 1];
+        }
+    }
+    let k = tailIndices[tailIndices.length - 1];
+    const sequence = [];
+    while (k >= 0) {
+        sequence.push(pairs[k]);
+        k = prevIndices[k];
+    }
+    return sequence.reverse();
+}
+
+function offsetOps$1(ops, leftOffset, rightOffset) {
+    return ops.map(op => {
+        if (op.type === "delete") {
+            return {
+                ...op,
+                leftLineNo: op.leftLineNo === void 0 ? void 0 : op.leftLineNo + leftOffset
+            };
+        }
+        if (op.type === "insert") {
+            return {
+                ...op,
+                rightLineNo: op.rightLineNo === void 0 ? void 0 : op.rightLineNo + rightOffset
+            };
+        }
+        return {
+            ...op,
+            leftLineNo: op.leftLineNo === void 0 ? void 0 : op.leftLineNo + leftOffset,
+            rightLineNo: op.rightLineNo === void 0 ? void 0 : op.rightLineNo + rightOffset
+        };
+    });
+}
+
+function diffLinesMyers(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset, options) {
+    function diffRange(leftStart, leftEnd, rightStart, rightEnd) {
+        const prefix = [];
+        let nextLeftStart = leftStart;
+        let nextRightStart = rightStart;
+        while (nextLeftStart < leftEnd && nextRightStart < rightEnd && leftCompare[nextLeftStart] === rightCompare[nextRightStart]) {
+            prefix.push(...buildMatchedLineOps(leftLines[nextLeftStart], rightLines[nextRightStart], leftOffset + nextLeftStart, rightOffset + nextRightStart, options));
+            nextLeftStart += 1;
+            nextRightStart += 1;
+        }
+        const suffixPairs = [];
+        let nextLeftEnd = leftEnd;
+        let nextRightEnd = rightEnd;
+        while (nextLeftStart < nextLeftEnd && nextRightStart < nextRightEnd && leftCompare[nextLeftEnd - 1] === rightCompare[nextRightEnd - 1]) {
+            nextLeftEnd -= 1;
+            nextRightEnd -= 1;
+            suffixPairs.push({
+                leftIndex: nextLeftEnd,
+                rightIndex: nextRightEnd
+            });
+        }
+        const leftLength = nextLeftEnd - nextLeftStart;
+        const rightLength = nextRightEnd - nextRightStart;
+        let middle;
+        if (leftLength === 0) {
+            middle = buildInsertOps(rightLines, nextRightStart, nextRightEnd, rightOffset);
+        } else if (rightLength === 0) {
+            middle = buildDeleteOps(leftLines, nextLeftStart, nextLeftEnd, leftOffset);
+        } else if (!hasSharedCompareKey(leftCompare, rightCompare, nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd)) {
+            middle = buildDeleteOps(leftLines, nextLeftStart, nextLeftEnd, leftOffset).concat(buildInsertOps(rightLines, nextRightStart, nextRightEnd, rightOffset));
+        } else if (shouldUseMyersTrace(leftLength, rightLength)) {
+            const trace = buildMyersTrace(leftCompare.slice(nextLeftStart, nextLeftEnd), rightCompare.slice(nextRightStart, nextRightEnd));
+            middle = offsetOps$1(backtrackOps(leftLines.slice(nextLeftStart, nextLeftEnd), rightLines.slice(nextRightStart, nextRightEnd), trace, nextLeftStart, nextRightStart, options), leftOffset, rightOffset);
+        } else {
+            const split = findMyersBisect(leftCompare, rightCompare, nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd);
+            if (split.leftMid === nextLeftStart && split.rightMid === nextRightStart) {
+                middle = leftLength >= rightLength ? [ {
+                    type: "delete",
+                    leftLine: leftLines[nextLeftStart],
+                    leftLineNo: leftOffset + nextLeftStart
+                }, ...diffRange(nextLeftStart + 1, nextLeftEnd, nextRightStart, nextRightEnd) ] : [ {
+                    type: "insert",
+                    rightLine: rightLines[nextRightStart],
+                    rightLineNo: rightOffset + nextRightStart
+                }, ...diffRange(nextLeftStart, nextLeftEnd, nextRightStart + 1, nextRightEnd) ];
+            } else if (split.leftMid === nextLeftEnd && split.rightMid === nextRightEnd) {
+                middle = leftLength >= rightLength ? [ ...diffRange(nextLeftStart, nextLeftEnd - 1, nextRightStart, nextRightEnd), {
+                    type: "delete",
+                    leftLine: leftLines[nextLeftEnd - 1],
+                    leftLineNo: leftOffset + nextLeftEnd - 1
+                } ] : [ ...diffRange(nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd - 1), {
+                    type: "insert",
+                    rightLine: rightLines[nextRightEnd - 1],
+                    rightLineNo: rightOffset + nextRightEnd - 1
+                } ];
+            } else {
+                middle = diffRange(nextLeftStart, split.leftMid, nextRightStart, split.rightMid).concat(diffRange(split.leftMid, nextLeftEnd, split.rightMid, nextRightEnd));
+            }
+        }
+        const suffix = [];
+        for (let index = suffixPairs.length - 1; index >= 0; index -= 1) {
+            const pair = suffixPairs[index];
+            suffix.push(...buildMatchedLineOps(leftLines[pair.leftIndex], rightLines[pair.rightIndex], leftOffset + pair.leftIndex, rightOffset + pair.rightIndex, options));
+        }
+        return prefix.concat(middle, suffix);
+    }
+    return diffRange(0, leftLines.length, 0, rightLines.length);
+}
+
+function diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset, options) {
+    if (leftLines.length === 0 && rightLines.length === 0) {
+        return [];
+    }
+    const anchors = longestIncreasingPairs(buildUniquePairs(leftLines, rightLines));
+    if (anchors.length === 0) {
+        return diffLinesMyers(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset, options);
+    }
+    const result = [];
+    let leftStart = 0;
+    let rightStart = 0;
+    for (const anchor of anchors) {
+        const leftSegment = leftLines.slice(leftStart, anchor.leftIndex);
+        const rightSegment = rightLines.slice(rightStart, anchor.rightIndex);
+        result.push(...diffLinesPatience(leftSegment, rightSegment, leftCompare.slice(leftStart, anchor.leftIndex), rightCompare.slice(rightStart, anchor.rightIndex), leftOffset + leftStart, rightOffset + rightStart, options));
+        const leftLine = leftLines[anchor.leftIndex] ?? "";
+        const rightLine = rightLines[anchor.rightIndex] ?? "";
+        const leftKey = leftCompare[anchor.leftIndex] ?? "";
+        const rightKey = rightCompare[anchor.rightIndex] ?? "";
+        if (leftLine === rightLine) {
+            result.push({
+                type: "equal",
+                leftLine: leftLine,
+                rightLine: rightLine,
+                leftLineNo: leftOffset + anchor.leftIndex,
+                rightLineNo: rightOffset + anchor.rightIndex
+            });
+        } else if (leftKey === rightKey && isBlankLine(leftLine) && isBlankLine(rightLine)) {
+            result.push({
+                type: "equal",
+                leftLine: leftLine,
+                rightLine: rightLine,
+                leftLineNo: leftOffset + anchor.leftIndex,
+                rightLineNo: rightOffset + anchor.rightIndex
+            });
+        } else if (leftKey === rightKey && isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options)) {
+            result.push({
+                type: "equal",
+                leftLine: leftLine,
+                rightLine: rightLine,
+                leftLineNo: leftOffset + anchor.leftIndex,
+                rightLineNo: rightOffset + anchor.rightIndex
+            });
+        } else if (leftKey === rightKey) {
+            result.push({
+                type: "delete",
+                leftLine: leftLine,
+                leftLineNo: leftOffset + anchor.leftIndex
+            });
+            result.push({
+                type: "insert",
+                rightLine: rightLine,
+                rightLineNo: rightOffset + anchor.rightIndex
+            });
+        } else {
+            result.push(...diffLinesMyers([ leftLine ], [ rightLine ], [ leftKey ], [ rightKey ], leftOffset + anchor.leftIndex, rightOffset + anchor.rightIndex, options));
+        }
+        leftStart = anchor.leftIndex + 1;
+        rightStart = anchor.rightIndex + 1;
+    }
+    const tailLeft = leftLines.slice(leftStart);
+    const tailRight = rightLines.slice(rightStart);
+    result.push(...diffLinesPatience(tailLeft, tailRight, leftCompare.slice(leftStart), rightCompare.slice(rightStart), leftOffset + leftStart, rightOffset + rightStart, options));
+    return result;
+}
+
+function diffLinesFromLines(leftLines, rightLines, options = {}) {
+    const resolved = normalizeDiffLinesOptionsForLines(leftLines, rightLines, options);
+    const leftCompare = buildCompareLinesWithOptions(leftLines, resolved);
+    const rightCompare = buildCompareLinesWithOptions(rightLines, resolved);
+    return diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, 0, 0, resolved);
+}
+
+function diffLines(leftText, rightText, options = {}) {
+    const leftNormalized = normalizeText(leftText);
+    const rightNormalized = normalizeText(rightText);
+    const leftLines = splitLines(leftNormalized);
+    const rightLines = splitLines(rightNormalized);
+    return diffLinesFromLines(leftLines, rightLines, {
+        ...options,
+        leftLeadingFileWhitespaceEligible: options.leftLeadingFileWhitespaceEligible ?? canIgnoreLeadingFileWhitespaceFromText(leftNormalized),
+        rightLeadingFileWhitespaceEligible: options.rightLeadingFileWhitespaceEligible ?? canIgnoreLeadingFileWhitespaceFromText(rightNormalized)
+    });
+}
+
+const MODIFIER_KEYWORDS = new Set([ "var", "let", "const", "function", "fn", "def", "string", "int", "float", "double", "bool", "boolean", "void", "public", "private", "protected", "internal", "static", "readonly", "final", "abstract", "async", "override", "virtual", "return", "class", "interface", "trait", "extends", "implements", "new", "namespace", "using", "if", "else", "elseif", "for", "foreach", "while", "do", "switch", "case", "break", "continue", "try", "catch", "finally", "throw", "include", "require", "global", "define" ]);
+
+const DECLARATION_KEYWORDS = new Set([ "function", "fn", "def" ]);
+
+const DECLARATION_MODIFIERS = new Set([ "public", "private", "protected", "internal", "static", "readonly", "final", "abstract", "async", "override", "virtual" ]);
+
+function stripStringLiterals(source) {
+    return source.replace(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g, "");
+}
+
+function stripRazorLinePrefix(line) {
+    const match2 = line.match(/^(\s*)@:\s*/);
+    if (!match2) {
+        return line;
+    }
+    return match2[1] + line.slice(match2[0].length);
+}
+
+function hasStringLiteral(line) {
+    return /'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/.test(line);
+}
+
+function isElseLine(line) {
+    const stripped = stripStringLiterals(line);
+    return /\belse\b/i.test(stripped);
+}
+
+function normalizeCommentText(line) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+        return null;
+    }
+    let raw = null;
+    if (trimmed.startsWith("///")) {
+        raw = trimmed.slice(3);
+    } else if (trimmed.startsWith("//")) {
+        raw = trimmed.slice(2);
+    } else if (trimmed.startsWith("/*") && trimmed.endsWith("*/")) {
+        raw = trimmed.slice(2, -2);
+    } else if (trimmed.startsWith("\x3c!--") && trimmed.endsWith("--\x3e")) {
+        raw = trimmed.slice(4, -3);
+    } else if (trimmed.startsWith("#")) {
+        raw = trimmed.slice(1);
+    }
+    if (raw === null) {
+        return null;
+    }
+    const withoutTags = raw.replace(/<\/?[^>]+>/g, " ");
+    const normalized = withoutTags.replace(/\s+/g, " ").trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
+}
+
+function detectAppendLike(line) {
+    return /\.(?:append|appendline|appendformat)\s*\(/i.test(line) || /\.\=/.test(line) || /\+=/.test(line) && hasStringLiteral(line);
+}
+
+function extractInitVariable(line) {
+    const trimmed = line.trimStart();
+    const csharpMatch = trimmed.match(/\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\b/i);
+    if (csharpMatch) {
+        return csharpMatch[1].toLowerCase();
+    }
+    const phpMatch = trimmed.match(/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(['"])\s*\2/);
+    if (phpMatch) {
+        return phpMatch[1].toLowerCase();
+    }
+    return null;
+}
+
+function extractDateFormatInfo(line) {
+    const match2 = line.match(/\b(?:to_char|format)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*['"]([^'"]+)['"]\s*\)/i);
+    if (!match2) {
+        return null;
+    }
+    return {
+        arg: match2[1].toLowerCase(),
+        format: match2[2].toLowerCase()
+    };
+}
+
+function normalizeLine(line) {
+    let normalized = line.trimStart().replace(/\$/g, "");
+    normalized = normalized.replace(/(?:\b[A-Za-z_][A-Za-z0-9_]*\.)+/g, "");
+    return normalized;
+}
+
+function normalizeFragment(fragment) {
+    return fragment.replace(/\s+/g, " ").replace(/\s*([{}();:,])\s*/g, "$1").replace(/['"]/g, '"').trim().toLowerCase();
+}
+
+function normalizeLiteralToken(value) {
+    return normalizeFragment(value);
+}
+
+function normalizeTemplateExpression(expression) {
+    return expression.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, "$1").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function normalizeTemplateLine(line) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+        return null;
+    }
+    let base = null;
+    if (detectAppendLike(line)) {
+        const literal = extractAppendLiteral(line) ?? extractLiterals(line)[0];
+        if (!literal) {
+            return null;
+        }
+        base = literal;
+    } else if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+        base = trimmed;
+    }
+    if (!base) {
+        return null;
+    }
+    let normalized = base.replace(/[¥￥]/g, "\\");
+    normalized = normalized.replace(/<\?\s*=?\s*([^?]*?)\s*\?>/gi, (_, expr) => `{${normalizeTemplateExpression(expr) || "expr"}}`);
+    normalized = normalized.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, name) => `{${name.toLowerCase()}}`);
+    normalized = normalized.replace(/\{[^}]*\}/g, "{expr}");
+    return normalizeFragment(normalized);
+}
+
+function extractHtmlSignature(line) {
+    const attrs = [];
+    const normalized = line.replace(/<\?\s*=?\s*[^?]*?\s*\?>/gi, " ");
+    const tagMatch = normalized.match(/<\s*\/?\s*([a-z][a-z0-9-]*)/i);
+    const tag2 = tagMatch ? tagMatch[1].toLowerCase() : null;
+    const attrRegex = /([a-zA-Z_:][a-zA-Z0-9_:-]*)\s*=/g;
+    let match2;
+    while ((match2 = attrRegex.exec(normalized)) !== null) {
+        attrs.push(match2[1].toLowerCase());
+    }
+    return {
+        tag: tag2,
+        attrs: attrs
+    };
+}
+
+function extractStructuredFragment(line) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) {
+        return null;
+    }
+    const switchLabel = normalizeSwitchLabel(trimmed);
+    if (switchLabel) {
+        return switchLabel;
+    }
+    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
+        return normalizeFragment(trimmed);
+    }
+    if (trimmed === "{" || trimmed === "}" || /^<\?\s*(?:php\s*)?[{}]\s*\?\s*>?$/i.test(trimmed)) {
+        return null;
+    }
+    if (detectAppendLike(line)) {
+        const literal = extractAppendLiteral(line) ?? extractLiterals(line)[0];
+        if (literal) {
+            return normalizeSwitchLabel(literal) ?? normalizeFragment(literal);
+        }
+        return null;
+    }
+    if (/^(function|console\.|return|if|for|while|switch|case|default|break|continue)\b/i.test(trimmed)) {
+        return normalizeFragment(trimmed);
+    }
+    if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
+        return normalizeFragment(trimmed);
+    }
+    if (!/[{};:]/.test(trimmed)) {
+        return null;
+    }
+    if (/^[A-Za-z0-9_.#\s-]+{\s*$/i.test(trimmed)) {
+        return normalizeFragment(trimmed);
+    }
+    if (/^}\s*;?\s*$/.test(trimmed)) {
+        return normalizeFragment(trimmed);
+    }
+    if (/^}\s*\)\s*;?\s*$/.test(trimmed)) {
+        return normalizeFragment(trimmed);
+    }
+    if (/^\)\s*;?\s*$/.test(trimmed)) {
+        return normalizeFragment(trimmed);
+    }
+    if (/^[A-Za-z-]+\s*:\s*[^;]+;?\s*$/.test(trimmed)) {
+        return normalizeFragment(trimmed);
+    }
+    return null;
+}
+
+function normalizeSwitchLabel(line) {
+    const trimmed = line.trim();
+    if (/^case\b/i.test(trimmed)) {
+        return "case:";
+    }
+    if (/^default\s*:/i.test(trimmed)) {
+        return "default:";
+    }
+    return null;
+}
+
+function extractBraceToken(line) {
+    const trimmed = line.trim();
+    if (trimmed === "{") {
+        return "brace_open";
+    }
+    if (trimmed === "}") {
+        return "brace_close";
+    }
+    if (/^}\s*\)\s*;?\s*$/.test(trimmed)) {
+        return "brace_close";
+    }
+    if (/^\)\s*;?\s*$/.test(trimmed)) {
+        return "brace_close";
+    }
+    const phpMatch = trimmed.match(/^<\?\s*(?:php\s*)?([{}])\s*\?\s*>?$/i);
+    if (phpMatch?.[1] === "{") {
+        return "brace_open";
+    }
+    if (phpMatch?.[1] === "}") {
+        return "brace_close";
+    }
+    return null;
+}
+
+function unescapeLiteral(value) {
+    return value.replace(/\\\\/g, "\\").replace(/\\"/g, '"').replace(/\\'/g, "'");
+}
+
+function extractLiterals(line) {
+    const matches = line.match(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g) ?? [];
+    const literals = [];
+    matches.forEach(value => {
+        const unescaped = unescapeLiteral(value.slice(1, -1)).replace(/[¥￥]/g, "\\");
+        const normalized = normalizeLiteralToken(unescaped);
+        if (normalized.length > 0) {
+            literals.push(normalized);
+        }
+        if (normalized.endsWith(".php")) {
+            const base = normalized.slice(0, -4);
+            if (base.length > 0) {
+                literals.push(base);
+            }
+        }
+    });
+    return literals;
+}
+
+function extractHtmlHintTokens(source) {
+    const tokens = [];
+    const tagMatches = source.matchAll(/<\s*\/?\s*([a-z][a-z0-9-]*)/gi);
+    for (const match2 of tagMatches) {
+        tokens.push(`hint:html:tag:${match2[1].toLowerCase()}`);
+    }
+    if (/\bclass\s*=/.test(source)) {
+        tokens.push("hint:html:attr:class");
+    }
+    if (/\bid\s*=/.test(source)) {
+        tokens.push("hint:html:attr:id");
+    }
+    if (/\bhref\s*=/.test(source)) {
+        tokens.push("hint:html:attr:href");
+    }
+    if (/\bsrc\s*=/.test(source)) {
+        tokens.push("hint:html:attr:src");
+    }
+    if (/\brole\s*=/.test(source)) {
+        tokens.push("hint:html:attr:role");
+    }
+    if (/\btype\s*=/.test(source)) {
+        tokens.push("hint:html:attr:type");
+    }
+    if (/\bdata-[a-z0-9_-]+\s*=/.test(source)) {
+        tokens.push("hint:html:attr:data");
+    }
+    if (/\baria-[a-z0-9_-]+\s*=/.test(source)) {
+        tokens.push("hint:html:attr:aria");
+    }
+    return tokens;
+}
+
+function extractJsHintTokens(source) {
+    const tokens = [];
+    if (/\bconst\b/.test(source)) {
+        tokens.push("hint:js:const");
+    }
+    if (/\blet\b/.test(source)) {
+        tokens.push("hint:js:let");
+    }
+    if (/\bvar\b/.test(source)) {
+        tokens.push("hint:js:var");
+    }
+    if (/\bdocument\b/.test(source)) {
+        tokens.push("hint:js:document");
+    }
+    if (/\bwindow\b/.test(source)) {
+        tokens.push("hint:js:window");
+    }
+    if (/\bquerySelector(All)?\b/.test(source)) {
+        tokens.push("hint:js:querySelector");
+    }
+    if (/\bgetElementById\b/.test(source)) {
+        tokens.push("hint:js:getElementById");
+    }
+    if (/\bgetElementsByClassName\b/.test(source)) {
+        tokens.push("hint:js:getElementsByClassName");
+    }
+    if (/\baddEventListener\b/.test(source)) {
+        tokens.push("hint:js:addEventListener");
+    }
+    if (/\bclassList\b/.test(source)) {
+        tokens.push("hint:js:classList");
+    }
+    if (/\binnerHTML\b/.test(source)) {
+        tokens.push("hint:js:innerHTML");
+    }
+    if (/\btextContent\b/.test(source)) {
+        tokens.push("hint:js:textContent");
+    }
+    if (/\bfunction\b/.test(source)) {
+        tokens.push("hint:js:function");
+    }
+    if (/\breturn\b/.test(source)) {
+        tokens.push("hint:js:return");
+    }
+    if (/\bswitch\b/.test(source)) {
+        tokens.push("hint:js:switch");
+    }
+    if (/\bcase\b/.test(source)) {
+        tokens.push("hint:js:case");
+    }
+    if (/\bdefault\b/.test(source)) {
+        tokens.push("hint:js:default");
+    }
+    if (/\bbreak\b/.test(source)) {
+        tokens.push("hint:js:break");
+    }
+    if (/\bcontinue\b/.test(source)) {
+        tokens.push("hint:js:continue");
+    }
+    if (/\bif\b/.test(source)) {
+        tokens.push("hint:js:if");
+    }
+    if (/\bfor\b/.test(source)) {
+        tokens.push("hint:js:for");
+    }
+    if (/\bwhile\b/.test(source)) {
+        tokens.push("hint:js:while");
+    }
+    if (/=>/.test(source)) {
+        tokens.push("hint:js:arrow");
+    }
+    return tokens;
+}
+
+function extractEmbeddedHintTokens(source) {
+    const tokens = new Set;
+    extractHtmlHintTokens(source).forEach(token => tokens.add(token));
+    extractJsHintTokens(source).forEach(token => tokens.add(token));
+    return [ ...tokens ];
+}
+
+function extractNumbers(line) {
+    return line.match(/\b\d+(?:\.\d+)?\b/g) ?? [];
+}
+
+function extractIdentifiers(line) {
+    const normalized = normalizeLine(line);
+    const matches = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
+    return matches.map(token => token.toLowerCase()).filter(token => !MODIFIER_KEYWORDS.has(token));
+}
+
+function extractFunctionName(line) {
+    const normalized = normalizeLine(line);
+    const funcMatch = normalized.match(/\b(function|fn|def)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/i);
+    if (funcMatch) {
+        return funcMatch[2].toLowerCase();
+    }
+    const typeMatch = normalized.match(/\b([A-Za-z_][A-Za-z0-9_<>,\[\]]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
+    if (typeMatch) {
+        return typeMatch[2].toLowerCase();
+    }
+    return null;
+}
+
+function extractMemberAccessName(line) {
+    const normalized = line.trimStart().replace(/\$/g, "").replace(/\s+/g, " ");
+    const match2 = normalized.match(/(?:\b[A-Za-z_][A-Za-z0-9_]*\s*(?:\.|->)\s*)+([A-Za-z_][A-Za-z0-9_]*)\b/);
+    if (!match2) {
+        return null;
+    }
+    return match2[1].toLowerCase();
+}
+
+function detectCategory(line) {
+    const normalized = normalizeLine(line);
+    const hasDeclarationKeyword = Array.from(DECLARATION_KEYWORDS).some(keyword => new RegExp(`\\b${keyword}\\b`, "i").test(normalized));
+    if (hasDeclarationKeyword) {
+        return "decl";
+    }
+    const hasModifier2 = Array.from(DECLARATION_MODIFIERS).some(modifier => new RegExp(`\\b${modifier}\\b`, "i").test(normalized));
+    if (hasModifier2 && /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(normalized)) {
+        return "decl";
+    }
+    if (/\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(normalized)) {
+        return "call";
+    }
+    return "other";
+}
+
+function pickPrimaryId(identifiers, literals, line) {
+    const funcName = extractFunctionName(line);
+    if (funcName && !MODIFIER_KEYWORDS.has(funcName)) {
+        return funcName;
+    }
+    const memberAccessName = extractMemberAccessName(line);
+    if (memberAccessName && !MODIFIER_KEYWORDS.has(memberAccessName)) {
+        return memberAccessName;
+    }
+    const primaryCandidates = identifiers.filter(token => !token.startsWith("hint:") && !token.startsWith("codefrag:"));
+    if (primaryCandidates.length > 0) {
+        return primaryCandidates.reduce((best, current) => current.length > best.length ? current : best);
+    }
+    if (literals.length > 0) {
+        return literals.reduce((best, current) => current.length > best.length ? current : best);
+    }
+    return null;
+}
+
+function buildLineFeatures(line) {
+    const normalizedLine = stripRazorLinePrefix(line);
+    const appendLike = detectAppendLike(normalizedLine);
+    const appendLiteral = appendLike ? extractAppendLiteral(normalizedLine) : null;
+    const featureLine = appendLiteral ?? normalizedLine;
+    const identifiers = extractIdentifiers(featureLine);
+    const literals = extractLiterals(featureLine);
+    const numbers = extractNumbers(featureLine);
+    const embeddedOutputCall = extractEmbeddedOutputCall(normalizedLine);
+    if (embeddedOutputCall) {
+        identifiers.push(`embeddedcall:${embeddedOutputCall}`);
+    }
+    const commentText = normalizeCommentText(featureLine);
+    if (commentText) {
+        identifiers.push("comment");
+        identifiers.push(`comment:${commentText}`);
+        if (!literals.includes(commentText)) {
+            literals.push(commentText);
+        }
+    }
+    const templateSignature = normalizeTemplateLine(featureLine);
+    if (templateSignature) {
+        identifiers.push(`template:${templateSignature}`);
+        const signature = appendLiteral ?? extractLiterals(featureLine)[0] ?? featureLine;
+        const htmlSignature = extractHtmlSignature(signature);
+        if (htmlSignature.tag) {
+            identifiers.push(`htmltag:${htmlSignature.tag}`);
+        }
+        htmlSignature.attrs.forEach(attr => identifiers.push(`htmlattr:${attr}`));
+    }
+    const structuredFragment = extractStructuredFragment(featureLine);
+    if (structuredFragment) {
+        identifiers.push(`codefrag:${structuredFragment}`);
+        if (structuredFragment === "{") {
+            identifiers.push("brace_open");
+        } else if (structuredFragment === "}") {
+            identifiers.push("brace_close");
+        }
+    }
+    if (isElseLine(featureLine)) {
+        identifiers.push("else_line");
+    }
+    const braceToken = extractBraceToken(featureLine);
+    if (braceToken) {
+        identifiers.push(braceToken);
+    }
+    const category = detectCategory(featureLine);
+    const primaryId = embeddedOutputCall ? `embeddedcall:${embeddedOutputCall}` : pickPrimaryId(identifiers, literals, featureLine);
+    extractEmbeddedHintTokens(featureLine).forEach(token => identifiers.push(token));
+    if (appendLike) {
+        literals.forEach(literal => {
+            extractEmbeddedHintTokens(literal).forEach(token => identifiers.push(token));
+        });
+    }
+    if (appendLike && !identifiers.includes("append")) {
+        identifiers.push("append");
+    }
+    if (appendLiteral) {
+        const normalizedLiteral = normalizeLiteralToken(appendLiteral);
+        if (normalizedLiteral.length > 0 && !literals.includes(normalizedLiteral)) {
+            literals.push(normalizedLiteral);
+        }
+    }
+    const initVar = extractInitVariable(featureLine);
+    if (initVar) {
+        identifiers.push("init");
+        identifiers.push(`init:${initVar}`);
+    }
+    const dateFormat = extractDateFormatInfo(featureLine);
+    if (dateFormat) {
+        identifiers.push("dateformat");
+        identifiers.push(`dateformat:${dateFormat.format}`);
+        identifiers.push(`dateformatarg:${dateFormat.arg}`);
+    }
+    return {
+        identifiers: identifiers,
+        literals: literals,
+        numbers: numbers,
+        primaryId: primaryId,
+        category: category
+    };
+}
+
+function filterHintTokens(identifiers) {
+    return identifiers.filter(token => token.startsWith("hint:"));
+}
+
+function filterStrongIdentifiers(identifiers) {
+    return identifiers.filter(token => !token.startsWith("hint:") && !token.startsWith("codefrag:"));
+}
+
+function intersectCount(left, right) {
+    if (left.length === 0 || right.length === 0) {
+        return 0;
+    }
+    const rightSet = new Set(right);
+    let count = 0;
+    left.forEach(token => {
+        if (rightSet.has(token)) {
+            count += 1;
+        }
+    });
+    return count;
+}
+
+function jaccardSimilarity(left, right) {
+    if (left.length === 0 && right.length === 0) {
+        return 0;
+    }
+    const setLeft = new Set(left);
+    const setRight = new Set(right);
+    const union = new Set([ ...setLeft, ...setRight ]);
+    if (union.size === 0) {
+        return 0;
+    }
+    let intersection2 = 0;
+    setLeft.forEach(token => {
+        if (setRight.has(token)) {
+            intersection2 += 1;
+        }
+    });
+    return intersection2 / union.size;
+}
+
+function scoreLinePair(left, right) {
+    const strongLeftIds = filterStrongIdentifiers(left.identifiers);
+    const strongRightIds = filterStrongIdentifiers(right.identifiers);
+    const idOverlap = intersectCount(strongLeftIds, strongRightIds);
+    const hintOverlap = intersectCount(filterHintTokens(left.identifiers), filterHintTokens(right.identifiers));
+    const literalOverlap = intersectCount(left.literals, right.literals);
+    const numberOverlap = intersectCount(left.numbers, right.numbers);
+    const commentOverlap = left.identifiers.some(token => token.startsWith("comment:") && right.identifiers.includes(token));
+    const initOverlap = left.identifiers.some(token => token.startsWith("init:") && right.identifiers.includes(token));
+    const dateFormatOverlap = left.identifiers.some(token => token.startsWith("dateformat:") && right.identifiers.includes(token));
+    const dateFormatArgOverlap = left.identifiers.some(token => token.startsWith("dateformatarg:") && right.identifiers.includes(token));
+    const codefragOverlap = left.identifiers.some(token => token.startsWith("codefrag:") && right.identifiers.includes(token));
+    const braceOverlap = left.identifiers.includes("brace_open") && right.identifiers.includes("brace_open") || left.identifiers.includes("brace_close") && right.identifiers.includes("brace_close");
+    const elseOverlap = left.identifiers.includes("else_line") && right.identifiers.includes("else_line");
+    const hasDateFormat = left.identifiers.includes("dateformat") || right.identifiers.includes("dateformat");
+    const hasBaseOverlap = idOverlap > 0 || literalOverlap > 0 || codefragOverlap || braceOverlap || elseOverlap || initOverlap || dateFormatArgOverlap || commentOverlap;
+    if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
+        if (!hasBaseOverlap) {
+            return null;
+        }
+    }
+    if (!left.primaryId || !right.primaryId) {
+        if (!hasBaseOverlap) {
+            return null;
+        }
+    }
+    if (hasDateFormat && !dateFormatArgOverlap && literalOverlap === 0) {
+        return null;
+    }
+    let score2 = 0;
+    if (left.primaryId && right.primaryId && left.primaryId === right.primaryId) {
+        score2 += 5;
+    }
+    score2 += literalOverlap * 2;
+    score2 += numberOverlap * 1.5;
+    score2 += idOverlap * 1;
+    score2 += hintOverlap * .5;
+    if (literalOverlap > 0 && idOverlap > 0) {
+        score2 += 2;
+    }
+    if (codefragOverlap) {
+        score2 += 5;
+    }
+    if (braceOverlap) {
+        score2 += 5;
+    }
+    if (elseOverlap) {
+        score2 += 4;
+    }
+    if (initOverlap) {
+        score2 += 4;
+    }
+    if (dateFormatOverlap) {
+        score2 += dateFormatArgOverlap ? 5 : 1;
+    }
+    if (commentOverlap) {
+        score2 += 5;
+    }
+    if (left.category === right.category) {
+        score2 += left.category === "decl" ? 1.5 : left.category === "call" ? 1 : .5;
+    } else if (left.category === "decl" && right.category === "call" || left.category === "call" && right.category === "decl") {
+        score2 -= 1;
+    }
+    score2 += jaccardSimilarity(strongLeftIds, strongRightIds);
+    return score2;
+}
+
+function extractIndexTokens(features) {
+    const tokens = new Set;
+    if (features.primaryId) {
+        tokens.add(features.primaryId);
+    }
+    features.identifiers.forEach(token => tokens.add(token));
+    features.literals.forEach(token => tokens.add(token));
+    return [ ...tokens ];
+}
+
+function countIndent(line) {
+    let count = 0;
+    for (const char of line) {
+        if (char === " " || char === "\t") {
+            count += 1;
+        } else {
+            break;
+        }
+    }
+    return count;
+}
+
+const WINDOW_SIZE = 40;
+
+const SCORE_THRESHOLD = 4;
+
+const EMPTY_MATCH_STATE = {
+    score: 0,
+    pairCount: 0,
+    indentDiffTotal: 0,
+    distanceTotal: 0,
+    previous: null,
+    candidate: null
+};
+
+function buildIndexMap(features) {
+    const map = new Map;
+    features.forEach((feature, index) => {
+        extractIndexTokens(feature).forEach(token => {
+            const bucket = map.get(token);
+            if (bucket) {
+                bucket.push(index);
+            } else {
+                map.set(token, [ index ]);
+            }
+        });
+    });
+    return map;
+}
+
+function buildCandidateIndices(index, insertCount, tokens, indexMap) {
+    const indices = new Set;
+    const start = Math.max(0, index - WINDOW_SIZE);
+    const end = Math.min(insertCount - 1, index + WINDOW_SIZE);
+    for (let i2 = start; i2 <= end; i2 += 1) {
+        indices.add(i2);
+    }
+    tokens.forEach(token => {
+        const bucket = indexMap.get(token);
+        if (!bucket) {
+            return;
+        }
+        bucket.forEach(entry => indices.add(entry));
+    });
+    return [ ...indices ];
+}
+
+function buildCandidates(deletes, inserts) {
+    const candidates = [];
+    const deleteFeatures = deletes.map(op => buildLineFeatures(op.leftLine ?? ""));
+    const insertFeatures = inserts.map(op => buildLineFeatures(op.rightLine ?? ""));
+    const insertIndex = buildIndexMap(insertFeatures);
+    for (let d = 0; d < deletes.length; d += 1) {
+        const leftText = deletes[d].leftLine ?? "";
+        const leftIndent = countIndent(leftText);
+        const leftFeature = deleteFeatures[d];
+        const tokens = extractIndexTokens(leftFeature);
+        const candidateIndices = buildCandidateIndices(d, inserts.length, tokens, insertIndex);
+        for (const i2 of candidateIndices) {
+            const rightText = inserts[i2].rightLine ?? "";
+            const rightIndent = countIndent(rightText);
+            const leftTrimmed = leftText.trimStart();
+            const rightTrimmed = rightText.trimStart();
+            const rightFeature = insertFeatures[i2];
+            const distance = Math.abs(d - i2);
+            if (leftTrimmed === rightTrimmed && leftTrimmed !== "" && leftText !== rightText) {
+                candidates.push({
+                    deleteIndex: d,
+                    insertIndex: i2,
+                    indentDiff: Math.abs(leftIndent - rightIndent),
+                    score: SCORE_THRESHOLD + 5,
+                    distance: distance
+                });
+                continue;
+            }
+            const scored = scoreLinePair(leftFeature, rightFeature);
+            if (scored === null) {
+                continue;
+            }
+            if (scored < SCORE_THRESHOLD) {
+                continue;
+            }
+            candidates.push({
+                deleteIndex: d,
+                insertIndex: i2,
+                indentDiff: Math.abs(leftIndent - rightIndent),
+                score: scored,
+                distance: distance
+            });
+        }
+    }
+    return candidates;
+}
+
+function sortCandidates(a, b) {
+    if (a.score !== b.score) {
+        return b.score - a.score;
+    }
+    if (a.indentDiff !== b.indentDiff) {
+        return a.indentDiff - b.indentDiff;
+    }
+    if (a.distance !== b.distance) {
+        return a.distance - b.distance;
+    }
+    if (a.deleteIndex !== b.deleteIndex) {
+        return a.deleteIndex - b.deleteIndex;
+    }
+    return a.insertIndex - b.insertIndex;
+}
+
+function compareMatchStates(a, b) {
+    if (!a && !b) {
+        return 0;
+    }
+    if (!a) {
+        return 1;
+    }
+    if (!b) {
+        return -1;
+    }
+    if (a.score !== b.score) {
+        return b.score - a.score;
+    }
+    if (a.pairCount !== b.pairCount) {
+        return b.pairCount - a.pairCount;
+    }
+    if (a.indentDiffTotal !== b.indentDiffTotal) {
+        return a.indentDiffTotal - b.indentDiffTotal;
+    }
+    if (a.distanceTotal !== b.distanceTotal) {
+        return a.distanceTotal - b.distanceTotal;
+    }
+    const aCandidate = a.candidate;
+    const bCandidate = b.candidate;
+    if (!aCandidate && !bCandidate) {
+        return 0;
+    }
+    if (!aCandidate) {
+        return 1;
+    }
+    if (!bCandidate) {
+        return -1;
+    }
+    return sortCandidates(aCandidate, bCandidate);
+}
+
+function pickBetterMatchState(current, candidate) {
+    return compareMatchStates(current, candidate) <= 0 ? current : candidate;
+}
+
+function buildMatchState(previous, candidate) {
+    return {
+        score: previous.score + candidate.score,
+        pairCount: previous.pairCount + 1,
+        indentDiffTotal: previous.indentDiffTotal + candidate.indentDiff,
+        distanceTotal: previous.distanceTotal + candidate.distance,
+        previous: previous,
+        candidate: candidate
+    };
+}
+
+function collectMatchPairs(state) {
+    const pairs = [];
+    let current = state;
+    while (current?.candidate) {
+        pairs.push([ current.candidate.deleteIndex, current.candidate.insertIndex ]);
+        current = current.previous;
+    }
+    return pairs.reverse();
+}
+
+function createFenwickBest(size2) {
+    const tree = new Array(size2 + 1).fill(null);
+    return {
+        query(upTo) {
+            let best = EMPTY_MATCH_STATE;
+            let index = upTo;
+            while (index > 0) {
+                best = pickBetterMatchState(best, tree[index]);
+                index -= index & -index;
+            }
+            return best ?? EMPTY_MATCH_STATE;
+        },
+        update(index, state) {
+            let currentIndex = index;
+            while (currentIndex < tree.length) {
+                tree[currentIndex] = pickBetterMatchState(tree[currentIndex], state);
+                currentIndex += currentIndex & -currentIndex;
+            }
+        }
+    };
+}
+
+function toPairedOp(op) {
+    if (op.type === "equal") {
+        return {
+            type: "equal",
+            leftLine: op.leftLine,
+            rightLine: op.rightLine,
+            leftLineNo: op.leftLineNo,
+            rightLineNo: op.rightLineNo
+        };
+    }
+    if (op.type === "delete") {
+        return {
+            type: "delete",
+            leftLine: op.leftLine,
+            leftLineNo: op.leftLineNo
+        };
+    }
+    return {
+        type: "insert",
+        rightLine: op.rightLine,
+        rightLineNo: op.rightLineNo
+    };
+}
+
+function pairBlock(deletes, inserts) {
+    const emittedInserts = new Set;
+    const matches = new Array(deletes.length).fill(void 0);
+    const candidatesByDelete = Array.from({
+        length: deletes.length
+    }, () => []);
+    for (const candidate of buildCandidates(deletes, inserts)) {
+        candidatesByDelete[candidate.deleteIndex].push(candidate);
+    }
+    candidatesByDelete.forEach(bucket => bucket.sort((a, b) => a.insertIndex === b.insertIndex ? sortCandidates(a, b) : a.insertIndex - b.insertIndex));
+    const fenwick = createFenwickBest(inserts.length);
+    let bestState = EMPTY_MATCH_STATE;
+    for (let deleteIndex = 0; deleteIndex < deletes.length; deleteIndex += 1) {
+        const updates = candidatesByDelete[deleteIndex].map(candidate => ({
+            insertIndex: candidate.insertIndex,
+            state: buildMatchState(fenwick.query(candidate.insertIndex), candidate)
+        }));
+        for (const update of updates) {
+            fenwick.update(update.insertIndex + 1, update.state);
+            if (compareMatchStates(bestState, update.state) > 0) {
+                bestState = update.state;
+            }
+        }
+    }
+    collectMatchPairs(bestState).forEach(([deleteIndex, insertIndex]) => {
+        matches[deleteIndex] = insertIndex;
+    });
+    const matchedInsertIndices = new Set;
+    matches.forEach(value => {
+        if (value !== void 0) {
+            matchedInsertIndices.add(value);
+        }
+    });
+    const result = [];
+    let insertCursor = 0;
+    const emitUnmatchedInsertsBefore = stopRightLineNo => {
+        while (insertCursor < inserts.length) {
+            const insert = inserts[insertCursor];
+            const insertLineNo = insert.rightLineNo ?? Number.MAX_SAFE_INTEGER;
+            if (stopRightLineNo !== void 0 && insertLineNo >= stopRightLineNo) {
+                break;
+            }
+            if (!matchedInsertIndices.has(insertCursor) && !emittedInserts.has(insertCursor)) {
+                result.push(toPairedOp(insert));
+                emittedInserts.add(insertCursor);
+            }
+            insertCursor += 1;
+        }
+    };
+    for (let i2 = 0; i2 < deletes.length; i2 += 1) {
+        const insertIndex = matches[i2];
+        if (insertIndex !== void 0) {
+            const leftOp = deletes[i2];
+            const rightOp = inserts[insertIndex];
+            emitUnmatchedInsertsBefore(rightOp.rightLineNo);
+            result.push({
+                type: "replace",
+                leftLine: leftOp.leftLine,
+                rightLine: rightOp.rightLine,
+                leftLineNo: leftOp.leftLineNo,
+                rightLineNo: rightOp.rightLineNo
+            });
+            while (insertCursor <= insertIndex && insertCursor < inserts.length) {
+                insertCursor += 1;
+            }
+            continue;
+        }
+        result.push(toPairedOp(deletes[i2]));
+    }
+    emitUnmatchedInsertsBefore(void 0);
+    for (let i2 = 0; i2 < inserts.length; i2 += 1) {
+        if (!matchedInsertIndices.has(i2) && !emittedInserts.has(i2)) {
+            result.push(toPairedOp(inserts[i2]));
+            emittedInserts.add(i2);
+        }
+    }
+    return result;
+}
+
+function isBraceLine(line) {
+    if (!line) {
+        return false;
+    }
+    return /^}\s*;?\s*$/.test(line.trim());
+}
+
+function alignBracePairs(ops) {
+    const result = [];
+    for (let i2 = 0; i2 < ops.length; i2 += 1) {
+        const current = ops[i2];
+        const next = ops[i2 + 1];
+        const prev = result[result.length - 1];
+        const prevPaired = prev?.type === "equal" || prev?.type === "replace";
+        if (prevPaired && current?.type === "delete" && next?.type === "insert" && isBraceLine(current.leftLine) && isBraceLine(next.rightLine) && current.leftLineNo !== void 0 && next.rightLineNo !== void 0) {
+            result.push({
+                type: "replace",
+                leftLine: current.leftLine,
+                rightLine: next.rightLine,
+                leftLineNo: current.leftLineNo,
+                rightLineNo: next.rightLineNo
+            });
+            i2 += 1;
+            continue;
+        }
+        if (prevPaired && current?.type === "insert" && next?.type === "delete" && isBraceLine(next.leftLine) && isBraceLine(current.rightLine) && next.leftLineNo !== void 0 && current.rightLineNo !== void 0) {
+            result.push({
+                type: "replace",
+                leftLine: next.leftLine,
+                rightLine: current.rightLine,
+                leftLineNo: next.leftLineNo,
+                rightLineNo: current.rightLineNo
+            });
+            i2 += 1;
+            continue;
+        }
+        result.push(current);
+    }
+    return result;
+}
+
+function pairReplace(ops) {
+    const result = [];
+    let i2 = 0;
+    while (i2 < ops.length) {
+        const op = ops[i2];
+        if (op.type !== "delete") {
+            result.push(toPairedOp(op));
+            i2 += 1;
+            continue;
+        }
+        const deletes = [];
+        while (i2 < ops.length && ops[i2].type === "delete") {
+            deletes.push(ops[i2]);
+            i2 += 1;
+        }
+        const inserts = [];
+        let j = i2;
+        while (j < ops.length && ops[j].type === "insert") {
+            inserts.push(ops[j]);
+            j += 1;
+        }
+        if (inserts.length === 0) {
+            deletes.forEach(del => result.push(toPairedOp(del)));
+            continue;
+        }
+        result.push(...pairBlock(deletes, inserts));
+        i2 = j;
+    }
+    return alignBracePairs(result);
+}
+
+function addAnchor(anchors, anchor) {
+    return [ ...anchors, anchor ];
+}
+
+function removeAnchorByLeft(anchors, leftLineNo) {
+    const index = anchors.findIndex(anchor => anchor.leftLineNo === leftLineNo);
+    if (index === -1) {
+        return {
+            next: anchors
+        };
+    }
+    const removed = anchors[index];
+    const next = anchors.slice(0, index).concat(anchors.slice(index + 1));
+    return {
+        next: next,
+        removed: removed
+    };
+}
+
+function removeAnchorByRight(anchors, rightLineNo) {
+    const index = anchors.findIndex(anchor => anchor.rightLineNo === rightLineNo);
+    if (index === -1) {
+        return {
+            next: anchors
+        };
+    }
+    const removed = anchors[index];
+    const next = anchors.slice(0, index).concat(anchors.slice(index + 1));
+    return {
+        next: next,
+        removed: removed
+    };
+}
+
+function addReason(issues, anchor, reason) {
+    const entry = issues.get(anchor) ?? new Set;
+    entry.add(reason);
+    issues.set(anchor, entry);
+}
+
+function validateAnchors(anchors, leftLineCount, rightLineCount) {
+    const issues = new Map;
+    for (const anchor of anchors) {
+        const outOfRange = anchor.leftLineNo < 0 || anchor.rightLineNo < 0 || anchor.leftLineNo >= leftLineCount || anchor.rightLineNo >= rightLineCount;
+        if (outOfRange) {
+            addReason(issues, anchor, "範囲外");
+        }
+    }
+    const leftCounts = new Map;
+    const rightCounts = new Map;
+    anchors.forEach(anchor => {
+        leftCounts.set(anchor.leftLineNo, (leftCounts.get(anchor.leftLineNo) ?? 0) + 1);
+        rightCounts.set(anchor.rightLineNo, (rightCounts.get(anchor.rightLineNo) ?? 0) + 1);
+    });
+    for (const anchor of anchors) {
+        if ((leftCounts.get(anchor.leftLineNo) ?? 0) > 1) {
+            addReason(issues, anchor, "左行の重複");
+        }
+        if ((rightCounts.get(anchor.rightLineNo) ?? 0) > 1) {
+            addReason(issues, anchor, "右行の重複");
+        }
+    }
+    const sorted = [ ...anchors ].sort((a, b) => a.leftLineNo - b.leftLineNo);
+    let prevRight = -1;
+    for (const anchor of sorted) {
+        if (anchor.rightLineNo <= prevRight) {
+            addReason(issues, anchor, "順序逆転");
+        }
+        if (anchor.rightLineNo > prevRight) {
+            prevRight = anchor.rightLineNo;
+        }
+    }
+    const invalid = [];
+    issues.forEach((reasons, anchor) => {
+        invalid.push({
+            anchor: anchor,
+            reasons: Array.from(reasons)
+        });
+    });
+    const valid = sorted.filter(anchor => !issues.has(anchor));
+    return {
+        valid: valid,
+        invalid: invalid
+    };
+}
+
+function offsetOps(ops, leftOffset, rightOffset) {
+    return ops.map(op => {
+        if (op.type === "insert") {
+            return {
+                ...op,
+                rightLineNo: op.rightLineNo === void 0 ? void 0 : op.rightLineNo + rightOffset
+            };
+        }
+        if (op.type === "delete") {
+            return {
+                ...op,
+                leftLineNo: op.leftLineNo === void 0 ? void 0 : op.leftLineNo + leftOffset
+            };
+        }
+        return {
+            ...op,
+            leftLineNo: op.leftLineNo === void 0 ? void 0 : op.leftLineNo + leftOffset,
+            rightLineNo: op.rightLineNo === void 0 ? void 0 : op.rightLineNo + rightOffset
+        };
+    });
+}
+
+function diffSegment(leftLines, rightLines, leftOffset, rightOffset, options) {
+    if (leftLines.length === 0 && rightLines.length === 0) {
+        return [];
+    }
+    const ops = diffLinesFromLines(leftLines, rightLines, {
+        ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace === true
+    });
+    const paired = pairReplace(ops);
+    return offsetOps(paired, leftOffset, rightOffset);
+}
+
+function stripLeadingTabsAndSpaces(value) {
+    return value.replace(/^[ \t]+/, "");
+}
+
+function hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(leftLine, rightLine) {
+    const leftMap = extractAppendLiteralInlineMap(leftLine);
+    const rightMap = extractAppendLiteralInlineMap(rightLine);
+    if (!leftMap || !rightMap) {
+        return false;
+    }
+    const leftWrapper = leftLine.slice(0, leftMap.payloadRange.start) + leftLine.slice(leftMap.payloadRange.end);
+    const rightWrapper = rightLine.slice(0, rightMap.payloadRange.start) + rightLine.slice(rightMap.payloadRange.end);
+    if (leftWrapper !== rightWrapper) {
+        return false;
+    }
+    if (leftMap.payload === rightMap.payload) {
+        return false;
+    }
+    return stripLeadingTabsAndSpaces(leftMap.payload) === stripLeadingTabsAndSpaces(rightMap.payload);
+}
+
+function isSameLineForMatch(leftLine, rightLine, leftLineNo, rightLineNo, options, leftLeadingFileWhitespaceEligible, rightLeadingFileWhitespaceEligible) {
+    if (leftLine === rightLine) {
+        return true;
+    }
+    if (!options.ignoreLeadingFileWhitespace) {
+        return false;
+    }
+    if (stripLeadingTabsAndSpaces(leftLine) === stripLeadingTabsAndSpaces(rightLine)) {
+        return true;
+    }
+    return hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(leftLine, rightLine);
+}
+
+function diffWithAnchors(leftText, rightText, anchors, options = {}) {
+    const leftNormalized = normalizeText(leftText);
+    const rightNormalized = normalizeText(rightText);
+    const leftLines = leftNormalized.split("\n");
+    const rightLines = rightNormalized.split("\n");
+    leftNormalized.length === 0 || leftNormalized[0] !== "\n";
+    rightNormalized.length === 0 || rightNormalized[0] !== "\n";
+    const result = [];
+    let leftStart = 0;
+    let rightStart = 0;
+    for (const anchor of anchors) {
+        const leftSegment = leftLines.slice(leftStart, anchor.leftLineNo);
+        const rightSegment = rightLines.slice(rightStart, anchor.rightLineNo);
+        result.push(...diffSegment(leftSegment, rightSegment, leftStart, rightStart, options));
+        const leftLine = leftLines[anchor.leftLineNo] ?? "";
+        const rightLine = rightLines[anchor.rightLineNo] ?? "";
+        result.push({
+            type: isSameLineForMatch(leftLine, rightLine, anchor.leftLineNo, anchor.rightLineNo, options) ? "equal" : "replace",
+            leftLine: leftLine,
+            rightLine: rightLine,
+            leftLineNo: anchor.leftLineNo,
+            rightLineNo: anchor.rightLineNo
+        });
+        leftStart = anchor.leftLineNo + 1;
+        rightStart = anchor.rightLineNo + 1;
+    }
+    const tailLeft = leftLines.slice(leftStart);
+    const tailRight = rightLines.slice(rightStart);
+    result.push(...diffSegment(tailLeft, tailRight, leftStart, rightStart, options));
+    return result;
+}
+
+function createTypeScriptBindings() {
+    return {
+        buildId: null,
+        diffLines: diffLines,
+        diffWithAnchors: diffWithAnchors
+    };
+}
+
+function cloneStatus(status2) {
+    return {
+        ...status2
+    };
+}
+
+function wrapBindings(bindings, status2) {
+    return {
+        buildId: bindings.buildId ?? null,
+        diffLines: (leftText, rightText, options) => bindings.diffLines(leftText, rightText, options),
+        diffWithAnchors: (leftText, rightText, anchors, options) => bindings.diffWithAnchors(leftText, rightText, anchors, options),
+        getStatus: () => cloneStatus(status2)
+    };
+}
+
+function resolveErrorMessage(error) {
+    if (error instanceof Error && error.message.trim().length > 0) {
+        return error.message;
+    }
+    return String(error);
+}
+
+function defaultNow() {
+    return performance.now();
+}
+
+function isDiffEngineMode(value) {
+    return value === "auto" || value === "ts" || value === "wasm";
+}
+
+async function loadEmbeddedWasmDiffEngine() {
+    {
+        throw new Error("embedded wasm diff bridge is not implemented");
+    }
+}
+
+async function createDiffEngine(options = {}) {
+    const mode = options.mode ?? "auto";
+    const tsBindings = createTypeScriptBindings();
+    if (mode === "ts") {
+        return wrapBindings(tsBindings, {
+            activeMode: "ts",
+            attemptedWasm: false,
+            fallbackReason: null,
+            initializationMs: null,
+            requestedMode: mode,
+            wasmBuildId: null
+        });
+    }
+    const loadWasmDiffEngine = options.loadWasmDiffEngine ?? loadEmbeddedWasmDiffEngine;
+    const now = options.now ?? defaultNow;
+    const startedAt = now();
+    try {
+        const wasmBindings = await loadWasmDiffEngine();
+        const endedAt = now();
+        return wrapBindings(wasmBindings, {
+            activeMode: "wasm",
+            attemptedWasm: true,
+            fallbackReason: null,
+            initializationMs: endedAt - startedAt,
+            requestedMode: mode,
+            wasmBuildId: wasmBindings.buildId ?? null
+        });
+    } catch (error) {
+        const endedAt = now();
+        return wrapBindings(tsBindings, {
+            activeMode: "ts",
+            attemptedWasm: true,
+            fallbackReason: resolveErrorMessage(error),
+            initializationMs: endedAt - startedAt,
+            requestedMode: mode,
+            wasmBuildId: null
+        });
+    }
+}
+
 const DISABLED_VALUES = new Set([ "0", "false", "off", "no", "disabled" ]);
 
 const ENABLED_VALUES = new Set([ "1", "true", "on", "yes", "enabled" ]);
@@ -131921,21 +134159,17 @@ function readWritebackEnabled(params) {
     return null;
 }
 
+function readDiffEngineMode(params) {
+    const engine = normalizeValue(params.get("engine"));
+    return isDiffEngineMode(engine) ? engine : null;
+}
+
 function resolveAppMode(location) {
-    const searchMode = readWritebackEnabled(parseParams(location.search));
-    if (searchMode !== null) {
-        return {
-            writebackEnabled: searchMode
-        };
-    }
-    const hashMode = readWritebackEnabled(parseParams(location.hash));
-    if (hashMode !== null) {
-        return {
-            writebackEnabled: hashMode
-        };
-    }
+    const searchParams = parseParams(location.search);
+    const hashParams = parseParams(location.hash);
     return {
-        writebackEnabled: false
+        diffEngineMode: readDiffEngineMode(searchParams) ?? readDiffEngineMode(hashParams) ?? "auto",
+        writebackEnabled: readWritebackEnabled(searchParams) ?? readWritebackEnabled(hashParams) ?? false
     };
 }
 
@@ -187817,1975 +190051,6 @@ function registerBasicLanguages() {
     });
 }
 
-function normalizeText(text2) {
-    return text2.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-}
-
-const DISALLOWED_CALL_NAMES = new Set([ "echo", "if", "for", "foreach", "while", "switch", "case", "return" ]);
-
-function normalizeCallName(name) {
-    if (!name) {
-        return null;
-    }
-    const normalized = name.toLowerCase();
-    if (DISALLOWED_CALL_NAMES.has(normalized)) {
-        return null;
-    }
-    return normalized;
-}
-
-function extractPhpEmbeddedOutputCall(line) {
-    const match2 = line.trim().match(/^<\?(?:php\b)?([\s\S]*?)\?>$/i);
-    if (!match2) {
-        return null;
-    }
-    let body = match2[1]?.trim() ?? "";
-    if (body.startsWith("=")) {
-        body = body.slice(1).trimStart();
-    } else if (/^echo\b/i.test(body)) {
-        body = body.replace(/^echo\b/i, "").trimStart();
-    }
-    const callMatch = body.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
-    return normalizeCallName(callMatch?.[1]);
-}
-
-function extractRazorEmbeddedOutputCall(line) {
-    const trimmed = line.trim();
-    const rawMatch = trimmed.match(/^@\s*(?:Html\.)?Raw\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
-    if (rawMatch) {
-        return normalizeCallName(rawMatch[1]);
-    }
-    return null;
-}
-
-function extractEmbeddedOutputCall(line) {
-    return extractPhpEmbeddedOutputCall(line) ?? extractRazorEmbeddedOutputCall(line);
-}
-
-const KEYWORDS = new Set([ "var", "let", "const", "function", "fn", "string", "int", "float", "double", "bool", "boolean", "void", "public", "private", "protected", "static", "final", "abstract", "async", "await", "return", "class", "interface", "trait", "extends", "implements", "new", "namespace", "using", "if", "else", "elseif", "for", "foreach", "while", "do", "switch", "case", "break", "continue", "try", "catch", "finally", "throw", "include", "require", "global" ]);
-
-function stripDollarIdentifiers(line) {
-    return line.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, "$1");
-}
-
-function stripRazorLinePrefix$2(line) {
-    const match2 = line.match(/^(\s*)@:\s*/);
-    if (!match2) {
-        return line;
-    }
-    return match2[1] + line.slice(match2[0].length);
-}
-
-function extractBraceToken$1(line) {
-    const trimmed = line.trim();
-    if (trimmed === "{") {
-        return "brace_open";
-    }
-    if (trimmed === "}") {
-        return "brace_close";
-    }
-    const phpMatch = trimmed.match(/^<\?\s*(?:php\s*)?([{}])\s*\?\s*>?$/i);
-    if (phpMatch?.[1] === "{") {
-        return "brace_open";
-    }
-    if (phpMatch?.[1] === "}") {
-        return "brace_close";
-    }
-    return null;
-}
-
-function extractLineKey(line) {
-    const normalizedLine = stripRazorLinePrefix$2(line);
-    const braceToken = extractBraceToken$1(normalizedLine);
-    if (braceToken) {
-        return braceToken;
-    }
-    const embeddedOutputCall = extractEmbeddedOutputCall(normalizedLine);
-    if (embeddedOutputCall) {
-        return embeddedOutputCall;
-    }
-    const normalized = stripDollarIdentifiers(normalizedLine.trimStart());
-    const funcMatch = normalized.match(/([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
-    if (funcMatch) {
-        const candidate = funcMatch[1].toLowerCase();
-        if (!KEYWORDS.has(candidate)) {
-            return candidate;
-        }
-    }
-    const tokens = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
-    const filtered = tokens.map(token => token.toLowerCase()).filter(token => !KEYWORDS.has(token));
-    if (filtered.length > 0) {
-        return filtered[0];
-    }
-    return null;
-}
-
-function extractAppendLiteral(line) {
-    return extractAppendLiteralWithMap(line)?.payload ?? null;
-}
-
-function parseAppendLiteral(line, options) {
-    const callMatch = line.match(/\.(?:append|appendline|appendformat)\s*\(/i);
-    if (!callMatch || callMatch.index === void 0) {
-        return null;
-    }
-    const startFrom = callMatch.index + callMatch[0].length;
-    const quoteIndex = line.indexOf('"', startFrom);
-    if (quoteIndex === -1) {
-        return null;
-    }
-    const prefix = line.slice(startFrom, quoteIndex);
-    const isInterpolated = prefix.includes("$");
-    const isVerbatim = prefix.includes("@");
-    const result = [];
-    const indices = [];
-    const pushChar = (value, index) => {
-        if (value.length === 0) {
-            return;
-        }
-        result.push(value);
-        indices.push(index);
-    };
-    const pushRepeated = (value, index) => {
-        if (value.length === 0) {
-            return;
-        }
-        for (let j = 0; j < value.length; j += 1) {
-            result.push(value[j]);
-            indices.push(index);
-        }
-    };
-    let i2 = quoteIndex + 1;
-    let endQuote = -1;
-    while (i2 < line.length) {
-        const ch = line[i2];
-        if (!isVerbatim && ch === "\\" && i2 + 1 < line.length) {
-            const next = line[i2 + 1];
-            if (options.preserveEscapes) {
-                pushChar("\\", i2);
-                pushChar(next, i2 + 1);
-            } else if (next === "t") {
-                pushChar("\t", i2);
-            } else if (next === "n") {
-                pushChar("\n", i2);
-            } else if (next === "r") {
-                pushChar("\r", i2);
-            } else {
-                pushChar(next, i2);
-            }
-            i2 += 2;
-            continue;
-        }
-        if (isVerbatim && ch === '"' && line[i2 + 1] === '"') {
-            pushChar('"', i2);
-            i2 += 2;
-            continue;
-        }
-        if (ch === '"') {
-            endQuote = i2;
-            break;
-        }
-        if (isInterpolated && ch === "{") {
-            if (line[i2 + 1] === "{") {
-                pushChar("{", i2);
-                i2 += 2;
-                continue;
-            }
-            pushRepeated("{expr}", i2);
-            i2 += 1;
-            let depth = 1;
-            while (i2 < line.length && depth > 0) {
-                const c = line[i2];
-                if (c === "{" && line[i2 + 1] !== "{") {
-                    depth += 1;
-                } else if (c === "}" && line[i2 + 1] !== "}") {
-                    depth -= 1;
-                }
-                if (c === '"' && !isVerbatim) {
-                    i2 += 1;
-                    while (i2 < line.length) {
-                        if (line[i2] === "\\" && i2 + 1 < line.length) {
-                            i2 += 2;
-                            continue;
-                        }
-                        if (line[i2] === '"') {
-                            i2 += 1;
-                            break;
-                        }
-                        i2 += 1;
-                    }
-                    continue;
-                }
-                i2 += 1;
-            }
-            continue;
-        }
-        if (isInterpolated && ch === "}" && line[i2 + 1] === "}") {
-            pushChar("}", i2);
-            i2 += 2;
-            continue;
-        }
-        pushChar(ch, i2);
-        i2 += 1;
-    }
-    if (endQuote === -1) {
-        return null;
-    }
-    return {
-        payload: result.join(""),
-        indices: indices,
-        startQuote: quoteIndex,
-        endQuote: endQuote
-    };
-}
-
-function extractAppendLiteralWithMap(line) {
-    const parsed = parseAppendLiteral(line, {
-        preserveEscapes: false
-    });
-    if (!parsed || parsed.payload.trim().length === 0) {
-        return null;
-    }
-    return {
-        payload: parsed.payload,
-        indices: parsed.indices
-    };
-}
-
-function extractAppendLiteralInlineMap(line) {
-    const parsed = parseAppendLiteral(line, {
-        preserveEscapes: true
-    });
-    if (!parsed || parsed.payload.trim().length === 0) {
-        return null;
-    }
-    const payloadStart = parsed.startQuote + 1;
-    const payloadEnd = parsed.endQuote;
-    const wrapperRanges = [];
-    if (payloadStart > 0) {
-        wrapperRanges.push({
-            start: 0,
-            end: payloadStart
-        });
-    }
-    if (parsed.endQuote < line.length) {
-        wrapperRanges.push({
-            start: parsed.endQuote,
-            end: line.length
-        });
-    }
-    return {
-        payload: parsed.payload,
-        indices: parsed.indices,
-        wrapperRanges: wrapperRanges,
-        payloadRange: {
-            start: payloadStart,
-            end: payloadEnd
-        }
-    };
-}
-
-function toAppendLiteralOrLine(line) {
-    return extractAppendLiteral(line) ?? line;
-}
-
-function splitLines(text2) {
-    return text2.split("\n");
-}
-
-function normalizeForMatch(line) {
-    const trimmed = stripRazorLinePrefix$1(line).replace(/^\s+/, "");
-    if (isBlankLine(trimmed)) {
-        return "";
-    }
-    const embeddedOutputCall = extractEmbeddedOutputCall(trimmed);
-    if (embeddedOutputCall) {
-        return `embeddedcall:${embeddedOutputCall}`;
-    }
-    const initVar = extractInitVariable$1(trimmed);
-    if (initVar) {
-        return `init:${initVar}`;
-    }
-    const appendLiteral = isAppendLike(trimmed) ? extractAppendLiteral(trimmed) : null;
-    if (appendLiteral) {
-        return `append:${appendLiteral.toLowerCase()}`;
-    }
-    const literal = extractFirstLiteral(trimmed);
-    if (literal && isAppendLike(trimmed)) {
-        return `append:${literal}`;
-    }
-    return trimmed;
-}
-
-function stripRazorLinePrefix$1(line) {
-    const match2 = line.match(/^(\s*)@:\s*/);
-    if (!match2) {
-        return line;
-    }
-    return match2[1] + line.slice(match2[0].length);
-}
-
-function isBlankLine(line) {
-    return line.trim().length === 0;
-}
-
-function buildCompareLines(lines) {
-    return lines.map(line => normalizeForMatch(line));
-}
-
-function stripLeadingTabsAndSpaces$1(value) {
-    return value.replace(/^[ \t]+/, "");
-}
-
-function adjustLeadingFileWhitespaceCompareKey(value) {
-    if (value.startsWith("append:")) {
-        return `append:${stripLeadingTabsAndSpaces$1(value.slice("append:".length))}`;
-    }
-    return stripLeadingTabsAndSpaces$1(value);
-}
-
-function buildCompareLinesWithOptions(lines, options) {
-    const compare2 = buildCompareLines(lines);
-    if (!options.ignoreLeadingFileWhitespace || compare2.length === 0) {
-        return compare2;
-    }
-    return compare2.map(value => adjustLeadingFileWhitespaceCompareKey(value));
-}
-
-function canIgnoreLeadingFileWhitespaceFromText(text2) {
-    if (text2.length === 0) {
-        return true;
-    }
-    return text2[0] !== "\n";
-}
-
-function canIgnoreLeadingFileWhitespaceFromLines(lines) {
-    if (lines.length === 0) {
-        return true;
-    }
-    return (lines[0] ?? "") !== "";
-}
-
-function normalizeDiffLinesOptionsForLines(leftLines, rightLines, options) {
-    return {
-        ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace === true,
-        leftLeadingFileWhitespaceEligible: options.leftLeadingFileWhitespaceEligible ?? canIgnoreLeadingFileWhitespaceFromLines(leftLines),
-        rightLeadingFileWhitespaceEligible: options.rightLeadingFileWhitespaceEligible ?? canIgnoreLeadingFileWhitespaceFromLines(rightLines)
-    };
-}
-
-function hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload$1(leftLine, rightLine) {
-    const leftMap = extractAppendLiteralInlineMap(leftLine);
-    const rightMap = extractAppendLiteralInlineMap(rightLine);
-    if (!leftMap || !rightMap) {
-        return false;
-    }
-    const leftWrapper = leftLine.slice(0, leftMap.payloadRange.start) + leftLine.slice(leftMap.payloadRange.end);
-    const rightWrapper = rightLine.slice(0, rightMap.payloadRange.start) + rightLine.slice(rightMap.payloadRange.end);
-    if (leftWrapper !== rightWrapper) {
-        return false;
-    }
-    if (leftMap.payload === rightMap.payload) {
-        return false;
-    }
-    return stripLeadingTabsAndSpaces$1(leftMap.payload) === stripLeadingTabsAndSpaces$1(rightMap.payload);
-}
-
-function isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options) {
-    if (!options.ignoreLeadingFileWhitespace) {
-        return false;
-    }
-    if (leftLine === rightLine) {
-        return false;
-    }
-    if (stripLeadingTabsAndSpaces$1(leftLine) === stripLeadingTabsAndSpaces$1(rightLine)) {
-        return true;
-    }
-    return hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload$1(leftLine, rightLine);
-}
-
-function extractFirstLiteral(line) {
-    const match2 = line.match(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/);
-    if (!match2) {
-        return null;
-    }
-    return match2[0].slice(1, -1).replace(/\s+/g, " ").toLowerCase();
-}
-
-function hasStringLiteral$1(line) {
-    return /'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/.test(line);
-}
-
-function isAppendLike(line) {
-    return /\.(?:append|appendline|appendformat)\s*\(/i.test(line) || /\.\=/.test(line) || /\+=/.test(line) && hasStringLiteral$1(line);
-}
-
-function extractInitVariable$1(line) {
-    const csharpMatch = line.match(/\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\b/i);
-    if (csharpMatch) {
-        return csharpMatch[1].toLowerCase();
-    }
-    const phpMatch = line.match(/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(['"])\s*\2/);
-    if (phpMatch) {
-        return phpMatch[1].toLowerCase();
-    }
-    return null;
-}
-
-const MYERS_TRACE_SAFE_LENGTH_SUM = 256;
-
-function buildMyersTrace(left, right) {
-    const n2 = left.length;
-    const m = right.length;
-    const max = n2 + m;
-    const offset = max;
-    const v = new Array(2 * max + 1).fill(0);
-    const trace = [];
-    let found = false;
-    for (let d = 0; d <= max; d += 1) {
-        for (let k = -d; k <= d; k += 2) {
-            const kIndex = k + offset;
-            let x;
-            if (k === -d || k !== d && v[kIndex - 1] < v[kIndex + 1]) {
-                x = v[kIndex + 1];
-            } else {
-                x = v[kIndex - 1] + 1;
-            }
-            let y = x - k;
-            while (x < n2 && y < m && left[x] === right[y]) {
-                x += 1;
-                y += 1;
-            }
-            v[kIndex] = x;
-            if (x >= n2 && y >= m) {
-                found = true;
-                break;
-            }
-        }
-        trace.push(v.slice());
-        if (found) {
-            break;
-        }
-    }
-    return trace;
-}
-
-function buildMatchedLineOps(leftLine, rightLine, leftLineNo, rightLineNo, options) {
-    if (leftLine === rightLine) {
-        return [ {
-            type: "equal",
-            leftLine: leftLine,
-            rightLine: rightLine,
-            leftLineNo: leftLineNo,
-            rightLineNo: rightLineNo
-        } ];
-    }
-    if (isBlankLine(leftLine) && isBlankLine(rightLine)) {
-        return [ {
-            type: "equal",
-            leftLine: leftLine,
-            rightLine: rightLine,
-            leftLineNo: leftLineNo,
-            rightLineNo: rightLineNo
-        } ];
-    }
-    if (isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options)) {
-        return [ {
-            type: "equal",
-            leftLine: leftLine,
-            rightLine: rightLine,
-            leftLineNo: leftLineNo,
-            rightLineNo: rightLineNo
-        } ];
-    }
-    return [ {
-        type: "delete",
-        leftLine: leftLine,
-        leftLineNo: leftLineNo
-    }, {
-        type: "insert",
-        rightLine: rightLine,
-        rightLineNo: rightLineNo
-    } ];
-}
-
-function buildDeleteOps(leftLines, leftStart, leftEnd, leftOffset) {
-    const ops = [];
-    for (let index = leftStart; index < leftEnd; index += 1) {
-        ops.push({
-            type: "delete",
-            leftLine: leftLines[index],
-            leftLineNo: leftOffset + index
-        });
-    }
-    return ops;
-}
-
-function buildInsertOps(rightLines, rightStart, rightEnd, rightOffset) {
-    const ops = [];
-    for (let index = rightStart; index < rightEnd; index += 1) {
-        ops.push({
-            type: "insert",
-            rightLine: rightLines[index],
-            rightLineNo: rightOffset + index
-        });
-    }
-    return ops;
-}
-
-function backtrackOps(left, right, trace, leftOffset, rightOffset, options) {
-    const n2 = left.length;
-    const m = right.length;
-    const max = n2 + m;
-    const offset = max;
-    const ops = [];
-    let x = n2;
-    let y = m;
-    for (let d = trace.length - 1; d >= 0; d -= 1) {
-        const v = trace[d];
-        const k = x - y;
-        const kIndex = k + offset;
-        let prevK;
-        if (k === -d || k !== d && v[kIndex - 1] < v[kIndex + 1]) {
-            prevK = k + 1;
-        } else {
-            prevK = k - 1;
-        }
-        const prevX = v[prevK + offset];
-        const prevY = prevX - prevK;
-        while (x > prevX && y > prevY) {
-            const leftLine = left[x - 1];
-            const rightLine = right[y - 1];
-            const globalLeftLineNo = leftOffset + (x - 1);
-            const globalRightLineNo = rightOffset + (y - 1);
-            const matchedOps = buildMatchedLineOps(leftLine, rightLine, globalLeftLineNo, globalRightLineNo, options);
-            for (let index = matchedOps.length - 1; index >= 0; index -= 1) {
-                const op = matchedOps[index];
-                if (op.type === "equal") {
-                    ops.push({
-                        ...op,
-                        leftLineNo: x - 1,
-                        rightLineNo: y - 1
-                    });
-                    continue;
-                }
-                if (op.type === "delete") {
-                    ops.push({
-                        ...op,
-                        leftLineNo: x - 1
-                    });
-                    continue;
-                }
-                ops.push({
-                    ...op,
-                    rightLineNo: y - 1
-                });
-            }
-            x -= 1;
-            y -= 1;
-        }
-        if (d === 0) {
-            break;
-        }
-        if (x === prevX) {
-            ops.push({
-                type: "insert",
-                rightLine: right[y - 1],
-                rightLineNo: y - 1
-            });
-            y -= 1;
-        } else {
-            ops.push({
-                type: "delete",
-                leftLine: left[x - 1],
-                leftLineNo: x - 1
-            });
-            x -= 1;
-        }
-    }
-    return ops.reverse();
-}
-
-function shouldUseMyersTrace(leftLength, rightLength) {
-    return leftLength + rightLength <= MYERS_TRACE_SAFE_LENGTH_SUM;
-}
-
-function findMyersBisect(leftCompare, rightCompare, leftStart, leftEnd, rightStart, rightEnd) {
-    const leftLength = leftEnd - leftStart;
-    const rightLength = rightEnd - rightStart;
-    const maxD = Math.ceil((leftLength + rightLength) / 2);
-    const vOffset = maxD;
-    const vLength = 2 * maxD + 2;
-    const forward = new Int32Array(vLength).fill(-1);
-    const reverse = new Int32Array(vLength).fill(-1);
-    const delta = leftLength - rightLength;
-    const front = delta % 2 !== 0;
-    forward[vOffset + 1] = 0;
-    reverse[vOffset + 1] = 0;
-    let forwardStart = 0;
-    let forwardEnd = 0;
-    let reverseStart = 0;
-    let reverseEnd = 0;
-    for (let d = 0; d <= maxD; d += 1) {
-        for (let k = -d + forwardStart; k <= d - forwardEnd; k += 2) {
-            const kOffset = vOffset + k;
-            let x;
-            if (k === -d || k !== d && forward[kOffset - 1] < forward[kOffset + 1]) {
-                x = forward[kOffset + 1];
-            } else {
-                x = forward[kOffset - 1] + 1;
-            }
-            let y = x - k;
-            while (x < leftLength && y < rightLength && leftCompare[leftStart + x] === rightCompare[rightStart + y]) {
-                x += 1;
-                y += 1;
-            }
-            forward[kOffset] = x;
-            if (x > leftLength) {
-                forwardEnd += 2;
-            } else if (y > rightLength) {
-                forwardStart += 2;
-            } else if (front) {
-                const reverseOffset = vOffset + delta - k;
-                if (reverseOffset >= 0 && reverseOffset < vLength && reverse[reverseOffset] !== -1) {
-                    const reverseX = leftLength - reverse[reverseOffset];
-                    if (x >= reverseX) {
-                        return {
-                            leftMid: leftStart + x,
-                            rightMid: rightStart + y
-                        };
-                    }
-                }
-            }
-        }
-        for (let k = -d + reverseStart; k <= d - reverseEnd; k += 2) {
-            const kOffset = vOffset + k;
-            let x;
-            if (k === -d || k !== d && reverse[kOffset - 1] < reverse[kOffset + 1]) {
-                x = reverse[kOffset + 1];
-            } else {
-                x = reverse[kOffset - 1] + 1;
-            }
-            let y = x - k;
-            while (x < leftLength && y < rightLength && leftCompare[leftEnd - x - 1] === rightCompare[rightEnd - y - 1]) {
-                x += 1;
-                y += 1;
-            }
-            reverse[kOffset] = x;
-            if (x > leftLength) {
-                reverseEnd += 2;
-            } else if (y > rightLength) {
-                reverseStart += 2;
-            } else if (!front) {
-                const forwardOffset = vOffset + delta - k;
-                if (forwardOffset >= 0 && forwardOffset < vLength && forward[forwardOffset] !== -1) {
-                    const forwardX = forward[forwardOffset];
-                    const forwardK = forwardOffset - vOffset;
-                    const forwardY = forwardX - forwardK;
-                    const reverseX = leftLength - x;
-                    if (forwardX >= reverseX) {
-                        return {
-                            leftMid: leftStart + forwardX,
-                            rightMid: rightStart + forwardY
-                        };
-                    }
-                }
-            }
-        }
-    }
-    return {
-        leftMid: leftStart + Math.floor(leftLength / 2),
-        rightMid: rightStart + Math.floor(rightLength / 2)
-    };
-}
-
-function hasSharedCompareKey(leftCompare, rightCompare, leftStart, leftEnd, rightStart, rightEnd) {
-    const leftLength = leftEnd - leftStart;
-    const rightLength = rightEnd - rightStart;
-    const scanLeftFirst = leftLength <= rightLength;
-    const smallerStart = scanLeftFirst ? leftStart : rightStart;
-    const smallerEnd = scanLeftFirst ? leftEnd : rightEnd;
-    const smallerSource = scanLeftFirst ? leftCompare : rightCompare;
-    const largerStart = scanLeftFirst ? rightStart : leftStart;
-    const largerEnd = scanLeftFirst ? rightEnd : leftEnd;
-    const largerSource = scanLeftFirst ? rightCompare : leftCompare;
-    const keys = new Set;
-    for (let index = smallerStart; index < smallerEnd; index += 1) {
-        keys.add(smallerSource[index]);
-    }
-    for (let index = largerStart; index < largerEnd; index += 1) {
-        if (keys.has(largerSource[index])) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function buildKeyMap(lines) {
-    const map = new Map;
-    lines.forEach((line, index) => {
-        const compareLine = toAppendLiteralOrLine(line);
-        const rawKey = extractLineKey(compareLine);
-        const key = rawKey ?? compareLine.trimStart();
-        const entry = map.get(key);
-        if (entry) {
-            entry.count += 1;
-        } else {
-            map.set(key, {
-                key: key,
-                index: index,
-                count: 1
-            });
-        }
-    });
-    return map;
-}
-
-function buildUniquePairs(left, right) {
-    const leftMap = buildKeyMap(left);
-    const rightMap = buildKeyMap(right);
-    const pairs = [];
-    leftMap.forEach((leftEntry, line) => {
-        if (leftEntry.count !== 1) {
-            return;
-        }
-        const rightEntry = rightMap.get(line);
-        if (!rightEntry || rightEntry.count !== 1) {
-            return;
-        }
-        pairs.push({
-            leftIndex: leftEntry.index,
-            rightIndex: rightEntry.index
-        });
-    });
-    return pairs.sort((a, b) => a.leftIndex - b.leftIndex);
-}
-
-function longestIncreasingPairs(pairs) {
-    if (pairs.length === 0) {
-        return [];
-    }
-    const tailValues = [];
-    const tailIndices = [];
-    const prevIndices = new Array(pairs.length).fill(-1);
-    const lowerBound = value => {
-        let low = 0;
-        let high = tailValues.length;
-        while (low < high) {
-            const mid = Math.floor((low + high) / 2);
-            if (tailValues[mid] < value) {
-                low = mid + 1;
-            } else {
-                high = mid;
-            }
-        }
-        return low;
-    };
-    for (let i2 = 0; i2 < pairs.length; i2 += 1) {
-        const value = pairs[i2].rightIndex;
-        const pos = lowerBound(value);
-        if (pos === tailValues.length) {
-            tailValues.push(value);
-            tailIndices.push(i2);
-        } else {
-            tailValues[pos] = value;
-            tailIndices[pos] = i2;
-        }
-        if (pos > 0) {
-            prevIndices[i2] = tailIndices[pos - 1];
-        }
-    }
-    let k = tailIndices[tailIndices.length - 1];
-    const sequence = [];
-    while (k >= 0) {
-        sequence.push(pairs[k]);
-        k = prevIndices[k];
-    }
-    return sequence.reverse();
-}
-
-function offsetOps$1(ops, leftOffset, rightOffset) {
-    return ops.map(op => {
-        if (op.type === "delete") {
-            return {
-                ...op,
-                leftLineNo: op.leftLineNo === void 0 ? void 0 : op.leftLineNo + leftOffset
-            };
-        }
-        if (op.type === "insert") {
-            return {
-                ...op,
-                rightLineNo: op.rightLineNo === void 0 ? void 0 : op.rightLineNo + rightOffset
-            };
-        }
-        return {
-            ...op,
-            leftLineNo: op.leftLineNo === void 0 ? void 0 : op.leftLineNo + leftOffset,
-            rightLineNo: op.rightLineNo === void 0 ? void 0 : op.rightLineNo + rightOffset
-        };
-    });
-}
-
-function diffLinesMyers(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset, options) {
-    function diffRange(leftStart, leftEnd, rightStart, rightEnd) {
-        const prefix = [];
-        let nextLeftStart = leftStart;
-        let nextRightStart = rightStart;
-        while (nextLeftStart < leftEnd && nextRightStart < rightEnd && leftCompare[nextLeftStart] === rightCompare[nextRightStart]) {
-            prefix.push(...buildMatchedLineOps(leftLines[nextLeftStart], rightLines[nextRightStart], leftOffset + nextLeftStart, rightOffset + nextRightStart, options));
-            nextLeftStart += 1;
-            nextRightStart += 1;
-        }
-        const suffixPairs = [];
-        let nextLeftEnd = leftEnd;
-        let nextRightEnd = rightEnd;
-        while (nextLeftStart < nextLeftEnd && nextRightStart < nextRightEnd && leftCompare[nextLeftEnd - 1] === rightCompare[nextRightEnd - 1]) {
-            nextLeftEnd -= 1;
-            nextRightEnd -= 1;
-            suffixPairs.push({
-                leftIndex: nextLeftEnd,
-                rightIndex: nextRightEnd
-            });
-        }
-        const leftLength = nextLeftEnd - nextLeftStart;
-        const rightLength = nextRightEnd - nextRightStart;
-        let middle;
-        if (leftLength === 0) {
-            middle = buildInsertOps(rightLines, nextRightStart, nextRightEnd, rightOffset);
-        } else if (rightLength === 0) {
-            middle = buildDeleteOps(leftLines, nextLeftStart, nextLeftEnd, leftOffset);
-        } else if (!hasSharedCompareKey(leftCompare, rightCompare, nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd)) {
-            middle = buildDeleteOps(leftLines, nextLeftStart, nextLeftEnd, leftOffset).concat(buildInsertOps(rightLines, nextRightStart, nextRightEnd, rightOffset));
-        } else if (shouldUseMyersTrace(leftLength, rightLength)) {
-            const trace = buildMyersTrace(leftCompare.slice(nextLeftStart, nextLeftEnd), rightCompare.slice(nextRightStart, nextRightEnd));
-            middle = offsetOps$1(backtrackOps(leftLines.slice(nextLeftStart, nextLeftEnd), rightLines.slice(nextRightStart, nextRightEnd), trace, nextLeftStart, nextRightStart, options), leftOffset, rightOffset);
-        } else {
-            const split = findMyersBisect(leftCompare, rightCompare, nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd);
-            if (split.leftMid === nextLeftStart && split.rightMid === nextRightStart) {
-                middle = leftLength >= rightLength ? [ {
-                    type: "delete",
-                    leftLine: leftLines[nextLeftStart],
-                    leftLineNo: leftOffset + nextLeftStart
-                }, ...diffRange(nextLeftStart + 1, nextLeftEnd, nextRightStart, nextRightEnd) ] : [ {
-                    type: "insert",
-                    rightLine: rightLines[nextRightStart],
-                    rightLineNo: rightOffset + nextRightStart
-                }, ...diffRange(nextLeftStart, nextLeftEnd, nextRightStart + 1, nextRightEnd) ];
-            } else if (split.leftMid === nextLeftEnd && split.rightMid === nextRightEnd) {
-                middle = leftLength >= rightLength ? [ ...diffRange(nextLeftStart, nextLeftEnd - 1, nextRightStart, nextRightEnd), {
-                    type: "delete",
-                    leftLine: leftLines[nextLeftEnd - 1],
-                    leftLineNo: leftOffset + nextLeftEnd - 1
-                } ] : [ ...diffRange(nextLeftStart, nextLeftEnd, nextRightStart, nextRightEnd - 1), {
-                    type: "insert",
-                    rightLine: rightLines[nextRightEnd - 1],
-                    rightLineNo: rightOffset + nextRightEnd - 1
-                } ];
-            } else {
-                middle = diffRange(nextLeftStart, split.leftMid, nextRightStart, split.rightMid).concat(diffRange(split.leftMid, nextLeftEnd, split.rightMid, nextRightEnd));
-            }
-        }
-        const suffix = [];
-        for (let index = suffixPairs.length - 1; index >= 0; index -= 1) {
-            const pair = suffixPairs[index];
-            suffix.push(...buildMatchedLineOps(leftLines[pair.leftIndex], rightLines[pair.rightIndex], leftOffset + pair.leftIndex, rightOffset + pair.rightIndex, options));
-        }
-        return prefix.concat(middle, suffix);
-    }
-    return diffRange(0, leftLines.length, 0, rightLines.length);
-}
-
-function diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset, options) {
-    if (leftLines.length === 0 && rightLines.length === 0) {
-        return [];
-    }
-    const anchors = longestIncreasingPairs(buildUniquePairs(leftLines, rightLines));
-    if (anchors.length === 0) {
-        return diffLinesMyers(leftLines, rightLines, leftCompare, rightCompare, leftOffset, rightOffset, options);
-    }
-    const result = [];
-    let leftStart = 0;
-    let rightStart = 0;
-    for (const anchor of anchors) {
-        const leftSegment = leftLines.slice(leftStart, anchor.leftIndex);
-        const rightSegment = rightLines.slice(rightStart, anchor.rightIndex);
-        result.push(...diffLinesPatience(leftSegment, rightSegment, leftCompare.slice(leftStart, anchor.leftIndex), rightCompare.slice(rightStart, anchor.rightIndex), leftOffset + leftStart, rightOffset + rightStart, options));
-        const leftLine = leftLines[anchor.leftIndex] ?? "";
-        const rightLine = rightLines[anchor.rightIndex] ?? "";
-        const leftKey = leftCompare[anchor.leftIndex] ?? "";
-        const rightKey = rightCompare[anchor.rightIndex] ?? "";
-        if (leftLine === rightLine) {
-            result.push({
-                type: "equal",
-                leftLine: leftLine,
-                rightLine: rightLine,
-                leftLineNo: leftOffset + anchor.leftIndex,
-                rightLineNo: rightOffset + anchor.rightIndex
-            });
-        } else if (leftKey === rightKey && isBlankLine(leftLine) && isBlankLine(rightLine)) {
-            result.push({
-                type: "equal",
-                leftLine: leftLine,
-                rightLine: rightLine,
-                leftLineNo: leftOffset + anchor.leftIndex,
-                rightLineNo: rightOffset + anchor.rightIndex
-            });
-        } else if (leftKey === rightKey && isIgnorableLeadingFileWhitespaceDiff(leftLine, rightLine, options)) {
-            result.push({
-                type: "equal",
-                leftLine: leftLine,
-                rightLine: rightLine,
-                leftLineNo: leftOffset + anchor.leftIndex,
-                rightLineNo: rightOffset + anchor.rightIndex
-            });
-        } else if (leftKey === rightKey) {
-            result.push({
-                type: "delete",
-                leftLine: leftLine,
-                leftLineNo: leftOffset + anchor.leftIndex
-            });
-            result.push({
-                type: "insert",
-                rightLine: rightLine,
-                rightLineNo: rightOffset + anchor.rightIndex
-            });
-        } else {
-            result.push(...diffLinesMyers([ leftLine ], [ rightLine ], [ leftKey ], [ rightKey ], leftOffset + anchor.leftIndex, rightOffset + anchor.rightIndex, options));
-        }
-        leftStart = anchor.leftIndex + 1;
-        rightStart = anchor.rightIndex + 1;
-    }
-    const tailLeft = leftLines.slice(leftStart);
-    const tailRight = rightLines.slice(rightStart);
-    result.push(...diffLinesPatience(tailLeft, tailRight, leftCompare.slice(leftStart), rightCompare.slice(rightStart), leftOffset + leftStart, rightOffset + rightStart, options));
-    return result;
-}
-
-function diffLinesFromLines(leftLines, rightLines, options = {}) {
-    const resolved = normalizeDiffLinesOptionsForLines(leftLines, rightLines, options);
-    const leftCompare = buildCompareLinesWithOptions(leftLines, resolved);
-    const rightCompare = buildCompareLinesWithOptions(rightLines, resolved);
-    return diffLinesPatience(leftLines, rightLines, leftCompare, rightCompare, 0, 0, resolved);
-}
-
-function diffLines(leftText, rightText, options = {}) {
-    const leftNormalized = normalizeText(leftText);
-    const rightNormalized = normalizeText(rightText);
-    const leftLines = splitLines(leftNormalized);
-    const rightLines = splitLines(rightNormalized);
-    return diffLinesFromLines(leftLines, rightLines, {
-        ...options,
-        leftLeadingFileWhitespaceEligible: options.leftLeadingFileWhitespaceEligible ?? canIgnoreLeadingFileWhitespaceFromText(leftNormalized),
-        rightLeadingFileWhitespaceEligible: options.rightLeadingFileWhitespaceEligible ?? canIgnoreLeadingFileWhitespaceFromText(rightNormalized)
-    });
-}
-
-const MODIFIER_KEYWORDS = new Set([ "var", "let", "const", "function", "fn", "def", "string", "int", "float", "double", "bool", "boolean", "void", "public", "private", "protected", "internal", "static", "readonly", "final", "abstract", "async", "override", "virtual", "return", "class", "interface", "trait", "extends", "implements", "new", "namespace", "using", "if", "else", "elseif", "for", "foreach", "while", "do", "switch", "case", "break", "continue", "try", "catch", "finally", "throw", "include", "require", "global", "define" ]);
-
-const DECLARATION_KEYWORDS = new Set([ "function", "fn", "def" ]);
-
-const DECLARATION_MODIFIERS = new Set([ "public", "private", "protected", "internal", "static", "readonly", "final", "abstract", "async", "override", "virtual" ]);
-
-function stripStringLiterals(source) {
-    return source.replace(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g, "");
-}
-
-function stripRazorLinePrefix(line) {
-    const match2 = line.match(/^(\s*)@:\s*/);
-    if (!match2) {
-        return line;
-    }
-    return match2[1] + line.slice(match2[0].length);
-}
-
-function hasStringLiteral(line) {
-    return /'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/.test(line);
-}
-
-function isElseLine(line) {
-    const stripped = stripStringLiterals(line);
-    return /\belse\b/i.test(stripped);
-}
-
-function normalizeCommentText(line) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) {
-        return null;
-    }
-    let raw = null;
-    if (trimmed.startsWith("///")) {
-        raw = trimmed.slice(3);
-    } else if (trimmed.startsWith("//")) {
-        raw = trimmed.slice(2);
-    } else if (trimmed.startsWith("/*") && trimmed.endsWith("*/")) {
-        raw = trimmed.slice(2, -2);
-    } else if (trimmed.startsWith("\x3c!--") && trimmed.endsWith("--\x3e")) {
-        raw = trimmed.slice(4, -3);
-    } else if (trimmed.startsWith("#")) {
-        raw = trimmed.slice(1);
-    }
-    if (raw === null) {
-        return null;
-    }
-    const withoutTags = raw.replace(/<\/?[^>]+>/g, " ");
-    const normalized = withoutTags.replace(/\s+/g, " ").trim().toLowerCase();
-    return normalized.length > 0 ? normalized : null;
-}
-
-function detectAppendLike(line) {
-    return /\.(?:append|appendline|appendformat)\s*\(/i.test(line) || /\.\=/.test(line) || /\+=/.test(line) && hasStringLiteral(line);
-}
-
-function extractInitVariable(line) {
-    const trimmed = line.trimStart();
-    const csharpMatch = trimmed.match(/\b([A-Za-z_][A-Za-z0-9_]*)\s*=\s*new\b/i);
-    if (csharpMatch) {
-        return csharpMatch[1].toLowerCase();
-    }
-    const phpMatch = trimmed.match(/\$([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(['"])\s*\2/);
-    if (phpMatch) {
-        return phpMatch[1].toLowerCase();
-    }
-    return null;
-}
-
-function extractDateFormatInfo(line) {
-    const match2 = line.match(/\b(?:to_char|format)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*['"]([^'"]+)['"]\s*\)/i);
-    if (!match2) {
-        return null;
-    }
-    return {
-        arg: match2[1].toLowerCase(),
-        format: match2[2].toLowerCase()
-    };
-}
-
-function normalizeLine(line) {
-    let normalized = line.trimStart().replace(/\$/g, "");
-    normalized = normalized.replace(/(?:\b[A-Za-z_][A-Za-z0-9_]*\.)+/g, "");
-    return normalized;
-}
-
-function normalizeFragment(fragment) {
-    return fragment.replace(/\s+/g, " ").replace(/\s*([{}();:,])\s*/g, "$1").replace(/['"]/g, '"').trim().toLowerCase();
-}
-
-function normalizeLiteralToken(value) {
-    return normalizeFragment(value);
-}
-
-function normalizeTemplateExpression(expression) {
-    return expression.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, "$1").replace(/\s+/g, " ").trim().toLowerCase();
-}
-
-function normalizeTemplateLine(line) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) {
-        return null;
-    }
-    let base = null;
-    if (detectAppendLike(line)) {
-        const literal = extractAppendLiteral(line) ?? extractLiterals(line)[0];
-        if (!literal) {
-            return null;
-        }
-        base = literal;
-    } else if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
-        base = trimmed;
-    }
-    if (!base) {
-        return null;
-    }
-    let normalized = base.replace(/[¥￥]/g, "\\");
-    normalized = normalized.replace(/<\?\s*=?\s*([^?]*?)\s*\?>/gi, (_, expr) => `{${normalizeTemplateExpression(expr) || "expr"}}`);
-    normalized = normalized.replace(/\$([A-Za-z_][A-Za-z0-9_]*)/g, (_, name) => `{${name.toLowerCase()}}`);
-    normalized = normalized.replace(/\{[^}]*\}/g, "{expr}");
-    return normalizeFragment(normalized);
-}
-
-function extractHtmlSignature(line) {
-    const attrs = [];
-    const normalized = line.replace(/<\?\s*=?\s*[^?]*?\s*\?>/gi, " ");
-    const tagMatch = normalized.match(/<\s*\/?\s*([a-z][a-z0-9-]*)/i);
-    const tag2 = tagMatch ? tagMatch[1].toLowerCase() : null;
-    const attrRegex = /([a-zA-Z_:][a-zA-Z0-9_:-]*)\s*=/g;
-    let match2;
-    while ((match2 = attrRegex.exec(normalized)) !== null) {
-        attrs.push(match2[1].toLowerCase());
-    }
-    return {
-        tag: tag2,
-        attrs: attrs
-    };
-}
-
-function extractStructuredFragment(line) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0) {
-        return null;
-    }
-    const switchLabel = normalizeSwitchLabel(trimmed);
-    if (switchLabel) {
-        return switchLabel;
-    }
-    if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(trimmed)) {
-        return normalizeFragment(trimmed);
-    }
-    if (trimmed === "{" || trimmed === "}" || /^<\?\s*(?:php\s*)?[{}]\s*\?\s*>?$/i.test(trimmed)) {
-        return null;
-    }
-    if (detectAppendLike(line)) {
-        const literal = extractAppendLiteral(line) ?? extractLiterals(line)[0];
-        if (literal) {
-            return normalizeSwitchLabel(literal) ?? normalizeFragment(literal);
-        }
-        return null;
-    }
-    if (/^(function|console\.|return|if|for|while|switch|case|default|break|continue)\b/i.test(trimmed)) {
-        return normalizeFragment(trimmed);
-    }
-    if (trimmed.startsWith("<") && trimmed.endsWith(">")) {
-        return normalizeFragment(trimmed);
-    }
-    if (!/[{};:]/.test(trimmed)) {
-        return null;
-    }
-    if (/^[A-Za-z0-9_.#\s-]+{\s*$/i.test(trimmed)) {
-        return normalizeFragment(trimmed);
-    }
-    if (/^}\s*;?\s*$/.test(trimmed)) {
-        return normalizeFragment(trimmed);
-    }
-    if (/^}\s*\)\s*;?\s*$/.test(trimmed)) {
-        return normalizeFragment(trimmed);
-    }
-    if (/^\)\s*;?\s*$/.test(trimmed)) {
-        return normalizeFragment(trimmed);
-    }
-    if (/^[A-Za-z-]+\s*:\s*[^;]+;?\s*$/.test(trimmed)) {
-        return normalizeFragment(trimmed);
-    }
-    return null;
-}
-
-function normalizeSwitchLabel(line) {
-    const trimmed = line.trim();
-    if (/^case\b/i.test(trimmed)) {
-        return "case:";
-    }
-    if (/^default\s*:/i.test(trimmed)) {
-        return "default:";
-    }
-    return null;
-}
-
-function extractBraceToken(line) {
-    const trimmed = line.trim();
-    if (trimmed === "{") {
-        return "brace_open";
-    }
-    if (trimmed === "}") {
-        return "brace_close";
-    }
-    if (/^}\s*\)\s*;?\s*$/.test(trimmed)) {
-        return "brace_close";
-    }
-    if (/^\)\s*;?\s*$/.test(trimmed)) {
-        return "brace_close";
-    }
-    const phpMatch = trimmed.match(/^<\?\s*(?:php\s*)?([{}])\s*\?\s*>?$/i);
-    if (phpMatch?.[1] === "{") {
-        return "brace_open";
-    }
-    if (phpMatch?.[1] === "}") {
-        return "brace_close";
-    }
-    return null;
-}
-
-function unescapeLiteral(value) {
-    return value.replace(/\\\\/g, "\\").replace(/\\"/g, '"').replace(/\\'/g, "'");
-}
-
-function extractLiterals(line) {
-    const matches = line.match(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g) ?? [];
-    const literals = [];
-    matches.forEach(value => {
-        const unescaped = unescapeLiteral(value.slice(1, -1)).replace(/[¥￥]/g, "\\");
-        const normalized = normalizeLiteralToken(unescaped);
-        if (normalized.length > 0) {
-            literals.push(normalized);
-        }
-        if (normalized.endsWith(".php")) {
-            const base = normalized.slice(0, -4);
-            if (base.length > 0) {
-                literals.push(base);
-            }
-        }
-    });
-    return literals;
-}
-
-function extractHtmlHintTokens(source) {
-    const tokens = [];
-    const tagMatches = source.matchAll(/<\s*\/?\s*([a-z][a-z0-9-]*)/gi);
-    for (const match2 of tagMatches) {
-        tokens.push(`hint:html:tag:${match2[1].toLowerCase()}`);
-    }
-    if (/\bclass\s*=/.test(source)) {
-        tokens.push("hint:html:attr:class");
-    }
-    if (/\bid\s*=/.test(source)) {
-        tokens.push("hint:html:attr:id");
-    }
-    if (/\bhref\s*=/.test(source)) {
-        tokens.push("hint:html:attr:href");
-    }
-    if (/\bsrc\s*=/.test(source)) {
-        tokens.push("hint:html:attr:src");
-    }
-    if (/\brole\s*=/.test(source)) {
-        tokens.push("hint:html:attr:role");
-    }
-    if (/\btype\s*=/.test(source)) {
-        tokens.push("hint:html:attr:type");
-    }
-    if (/\bdata-[a-z0-9_-]+\s*=/.test(source)) {
-        tokens.push("hint:html:attr:data");
-    }
-    if (/\baria-[a-z0-9_-]+\s*=/.test(source)) {
-        tokens.push("hint:html:attr:aria");
-    }
-    return tokens;
-}
-
-function extractJsHintTokens(source) {
-    const tokens = [];
-    if (/\bconst\b/.test(source)) {
-        tokens.push("hint:js:const");
-    }
-    if (/\blet\b/.test(source)) {
-        tokens.push("hint:js:let");
-    }
-    if (/\bvar\b/.test(source)) {
-        tokens.push("hint:js:var");
-    }
-    if (/\bdocument\b/.test(source)) {
-        tokens.push("hint:js:document");
-    }
-    if (/\bwindow\b/.test(source)) {
-        tokens.push("hint:js:window");
-    }
-    if (/\bquerySelector(All)?\b/.test(source)) {
-        tokens.push("hint:js:querySelector");
-    }
-    if (/\bgetElementById\b/.test(source)) {
-        tokens.push("hint:js:getElementById");
-    }
-    if (/\bgetElementsByClassName\b/.test(source)) {
-        tokens.push("hint:js:getElementsByClassName");
-    }
-    if (/\baddEventListener\b/.test(source)) {
-        tokens.push("hint:js:addEventListener");
-    }
-    if (/\bclassList\b/.test(source)) {
-        tokens.push("hint:js:classList");
-    }
-    if (/\binnerHTML\b/.test(source)) {
-        tokens.push("hint:js:innerHTML");
-    }
-    if (/\btextContent\b/.test(source)) {
-        tokens.push("hint:js:textContent");
-    }
-    if (/\bfunction\b/.test(source)) {
-        tokens.push("hint:js:function");
-    }
-    if (/\breturn\b/.test(source)) {
-        tokens.push("hint:js:return");
-    }
-    if (/\bswitch\b/.test(source)) {
-        tokens.push("hint:js:switch");
-    }
-    if (/\bcase\b/.test(source)) {
-        tokens.push("hint:js:case");
-    }
-    if (/\bdefault\b/.test(source)) {
-        tokens.push("hint:js:default");
-    }
-    if (/\bbreak\b/.test(source)) {
-        tokens.push("hint:js:break");
-    }
-    if (/\bcontinue\b/.test(source)) {
-        tokens.push("hint:js:continue");
-    }
-    if (/\bif\b/.test(source)) {
-        tokens.push("hint:js:if");
-    }
-    if (/\bfor\b/.test(source)) {
-        tokens.push("hint:js:for");
-    }
-    if (/\bwhile\b/.test(source)) {
-        tokens.push("hint:js:while");
-    }
-    if (/=>/.test(source)) {
-        tokens.push("hint:js:arrow");
-    }
-    return tokens;
-}
-
-function extractEmbeddedHintTokens(source) {
-    const tokens = new Set;
-    extractHtmlHintTokens(source).forEach(token => tokens.add(token));
-    extractJsHintTokens(source).forEach(token => tokens.add(token));
-    return [ ...tokens ];
-}
-
-function extractNumbers(line) {
-    return line.match(/\b\d+(?:\.\d+)?\b/g) ?? [];
-}
-
-function extractIdentifiers(line) {
-    const normalized = normalizeLine(line);
-    const matches = normalized.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
-    return matches.map(token => token.toLowerCase()).filter(token => !MODIFIER_KEYWORDS.has(token));
-}
-
-function extractFunctionName(line) {
-    const normalized = normalizeLine(line);
-    const funcMatch = normalized.match(/\b(function|fn|def)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/i);
-    if (funcMatch) {
-        return funcMatch[2].toLowerCase();
-    }
-    const typeMatch = normalized.match(/\b([A-Za-z_][A-Za-z0-9_<>,\[\]]*)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/);
-    if (typeMatch) {
-        return typeMatch[2].toLowerCase();
-    }
-    return null;
-}
-
-function extractMemberAccessName(line) {
-    const normalized = line.trimStart().replace(/\$/g, "").replace(/\s+/g, " ");
-    const match2 = normalized.match(/(?:\b[A-Za-z_][A-Za-z0-9_]*\s*(?:\.|->)\s*)+([A-Za-z_][A-Za-z0-9_]*)\b/);
-    if (!match2) {
-        return null;
-    }
-    return match2[1].toLowerCase();
-}
-
-function detectCategory(line) {
-    const normalized = normalizeLine(line);
-    const hasDeclarationKeyword = Array.from(DECLARATION_KEYWORDS).some(keyword => new RegExp(`\\b${keyword}\\b`, "i").test(normalized));
-    if (hasDeclarationKeyword) {
-        return "decl";
-    }
-    const hasModifier2 = Array.from(DECLARATION_MODIFIERS).some(modifier => new RegExp(`\\b${modifier}\\b`, "i").test(normalized));
-    if (hasModifier2 && /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(normalized)) {
-        return "decl";
-    }
-    if (/\b[A-Za-z_][A-Za-z0-9_]*\s*\(/.test(normalized)) {
-        return "call";
-    }
-    return "other";
-}
-
-function pickPrimaryId(identifiers, literals, line) {
-    const funcName = extractFunctionName(line);
-    if (funcName && !MODIFIER_KEYWORDS.has(funcName)) {
-        return funcName;
-    }
-    const memberAccessName = extractMemberAccessName(line);
-    if (memberAccessName && !MODIFIER_KEYWORDS.has(memberAccessName)) {
-        return memberAccessName;
-    }
-    const primaryCandidates = identifiers.filter(token => !token.startsWith("hint:") && !token.startsWith("codefrag:"));
-    if (primaryCandidates.length > 0) {
-        return primaryCandidates.reduce((best, current) => current.length > best.length ? current : best);
-    }
-    if (literals.length > 0) {
-        return literals.reduce((best, current) => current.length > best.length ? current : best);
-    }
-    return null;
-}
-
-function buildLineFeatures(line) {
-    const normalizedLine = stripRazorLinePrefix(line);
-    const appendLike = detectAppendLike(normalizedLine);
-    const appendLiteral = appendLike ? extractAppendLiteral(normalizedLine) : null;
-    const featureLine = appendLiteral ?? normalizedLine;
-    const identifiers = extractIdentifiers(featureLine);
-    const literals = extractLiterals(featureLine);
-    const numbers = extractNumbers(featureLine);
-    const embeddedOutputCall = extractEmbeddedOutputCall(normalizedLine);
-    if (embeddedOutputCall) {
-        identifiers.push(`embeddedcall:${embeddedOutputCall}`);
-    }
-    const commentText = normalizeCommentText(featureLine);
-    if (commentText) {
-        identifiers.push("comment");
-        identifiers.push(`comment:${commentText}`);
-        if (!literals.includes(commentText)) {
-            literals.push(commentText);
-        }
-    }
-    const templateSignature = normalizeTemplateLine(featureLine);
-    if (templateSignature) {
-        identifiers.push(`template:${templateSignature}`);
-        const signature = appendLiteral ?? extractLiterals(featureLine)[0] ?? featureLine;
-        const htmlSignature = extractHtmlSignature(signature);
-        if (htmlSignature.tag) {
-            identifiers.push(`htmltag:${htmlSignature.tag}`);
-        }
-        htmlSignature.attrs.forEach(attr => identifiers.push(`htmlattr:${attr}`));
-    }
-    const structuredFragment = extractStructuredFragment(featureLine);
-    if (structuredFragment) {
-        identifiers.push(`codefrag:${structuredFragment}`);
-        if (structuredFragment === "{") {
-            identifiers.push("brace_open");
-        } else if (structuredFragment === "}") {
-            identifiers.push("brace_close");
-        }
-    }
-    if (isElseLine(featureLine)) {
-        identifiers.push("else_line");
-    }
-    const braceToken = extractBraceToken(featureLine);
-    if (braceToken) {
-        identifiers.push(braceToken);
-    }
-    const category = detectCategory(featureLine);
-    const primaryId = embeddedOutputCall ? `embeddedcall:${embeddedOutputCall}` : pickPrimaryId(identifiers, literals, featureLine);
-    extractEmbeddedHintTokens(featureLine).forEach(token => identifiers.push(token));
-    if (appendLike) {
-        literals.forEach(literal => {
-            extractEmbeddedHintTokens(literal).forEach(token => identifiers.push(token));
-        });
-    }
-    if (appendLike && !identifiers.includes("append")) {
-        identifiers.push("append");
-    }
-    if (appendLiteral) {
-        const normalizedLiteral = normalizeLiteralToken(appendLiteral);
-        if (normalizedLiteral.length > 0 && !literals.includes(normalizedLiteral)) {
-            literals.push(normalizedLiteral);
-        }
-    }
-    const initVar = extractInitVariable(featureLine);
-    if (initVar) {
-        identifiers.push("init");
-        identifiers.push(`init:${initVar}`);
-    }
-    const dateFormat = extractDateFormatInfo(featureLine);
-    if (dateFormat) {
-        identifiers.push("dateformat");
-        identifiers.push(`dateformat:${dateFormat.format}`);
-        identifiers.push(`dateformatarg:${dateFormat.arg}`);
-    }
-    return {
-        identifiers: identifiers,
-        literals: literals,
-        numbers: numbers,
-        primaryId: primaryId,
-        category: category
-    };
-}
-
-function filterHintTokens(identifiers) {
-    return identifiers.filter(token => token.startsWith("hint:"));
-}
-
-function filterStrongIdentifiers(identifiers) {
-    return identifiers.filter(token => !token.startsWith("hint:") && !token.startsWith("codefrag:"));
-}
-
-function intersectCount(left, right) {
-    if (left.length === 0 || right.length === 0) {
-        return 0;
-    }
-    const rightSet = new Set(right);
-    let count = 0;
-    left.forEach(token => {
-        if (rightSet.has(token)) {
-            count += 1;
-        }
-    });
-    return count;
-}
-
-function jaccardSimilarity(left, right) {
-    if (left.length === 0 && right.length === 0) {
-        return 0;
-    }
-    const setLeft = new Set(left);
-    const setRight = new Set(right);
-    const union = new Set([ ...setLeft, ...setRight ]);
-    if (union.size === 0) {
-        return 0;
-    }
-    let intersection2 = 0;
-    setLeft.forEach(token => {
-        if (setRight.has(token)) {
-            intersection2 += 1;
-        }
-    });
-    return intersection2 / union.size;
-}
-
-function scoreLinePair(left, right) {
-    const strongLeftIds = filterStrongIdentifiers(left.identifiers);
-    const strongRightIds = filterStrongIdentifiers(right.identifiers);
-    const idOverlap = intersectCount(strongLeftIds, strongRightIds);
-    const hintOverlap = intersectCount(filterHintTokens(left.identifiers), filterHintTokens(right.identifiers));
-    const literalOverlap = intersectCount(left.literals, right.literals);
-    const numberOverlap = intersectCount(left.numbers, right.numbers);
-    const commentOverlap = left.identifiers.some(token => token.startsWith("comment:") && right.identifiers.includes(token));
-    const initOverlap = left.identifiers.some(token => token.startsWith("init:") && right.identifiers.includes(token));
-    const dateFormatOverlap = left.identifiers.some(token => token.startsWith("dateformat:") && right.identifiers.includes(token));
-    const dateFormatArgOverlap = left.identifiers.some(token => token.startsWith("dateformatarg:") && right.identifiers.includes(token));
-    const codefragOverlap = left.identifiers.some(token => token.startsWith("codefrag:") && right.identifiers.includes(token));
-    const braceOverlap = left.identifiers.includes("brace_open") && right.identifiers.includes("brace_open") || left.identifiers.includes("brace_close") && right.identifiers.includes("brace_close");
-    const elseOverlap = left.identifiers.includes("else_line") && right.identifiers.includes("else_line");
-    const hasDateFormat = left.identifiers.includes("dateformat") || right.identifiers.includes("dateformat");
-    const hasBaseOverlap = idOverlap > 0 || literalOverlap > 0 || codefragOverlap || braceOverlap || elseOverlap || initOverlap || dateFormatArgOverlap || commentOverlap;
-    if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
-        if (!hasBaseOverlap) {
-            return null;
-        }
-    }
-    if (!left.primaryId || !right.primaryId) {
-        if (!hasBaseOverlap) {
-            return null;
-        }
-    }
-    if (hasDateFormat && !dateFormatArgOverlap && literalOverlap === 0) {
-        return null;
-    }
-    let score2 = 0;
-    if (left.primaryId && right.primaryId && left.primaryId === right.primaryId) {
-        score2 += 5;
-    }
-    score2 += literalOverlap * 2;
-    score2 += numberOverlap * 1.5;
-    score2 += idOverlap * 1;
-    score2 += hintOverlap * .5;
-    if (literalOverlap > 0 && idOverlap > 0) {
-        score2 += 2;
-    }
-    if (codefragOverlap) {
-        score2 += 5;
-    }
-    if (braceOverlap) {
-        score2 += 5;
-    }
-    if (elseOverlap) {
-        score2 += 4;
-    }
-    if (initOverlap) {
-        score2 += 4;
-    }
-    if (dateFormatOverlap) {
-        score2 += dateFormatArgOverlap ? 5 : 1;
-    }
-    if (commentOverlap) {
-        score2 += 5;
-    }
-    if (left.category === right.category) {
-        score2 += left.category === "decl" ? 1.5 : left.category === "call" ? 1 : .5;
-    } else if (left.category === "decl" && right.category === "call" || left.category === "call" && right.category === "decl") {
-        score2 -= 1;
-    }
-    score2 += jaccardSimilarity(strongLeftIds, strongRightIds);
-    return score2;
-}
-
-function extractIndexTokens(features) {
-    const tokens = new Set;
-    if (features.primaryId) {
-        tokens.add(features.primaryId);
-    }
-    features.identifiers.forEach(token => tokens.add(token));
-    features.literals.forEach(token => tokens.add(token));
-    return [ ...tokens ];
-}
-
-function countIndent(line) {
-    let count = 0;
-    for (const char of line) {
-        if (char === " " || char === "\t") {
-            count += 1;
-        } else {
-            break;
-        }
-    }
-    return count;
-}
-
-const WINDOW_SIZE = 40;
-
-const SCORE_THRESHOLD = 4;
-
-const EMPTY_MATCH_STATE = {
-    score: 0,
-    pairCount: 0,
-    indentDiffTotal: 0,
-    distanceTotal: 0,
-    previous: null,
-    candidate: null
-};
-
-function buildIndexMap(features) {
-    const map = new Map;
-    features.forEach((feature, index) => {
-        extractIndexTokens(feature).forEach(token => {
-            const bucket = map.get(token);
-            if (bucket) {
-                bucket.push(index);
-            } else {
-                map.set(token, [ index ]);
-            }
-        });
-    });
-    return map;
-}
-
-function buildCandidateIndices(index, insertCount, tokens, indexMap) {
-    const indices = new Set;
-    const start = Math.max(0, index - WINDOW_SIZE);
-    const end = Math.min(insertCount - 1, index + WINDOW_SIZE);
-    for (let i2 = start; i2 <= end; i2 += 1) {
-        indices.add(i2);
-    }
-    tokens.forEach(token => {
-        const bucket = indexMap.get(token);
-        if (!bucket) {
-            return;
-        }
-        bucket.forEach(entry => indices.add(entry));
-    });
-    return [ ...indices ];
-}
-
-function buildCandidates(deletes, inserts) {
-    const candidates = [];
-    const deleteFeatures = deletes.map(op => buildLineFeatures(op.leftLine ?? ""));
-    const insertFeatures = inserts.map(op => buildLineFeatures(op.rightLine ?? ""));
-    const insertIndex = buildIndexMap(insertFeatures);
-    for (let d = 0; d < deletes.length; d += 1) {
-        const leftText = deletes[d].leftLine ?? "";
-        const leftIndent = countIndent(leftText);
-        const leftFeature = deleteFeatures[d];
-        const tokens = extractIndexTokens(leftFeature);
-        const candidateIndices = buildCandidateIndices(d, inserts.length, tokens, insertIndex);
-        for (const i2 of candidateIndices) {
-            const rightText = inserts[i2].rightLine ?? "";
-            const rightIndent = countIndent(rightText);
-            const leftTrimmed = leftText.trimStart();
-            const rightTrimmed = rightText.trimStart();
-            const rightFeature = insertFeatures[i2];
-            const distance = Math.abs(d - i2);
-            if (leftTrimmed === rightTrimmed && leftTrimmed !== "" && leftText !== rightText) {
-                candidates.push({
-                    deleteIndex: d,
-                    insertIndex: i2,
-                    indentDiff: Math.abs(leftIndent - rightIndent),
-                    score: SCORE_THRESHOLD + 5,
-                    distance: distance
-                });
-                continue;
-            }
-            const scored = scoreLinePair(leftFeature, rightFeature);
-            if (scored === null) {
-                continue;
-            }
-            if (scored < SCORE_THRESHOLD) {
-                continue;
-            }
-            candidates.push({
-                deleteIndex: d,
-                insertIndex: i2,
-                indentDiff: Math.abs(leftIndent - rightIndent),
-                score: scored,
-                distance: distance
-            });
-        }
-    }
-    return candidates;
-}
-
-function sortCandidates(a, b) {
-    if (a.score !== b.score) {
-        return b.score - a.score;
-    }
-    if (a.indentDiff !== b.indentDiff) {
-        return a.indentDiff - b.indentDiff;
-    }
-    if (a.distance !== b.distance) {
-        return a.distance - b.distance;
-    }
-    if (a.deleteIndex !== b.deleteIndex) {
-        return a.deleteIndex - b.deleteIndex;
-    }
-    return a.insertIndex - b.insertIndex;
-}
-
-function compareMatchStates(a, b) {
-    if (!a && !b) {
-        return 0;
-    }
-    if (!a) {
-        return 1;
-    }
-    if (!b) {
-        return -1;
-    }
-    if (a.score !== b.score) {
-        return b.score - a.score;
-    }
-    if (a.pairCount !== b.pairCount) {
-        return b.pairCount - a.pairCount;
-    }
-    if (a.indentDiffTotal !== b.indentDiffTotal) {
-        return a.indentDiffTotal - b.indentDiffTotal;
-    }
-    if (a.distanceTotal !== b.distanceTotal) {
-        return a.distanceTotal - b.distanceTotal;
-    }
-    const aCandidate = a.candidate;
-    const bCandidate = b.candidate;
-    if (!aCandidate && !bCandidate) {
-        return 0;
-    }
-    if (!aCandidate) {
-        return 1;
-    }
-    if (!bCandidate) {
-        return -1;
-    }
-    return sortCandidates(aCandidate, bCandidate);
-}
-
-function pickBetterMatchState(current, candidate) {
-    return compareMatchStates(current, candidate) <= 0 ? current : candidate;
-}
-
-function buildMatchState(previous, candidate) {
-    return {
-        score: previous.score + candidate.score,
-        pairCount: previous.pairCount + 1,
-        indentDiffTotal: previous.indentDiffTotal + candidate.indentDiff,
-        distanceTotal: previous.distanceTotal + candidate.distance,
-        previous: previous,
-        candidate: candidate
-    };
-}
-
-function collectMatchPairs(state) {
-    const pairs = [];
-    let current = state;
-    while (current?.candidate) {
-        pairs.push([ current.candidate.deleteIndex, current.candidate.insertIndex ]);
-        current = current.previous;
-    }
-    return pairs.reverse();
-}
-
-function createFenwickBest(size2) {
-    const tree = new Array(size2 + 1).fill(null);
-    return {
-        query(upTo) {
-            let best = EMPTY_MATCH_STATE;
-            let index = upTo;
-            while (index > 0) {
-                best = pickBetterMatchState(best, tree[index]);
-                index -= index & -index;
-            }
-            return best ?? EMPTY_MATCH_STATE;
-        },
-        update(index, state) {
-            let currentIndex = index;
-            while (currentIndex < tree.length) {
-                tree[currentIndex] = pickBetterMatchState(tree[currentIndex], state);
-                currentIndex += currentIndex & -currentIndex;
-            }
-        }
-    };
-}
-
-function toPairedOp(op) {
-    if (op.type === "equal") {
-        return {
-            type: "equal",
-            leftLine: op.leftLine,
-            rightLine: op.rightLine,
-            leftLineNo: op.leftLineNo,
-            rightLineNo: op.rightLineNo
-        };
-    }
-    if (op.type === "delete") {
-        return {
-            type: "delete",
-            leftLine: op.leftLine,
-            leftLineNo: op.leftLineNo
-        };
-    }
-    return {
-        type: "insert",
-        rightLine: op.rightLine,
-        rightLineNo: op.rightLineNo
-    };
-}
-
-function pairBlock(deletes, inserts) {
-    const emittedInserts = new Set;
-    const matches = new Array(deletes.length).fill(void 0);
-    const candidatesByDelete = Array.from({
-        length: deletes.length
-    }, () => []);
-    for (const candidate of buildCandidates(deletes, inserts)) {
-        candidatesByDelete[candidate.deleteIndex].push(candidate);
-    }
-    candidatesByDelete.forEach(bucket => bucket.sort((a, b) => a.insertIndex === b.insertIndex ? sortCandidates(a, b) : a.insertIndex - b.insertIndex));
-    const fenwick = createFenwickBest(inserts.length);
-    let bestState = EMPTY_MATCH_STATE;
-    for (let deleteIndex = 0; deleteIndex < deletes.length; deleteIndex += 1) {
-        const updates = candidatesByDelete[deleteIndex].map(candidate => ({
-            insertIndex: candidate.insertIndex,
-            state: buildMatchState(fenwick.query(candidate.insertIndex), candidate)
-        }));
-        for (const update of updates) {
-            fenwick.update(update.insertIndex + 1, update.state);
-            if (compareMatchStates(bestState, update.state) > 0) {
-                bestState = update.state;
-            }
-        }
-    }
-    collectMatchPairs(bestState).forEach(([deleteIndex, insertIndex]) => {
-        matches[deleteIndex] = insertIndex;
-    });
-    const matchedInsertIndices = new Set;
-    matches.forEach(value => {
-        if (value !== void 0) {
-            matchedInsertIndices.add(value);
-        }
-    });
-    const result = [];
-    let insertCursor = 0;
-    const emitUnmatchedInsertsBefore = stopRightLineNo => {
-        while (insertCursor < inserts.length) {
-            const insert = inserts[insertCursor];
-            const insertLineNo = insert.rightLineNo ?? Number.MAX_SAFE_INTEGER;
-            if (stopRightLineNo !== void 0 && insertLineNo >= stopRightLineNo) {
-                break;
-            }
-            if (!matchedInsertIndices.has(insertCursor) && !emittedInserts.has(insertCursor)) {
-                result.push(toPairedOp(insert));
-                emittedInserts.add(insertCursor);
-            }
-            insertCursor += 1;
-        }
-    };
-    for (let i2 = 0; i2 < deletes.length; i2 += 1) {
-        const insertIndex = matches[i2];
-        if (insertIndex !== void 0) {
-            const leftOp = deletes[i2];
-            const rightOp = inserts[insertIndex];
-            emitUnmatchedInsertsBefore(rightOp.rightLineNo);
-            result.push({
-                type: "replace",
-                leftLine: leftOp.leftLine,
-                rightLine: rightOp.rightLine,
-                leftLineNo: leftOp.leftLineNo,
-                rightLineNo: rightOp.rightLineNo
-            });
-            while (insertCursor <= insertIndex && insertCursor < inserts.length) {
-                insertCursor += 1;
-            }
-            continue;
-        }
-        result.push(toPairedOp(deletes[i2]));
-    }
-    emitUnmatchedInsertsBefore(void 0);
-    for (let i2 = 0; i2 < inserts.length; i2 += 1) {
-        if (!matchedInsertIndices.has(i2) && !emittedInserts.has(i2)) {
-            result.push(toPairedOp(inserts[i2]));
-            emittedInserts.add(i2);
-        }
-    }
-    return result;
-}
-
-function isBraceLine(line) {
-    if (!line) {
-        return false;
-    }
-    return /^}\s*;?\s*$/.test(line.trim());
-}
-
-function alignBracePairs(ops) {
-    const result = [];
-    for (let i2 = 0; i2 < ops.length; i2 += 1) {
-        const current = ops[i2];
-        const next = ops[i2 + 1];
-        const prev = result[result.length - 1];
-        const prevPaired = prev?.type === "equal" || prev?.type === "replace";
-        if (prevPaired && current?.type === "delete" && next?.type === "insert" && isBraceLine(current.leftLine) && isBraceLine(next.rightLine) && current.leftLineNo !== void 0 && next.rightLineNo !== void 0) {
-            result.push({
-                type: "replace",
-                leftLine: current.leftLine,
-                rightLine: next.rightLine,
-                leftLineNo: current.leftLineNo,
-                rightLineNo: next.rightLineNo
-            });
-            i2 += 1;
-            continue;
-        }
-        if (prevPaired && current?.type === "insert" && next?.type === "delete" && isBraceLine(next.leftLine) && isBraceLine(current.rightLine) && next.leftLineNo !== void 0 && current.rightLineNo !== void 0) {
-            result.push({
-                type: "replace",
-                leftLine: next.leftLine,
-                rightLine: current.rightLine,
-                leftLineNo: next.leftLineNo,
-                rightLineNo: current.rightLineNo
-            });
-            i2 += 1;
-            continue;
-        }
-        result.push(current);
-    }
-    return result;
-}
-
-function pairReplace(ops) {
-    const result = [];
-    let i2 = 0;
-    while (i2 < ops.length) {
-        const op = ops[i2];
-        if (op.type !== "delete") {
-            result.push(toPairedOp(op));
-            i2 += 1;
-            continue;
-        }
-        const deletes = [];
-        while (i2 < ops.length && ops[i2].type === "delete") {
-            deletes.push(ops[i2]);
-            i2 += 1;
-        }
-        const inserts = [];
-        let j = i2;
-        while (j < ops.length && ops[j].type === "insert") {
-            inserts.push(ops[j]);
-            j += 1;
-        }
-        if (inserts.length === 0) {
-            deletes.forEach(del => result.push(toPairedOp(del)));
-            continue;
-        }
-        result.push(...pairBlock(deletes, inserts));
-        i2 = j;
-    }
-    return alignBracePairs(result);
-}
-
 function buildLcsTable(left, right) {
     const rows = left.length + 1;
     const cols = right.length + 1;
@@ -191293,191 +191558,6 @@ function buildFoldRanges(ops, options) {
 
 function findFoldContainingRow(folds, rowIndex) {
     return folds.find(fold => rowIndex >= fold.hiddenStartRow && rowIndex <= fold.hiddenEndRow);
-}
-
-function addAnchor(anchors, anchor) {
-    return [ ...anchors, anchor ];
-}
-
-function removeAnchorByLeft(anchors, leftLineNo) {
-    const index = anchors.findIndex(anchor => anchor.leftLineNo === leftLineNo);
-    if (index === -1) {
-        return {
-            next: anchors
-        };
-    }
-    const removed = anchors[index];
-    const next = anchors.slice(0, index).concat(anchors.slice(index + 1));
-    return {
-        next: next,
-        removed: removed
-    };
-}
-
-function removeAnchorByRight(anchors, rightLineNo) {
-    const index = anchors.findIndex(anchor => anchor.rightLineNo === rightLineNo);
-    if (index === -1) {
-        return {
-            next: anchors
-        };
-    }
-    const removed = anchors[index];
-    const next = anchors.slice(0, index).concat(anchors.slice(index + 1));
-    return {
-        next: next,
-        removed: removed
-    };
-}
-
-function addReason(issues, anchor, reason) {
-    const entry = issues.get(anchor) ?? new Set;
-    entry.add(reason);
-    issues.set(anchor, entry);
-}
-
-function validateAnchors(anchors, leftLineCount, rightLineCount) {
-    const issues = new Map;
-    for (const anchor of anchors) {
-        const outOfRange = anchor.leftLineNo < 0 || anchor.rightLineNo < 0 || anchor.leftLineNo >= leftLineCount || anchor.rightLineNo >= rightLineCount;
-        if (outOfRange) {
-            addReason(issues, anchor, "範囲外");
-        }
-    }
-    const leftCounts = new Map;
-    const rightCounts = new Map;
-    anchors.forEach(anchor => {
-        leftCounts.set(anchor.leftLineNo, (leftCounts.get(anchor.leftLineNo) ?? 0) + 1);
-        rightCounts.set(anchor.rightLineNo, (rightCounts.get(anchor.rightLineNo) ?? 0) + 1);
-    });
-    for (const anchor of anchors) {
-        if ((leftCounts.get(anchor.leftLineNo) ?? 0) > 1) {
-            addReason(issues, anchor, "左行の重複");
-        }
-        if ((rightCounts.get(anchor.rightLineNo) ?? 0) > 1) {
-            addReason(issues, anchor, "右行の重複");
-        }
-    }
-    const sorted = [ ...anchors ].sort((a, b) => a.leftLineNo - b.leftLineNo);
-    let prevRight = -1;
-    for (const anchor of sorted) {
-        if (anchor.rightLineNo <= prevRight) {
-            addReason(issues, anchor, "順序逆転");
-        }
-        if (anchor.rightLineNo > prevRight) {
-            prevRight = anchor.rightLineNo;
-        }
-    }
-    const invalid = [];
-    issues.forEach((reasons, anchor) => {
-        invalid.push({
-            anchor: anchor,
-            reasons: Array.from(reasons)
-        });
-    });
-    const valid = sorted.filter(anchor => !issues.has(anchor));
-    return {
-        valid: valid,
-        invalid: invalid
-    };
-}
-
-function offsetOps(ops, leftOffset, rightOffset) {
-    return ops.map(op => {
-        if (op.type === "insert") {
-            return {
-                ...op,
-                rightLineNo: op.rightLineNo === void 0 ? void 0 : op.rightLineNo + rightOffset
-            };
-        }
-        if (op.type === "delete") {
-            return {
-                ...op,
-                leftLineNo: op.leftLineNo === void 0 ? void 0 : op.leftLineNo + leftOffset
-            };
-        }
-        return {
-            ...op,
-            leftLineNo: op.leftLineNo === void 0 ? void 0 : op.leftLineNo + leftOffset,
-            rightLineNo: op.rightLineNo === void 0 ? void 0 : op.rightLineNo + rightOffset
-        };
-    });
-}
-
-function diffSegment(leftLines, rightLines, leftOffset, rightOffset, options) {
-    if (leftLines.length === 0 && rightLines.length === 0) {
-        return [];
-    }
-    const ops = diffLinesFromLines(leftLines, rightLines, {
-        ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace === true
-    });
-    const paired = pairReplace(ops);
-    return offsetOps(paired, leftOffset, rightOffset);
-}
-
-function stripLeadingTabsAndSpaces(value) {
-    return value.replace(/^[ \t]+/, "");
-}
-
-function hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(leftLine, rightLine) {
-    const leftMap = extractAppendLiteralInlineMap(leftLine);
-    const rightMap = extractAppendLiteralInlineMap(rightLine);
-    if (!leftMap || !rightMap) {
-        return false;
-    }
-    const leftWrapper = leftLine.slice(0, leftMap.payloadRange.start) + leftLine.slice(leftMap.payloadRange.end);
-    const rightWrapper = rightLine.slice(0, rightMap.payloadRange.start) + rightLine.slice(rightMap.payloadRange.end);
-    if (leftWrapper !== rightWrapper) {
-        return false;
-    }
-    if (leftMap.payload === rightMap.payload) {
-        return false;
-    }
-    return stripLeadingTabsAndSpaces(leftMap.payload) === stripLeadingTabsAndSpaces(rightMap.payload);
-}
-
-function isSameLineForMatch(leftLine, rightLine, leftLineNo, rightLineNo, options, leftLeadingFileWhitespaceEligible, rightLeadingFileWhitespaceEligible) {
-    if (leftLine === rightLine) {
-        return true;
-    }
-    if (!options.ignoreLeadingFileWhitespace) {
-        return false;
-    }
-    if (stripLeadingTabsAndSpaces(leftLine) === stripLeadingTabsAndSpaces(rightLine)) {
-        return true;
-    }
-    return hasOnlyLeadingFileWhitespaceDifferenceInAppendPayload(leftLine, rightLine);
-}
-
-function diffWithAnchors(leftText, rightText, anchors, options = {}) {
-    const leftNormalized = normalizeText(leftText);
-    const rightNormalized = normalizeText(rightText);
-    const leftLines = leftNormalized.split("\n");
-    const rightLines = rightNormalized.split("\n");
-    leftNormalized.length === 0 || leftNormalized[0] !== "\n";
-    rightNormalized.length === 0 || rightNormalized[0] !== "\n";
-    const result = [];
-    let leftStart = 0;
-    let rightStart = 0;
-    for (const anchor of anchors) {
-        const leftSegment = leftLines.slice(leftStart, anchor.leftLineNo);
-        const rightSegment = rightLines.slice(rightStart, anchor.rightLineNo);
-        result.push(...diffSegment(leftSegment, rightSegment, leftStart, rightStart, options));
-        const leftLine = leftLines[anchor.leftLineNo] ?? "";
-        const rightLine = rightLines[anchor.rightLineNo] ?? "";
-        result.push({
-            type: isSameLineForMatch(leftLine, rightLine, anchor.leftLineNo, anchor.rightLineNo, options) ? "equal" : "replace",
-            leftLine: leftLine,
-            rightLine: rightLine,
-            leftLineNo: anchor.leftLineNo,
-            rightLineNo: anchor.rightLineNo
-        });
-        leftStart = anchor.leftLineNo + 1;
-        rightStart = anchor.rightLineNo + 1;
-    }
-    const tailLeft = leftLines.slice(leftStart);
-    const tailRight = rightLines.slice(rightStart);
-    result.push(...diffSegment(tailLeft, tailRight, leftStart, rightStart, options));
-    return result;
 }
 
 const THIRD_PARTY_LICENSES = `Third-Party Licenses\n\nmonaco-editor\nLicense: MIT\nCopyright (c) 2016 - present Microsoft Corporation\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\nmarked\nLicense: MIT\nCopyright (c) 2018+ MarkedJS\nCopyright (c) 2011-2018 Christopher Jeffrey\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the "Software"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN\nTHE SOFTWARE.\n\nMarkdown\nLicense: BSD-style\nCopyright (c) 2004 John Gruber\nDaring Fireball (daringfireball.net)\n\nRedistribution and use in source and binary forms, with or without\nmodification, are permitted provided that the following conditions are met:\n\n* Redistributions of source code must retain the above copyright notice, this\n  list of conditions and the following disclaimer.\n* Redistributions in binary form must reproduce the above copyright notice,\n  this list of conditions and the following disclaimer in the documentation\n  and/or other materials provided with the distribution.\n* Neither the name "Markdown" nor the names of its contributors may be used to\n  endorse or promote products derived from this software without specific prior\n  written permission.\n\nThis software is provided by the copyright holders and contributors "as is"\nand any express or implied warranties, including, but not limited to, the\nimplied warranties of merchantability and fitness for a particular purpose are\ndisclaimed. In no event shall the copyright owner or contributors be liable for\nany direct, indirect, incidental, special, exemplary, or consequential damages\n(including, but not limited to, procurement of substitute goods or services;\nloss of use, data, or profits; or business interruption) however caused and on\nany theory of liability, whether in contract, strict liability, or tort\n(including negligence or otherwise) arising in any way out of the use of this\nsoftware, even if advised of the possibility of such damage.\n\nDOMPurify\nDual licensed under Apache License 2.0 or Mozilla Public License 2.0.\n\nApache License\nVersion 2.0, January 2004\nwww.apache.org/licenses/\n\nTERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION\n\n1. Definitions.\n\n   "License" shall mean the terms and conditions for use, reproduction,\n   and distribution as defined by Sections 1 through 9 of this document.\n\n   "Licensor" shall mean the copyright owner or entity authorized by\n   the copyright owner that is granting the License.\n\n   "Legal Entity" shall mean the union of the acting entity and all\n   other entities that control, are controlled by, or are under common\n   control with that entity. For the purposes of this definition,\n   "control" means (i) the power, direct or indirect, to cause the\n   direction or management of such entity, whether by contract or\n   otherwise, or (ii) ownership of fifty percent (50%) or more of the\n   outstanding shares, or (iii) beneficial ownership of such entity.\n\n   "You" (or "Your") shall mean an individual or Legal Entity\n   exercising permissions granted by this License.\n\n   "Source" form shall mean the preferred form for making modifications,\n   including but not limited to software source code, documentation\n   source, and configuration files.\n\n   "Object" form shall mean any form resulting from mechanical\n   transformation or translation of a Source form, including but\n   not limited to compiled object code, generated documentation,\n   and conversions to other media types.\n\n   "Work" shall mean the work of authorship, whether in Source or\n   Object form, made available under the License, as indicated by a\n   copyright notice that is included in or attached to the work\n   (an example is provided in the Appendix below).\n\n   "Derivative Works" shall mean any work, whether in Source or Object\n   form, that is based on (or derived from) the Work and for which the\n   editorial revisions, annotations, elaborations, or other modifications\n   represent, as a whole, an original work of authorship. For the purposes\n   of this License, Derivative Works shall not include works that remain\n   separable from, or merely link (or bind by name) to the interfaces of,\n   the Work and Derivative Works thereof.\n\n   "Contribution" shall mean any work of authorship, including\n   the original version of the Work and any modifications or additions\n   to that Work or Derivative Works thereof, that is intentionally\n   submitted to Licensor for inclusion in the Work by the copyright owner\n   or by an individual or Legal Entity authorized to submit on behalf of\n   the copyright owner. For the purposes of this definition, "submitted"\n   means any form of electronic, verbal, or written communication sent\n   to the Licensor or its representatives, including but not limited to\n   communication on electronic mailing lists, source code control systems,\n   and issue tracking systems that are managed by, or on behalf of, the\n   Licensor for the purpose of discussing and improving the Work, but\n   excluding communication that is conspicuously marked or otherwise\n   designated in writing by the copyright owner as "Not a Contribution."\n\n   "Contributor" shall mean Licensor and any individual or Legal Entity\n   on behalf of whom a Contribution has been received by Licensor and\n   subsequently incorporated within the Work.\n\n2. Grant of Copyright License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   copyright license to reproduce, prepare Derivative Works of,\n   publicly display, publicly perform, sublicense, and distribute the\n   Work and such Derivative Works in Source or Object form.\n\n3. Grant of Patent License. Subject to the terms and conditions of\n   this License, each Contributor hereby grants to You a perpetual,\n   worldwide, non-exclusive, no-charge, royalty-free, irrevocable\n   (except as stated in this section) patent license to make, have made,\n   use, offer to sell, sell, import, and otherwise transfer the Work,\n   where such license applies only to those patent claims licensable\n   by such Contributor that are necessarily infringed by their\n   Contribution(s) alone or by combination of their Contribution(s)\n   with the Work to which such Contribution(s) was submitted. If You\n   institute patent litigation against any entity (including a\n   cross-claim or counterclaim in a lawsuit) alleging that the Work\n   or a Contribution incorporated within the Work constitutes direct\n   or contributory patent infringement, then any patent licenses\n   granted to You under this License for that Work shall terminate\n   as of the date such litigation is filed.\n\n4. Redistribution. You may reproduce and distribute copies of the\n   Work or Derivative Works thereof in any medium, with or without\n   modifications, and in Source or Object form, provided that You\n   meet the following conditions:\n\n   (a) You must give any other recipients of the Work or\n       Derivative Works a copy of this License; and\n\n   (b) You must cause any modified files to carry prominent notices\n       stating that You changed the files; and\n\n   (c) You must retain, in the Source form of any Derivative Works\n       that You distribute, all copyright, patent, trademark, and\n       attribution notices from the Source form of the Work,\n       excluding those notices that do not pertain to any part of\n       the Derivative Works; and\n\n   (d) If the Work includes a "NOTICE" text file as part of its\n       distribution, then any Derivative Works that You distribute must\n       include a readable copy of the attribution notices contained\n       within such NOTICE file, excluding those notices that do not\n       pertain to any part of the Derivative Works, in at least one\n       of the following places: within a NOTICE text file distributed\n       as part of the Derivative Works; within the Source form or\n       documentation, if provided along with the Derivative Works; or,\n       within a display generated by the Derivative Works, if and\n       wherever such third-party notices normally appear. The contents\n       of the NOTICE file are for informational purposes only and\n       do not modify the License. You may add Your own attribution\n       notices within Derivative Works that You distribute, alongside\n       or as an addendum to the NOTICE text from the Work, provided\n       that such additional attribution notices cannot be construed\n       as modifying the License.\n\n   You may add Your own copyright statement to Your modifications and\n   may provide additional or different license terms and conditions\n   for use, reproduction, or distribution of Your modifications, or\n   for any such Derivative Works as a whole, provided Your use,\n   reproduction, and distribution of the Work otherwise complies with\n   the conditions stated in this License.\n\n5. Submission of Contributions. Unless You explicitly state otherwise,\n   any Contribution intentionally submitted for inclusion in the Work\n   by You to the Licensor shall be under the terms and conditions of\n   this License, without any additional terms or conditions.\n   Notwithstanding the above, nothing herein shall supersede or modify\n   the terms of any separate license agreement you may have executed\n   with Licensor regarding such Contributions.\n\n6. Trademarks. This License does not grant permission to use the trade\n   names, trademarks, service marks, or product names of the Licensor,\n   except as required for reasonable and customary use in describing the\n   origin of the Work and reproducing the content of the NOTICE file.\n\n7. Disclaimer of Warranty. Unless required by applicable law or\n   agreed to in writing, Licensor provides the Work (and each\n   Contributor provides its Contributions) on an "AS IS" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or\n   implied, including, without limitation, any warranties or conditions\n   of TITLE, NON-INFRINGEMENT, MERCHANTABILITY, or FITNESS FOR A\n   PARTICULAR PURPOSE. You are solely responsible for determining the\n   appropriateness of using or redistributing the Work and assume any\n   risks associated with Your exercise of permissions under this License.\n\n8. Limitation of Liability. In no event and under no legal theory,\n   whether in tort (including negligence), contract, or otherwise,\n   unless required by applicable law (such as deliberate and grossly\n   negligent acts) or agreed to in writing, shall any Contributor be\n   liable to You for damages, including any direct, indirect, special,\n   incidental, or consequential damages of any character arising as a\n   result of this License or out of the use or inability to use the\n   Work (including but not limited to damages for loss of goodwill,\n   work stoppage, computer failure or malfunction, or any and all\n   other commercial damages or losses), even if such Contributor\n   has been advised of the possibility of such damages.\n\n9. Accepting Warranty or Additional Liability. While redistributing\n   the Work or Derivative Works thereof, You may choose to offer,\n   and charge a fee for, acceptance of support, warranty, indemnity,\n   or other liability obligations and/or rights consistent with this\n   License. However, in accepting such obligations, You may act only\n   on Your own behalf and on Your sole responsibility, not on behalf\n   of any other Contributor, and only if You agree to indemnify,\n   defend, and hold each Contributor harmless for any liability\n   incurred by, or claims asserted against, such Contributor by reason\n   of your accepting any such warranty or additional liability.\n\nEND OF TERMS AND CONDITIONS\n\nAPPENDIX: How to apply the Apache License to your work.\n\n   Copyright [yyyy] [name of copyright owner]\n\n   Licensed under the Apache License, Version 2.0 (the "License");\n   you may not use this file except in compliance with the License.\n   You may obtain a copy of the License at\n\n       www.apache.org/licenses/LICENSE-2.0\n\n   Unless required by applicable law or agreed to in writing, software\n   distributed under the License is distributed on an "AS IS" BASIS,\n   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n   See the License for the specific language governing permissions and\n   limitations under the License.\n\nMozilla Public License, version 2.0\n\n1. Definitions\n\n1.1. "Contributor"\n\n     means each individual or legal entity that creates, contributes to the\n     creation of, or owns Covered Software.\n\n1.2. "Contributor Version"\n\n     means the combination of the Contributions of others (if any) used by a\n     Contributor and that particular Contributor's Contribution.\n\n1.3. "Contribution"\n\n     means Covered Software of a particular Contributor.\n\n1.4. "Covered Software"\n\n     means Source Code Form to which the initial Contributor has attached the\n     notice in Exhibit A, the Executable Form of such Source Code Form, and\n     Modifications of such Source Code Form, in each case including portions\n     thereof.\n\n1.5. "Incompatible With Secondary Licenses"\n     means\n\n     a. that the initial Contributor has attached the notice described in\n        Exhibit B to the Covered Software; or\n\n     b. that the Covered Software was made available under the terms of version\n        1.1 or earlier of the License, but not also under the terms of a\n        Secondary License.\n\n1.6. "Executable Form"\n\n     means any form of the work other than Source Code Form.\n\n1.7. "Larger Work"\n\n     means a work that combines Covered Software with other material, in a separate\n     file or files, that is not Covered Software.\n\n1.8. "License"\n\n     means this document.\n\n1.9. "Licensable"\n\n     means having the right to grant, to the maximum extent possible, whether at the\n     time of the initial grant or subsequently, any and all of the rights conveyed by\n     this License.\n\n1.10. "Modifications"\n\n     means any of the following:\n\n     a. any file in Source Code Form that results from an addition to, deletion\n        from, or modification of the contents of Covered Software; or\n\n     b. any new file in Source Code Form that contains any Covered Software.\n\n1.11. "Patent Claims" of a Contributor\n\n      means any patent claim(s), including without limitation, method, process,\n      and apparatus claims, in any patent Licensable by such Contributor that\n      would be infringed, but for the grant of the License, by the making,\n      using, selling, offering for sale, having made, import, or transfer of\n      either its Contributions or its Contributor Version.\n\n1.12. "Secondary License"\n\n      means either the GNU General Public License, Version 2.0, the GNU Lesser\n      General Public License, Version 2.1, the GNU Affero General Public\n      License, Version 3.0, or any later versions of those licenses.\n\n1.13. "Source Code Form"\n\n      means the form of the work preferred for making modifications.\n\n1.14. "You" (or "Your")\n\n      means an individual or a legal entity exercising rights under this\n      License. For legal entities, "You" includes any entity that controls, is\n      controlled by, or is under common control with You. For purposes of this\n      definition, "control" means (a) the power, direct or indirect, to cause\n      the direction or management of such entity, whether by contract or\n      otherwise, or (b) ownership of more than fifty percent (50%) of the\n      outstanding shares or beneficial ownership of such entity.\n\n2. License Grants and Conditions\n\n2.1. Grants\n\n     Each Contributor hereby grants You a world-wide, royalty-free,\n     non-exclusive license:\n\n     a. under intellectual property rights (other than patent or trademark)\n        Licensable by such Contributor to use, reproduce, make available,\n        modify, display, perform, distribute, and otherwise exploit its\n        Contributions, either on an unmodified basis, with Modifications, or as\n        part of a Larger Work; and\n\n     b. under Patent Claims of such Contributor to make, use, sell, offer for\n        sale, have made, import, and otherwise transfer either its Contributions\n        or its Contributor Version.\n\n2.2. Effective Date\n\n     The licenses granted in Section 2.1 with respect to any Contribution become\n     effective for each Contribution on the date the Contributor first distributes\n     such Contribution.\n\n2.3. Limitations on Grant Scope\n\n     The licenses granted in this Section 2 are the only rights granted under this\n     License. No additional rights or licenses will be implied from the distribution\n     or licensing of Covered Software under this License. Notwithstanding Section\n     2.1(b) above, no patent license is granted by a Contributor:\n\n     a. for any code that a Contributor has removed from Covered Software; or\n\n     b. for infringements caused by: (i) Your and any other third party's\n        modifications of Covered Software, or (ii) the combination of its\n        Contributions with other software (except as part of its Contributor\n        Version); or\n\n     c. under Patent Claims infringed by Covered Software in the absence of its\n        Contributions.\n\n     This License does not grant any rights in the trademarks, service marks, or\n     logos of any Contributor (except as may be necessary to comply with the\n     notice requirements in Section 3.4).\n\n2.4. Subsequent Licenses\n\n     No Contributor makes additional grants as a result of Your choice to\n     distribute the Covered Software under a subsequent version of this License\n     (see Section 10.2) or under the terms of a Secondary License (if permitted\n     under the terms of Section 3.3).\n\n2.5. Representation\n\n     Each Contributor represents that the Contributor believes its Contributions\n     are its original creation(s) or it has sufficient rights to grant the\n     rights to its Contributions conveyed by this License.\n\n2.6. Fair Use\n\n     This License is not intended to limit any rights You have under applicable\n     copyright doctrines of fair use, fair dealing, or other equivalents.\n\n2.7. Conditions\n\n     Sections 3.1, 3.2, 3.3, and 3.4 are conditions of the licenses granted in\n     Section 2.1.\n\n3. Responsibilities\n\n3.1. Distribution of Source Form\n\n     All distribution of Covered Software in Source Code Form, including any\n     Modifications that You create or to which You contribute, must be under the\n     terms of this License. You must inform recipients that the Source Code Form\n     of the Covered Software is governed by the terms of this License, and how\n     they can obtain a copy of this License. You may not attempt to alter or\n     restrict the recipients' rights in the Source Code Form.\n\n3.2. Distribution of Executable Form\n\n     If You distribute Covered Software in Executable Form then:\n\n     a. such Covered Software must also be made available in Source Code Form,\n        as described in Section 3.1, and You must inform recipients of the\n        Executable Form how they can obtain a copy of such Source Code Form by\n        reasonable means in a timely manner, at a charge no more than the cost\n        of distribution to the recipient; and\n\n     b. You may distribute such Executable Form under the terms of this License,\n        or sublicense it under different terms, provided that the license for\n        the Executable Form does not attempt to limit or alter the recipients'\n        rights in the Source Code Form under this License.\n\n3.3. Distribution of a Larger Work\n\n     You may create and distribute a Larger Work under terms of Your choice,\n     provided that You also comply with the requirements of this License for the\n     Covered Software. If the Larger Work is a combination of Covered Software\n     with a work governed by one or more Secondary Licenses, and the Covered\n     Software is not Incompatible With Secondary Licenses, this License permits\n     You to additionally distribute such Covered Software under the terms of\n     such Secondary License(s), so that the recipient of the Larger Work may, at\n     their option, further distribute the Covered Software under the terms of\n     either this License or such Secondary License(s).\n\n3.4. Notices\n\n     You may not remove or alter the substance of any license notices (including\n     copyright notices, patent notices, disclaimers of warranty, or limitations\n     of liability) contained within the Source Code Form of the Covered\n     Software, except that You may alter any license notices to the extent\n     required to remedy known factual inaccuracies.\n\n3.5. Application of Additional Terms\n\n     You may choose to offer, and to charge a fee for, warranty, support,\n     indemnity or liability obligations to one or more recipients of Covered\n     Software. However, You may do so only on Your own behalf, and not on behalf\n     of any Contributor. You must make it absolutely clear that any such\n     warranty, support, indemnity, or liability obligation is offered by You\n     alone, and You hereby agree to indemnify every Contributor for any\n     liability incurred by such Contributor as a result of warranty, support,\n     indemnity or liability terms You offer. You may include additional\n     disclaimers of warranty and limitations of liability specific to any\n     jurisdiction.\n\n4. Inability to Comply Due to Statute or Regulation\n\n   If it is impossible for You to comply with any of the terms of this License\n   with respect to some or all of the Covered Software due to statute, judicial\n   order, or regulation then You must: (a) comply with the terms of this License\n   to the maximum extent possible; and (b) describe the limitations and the code\n   they affect. Such description must be placed in a text file included with all\n   distributions of the Covered Software under this License. Except to the\n   extent prohibited by statute or regulation, such description must be\n   sufficiently detailed for a recipient of ordinary skill to be able to\n   understand it.\n\n5. Termination\n\n5.1. The rights granted under this License will terminate automatically if You\n     fail to comply with any of its terms. However, if You become compliant,\n     then the rights granted under this License from a particular Contributor\n     are reinstated (a) provisionally, unless and until such Contributor\n     explicitly and finally terminates Your grants, and (b) on an ongoing basis,\n     if such Contributor fails to notify You of the non-compliance by some\n     reasonable means prior to 60 days after You have come back into compliance.\n     Moreover, Your grants from a particular Contributor are reinstated on an\n     ongoing basis if such Contributor notifies You of the non-compliance by\n     some reasonable means, this is the first time You have received notice of\n     non-compliance with this License from such Contributor, and You become\n     compliant prior to 30 days after Your receipt of the notice.\n\n5.2. If You initiate litigation against any entity by asserting a patent\n     infringement claim (excluding declaratory judgment actions, counter-claims,\n     and cross-claims) alleging that a Contributor Version directly or\n     indirectly infringes any patent, then the rights granted to You by any and\n     all Contributors for the Covered Software under Section 2.1 of this License\n     shall terminate.\n\n5.3. In the event of termination under Sections 5.1 or 5.2 above, all end user\n     license agreements (excluding distributors and resellers) which have been\n     validly granted by You or Your distributors under this License prior to\n     termination shall survive termination.\n\n6. Disclaimer of Warranty\n\n   Covered Software is provided under this License on an "as is" basis, without\n   warranty of any kind, either expressed, implied, or statutory, including,\n   without limitation, warranties that the Covered Software is free of defects,\n   merchantable, fit for a particular purpose or non-infringing. The entire\n   risk as to the quality and performance of the Covered Software is with You.\n   Should any Covered Software prove defective in any respect, You (not any\n   Contributor) assume the cost of any necessary servicing, repair, or\n   correction. This disclaimer of warranty constitutes an essential part of this\n   License. No use of any Covered Software is authorized under this License\n   except under this disclaimer.\n\n7. Limitation of Liability\n\n   Under no circumstances and under no legal theory, whether tort (including\n   negligence), contract, or otherwise, shall any Contributor, or anyone who\n   distributes Covered Software as permitted above, be liable to You for any\n   direct, indirect, special, incidental, or consequential damages of any\n   character including, without limitation, damages for lost profits, loss of\n   goodwill, work stoppage, computer failure or malfunction, or any and all\n   other commercial damages or losses, even if such party shall have been\n   informed of the possibility of such damages. This limitation of liability\n   shall not apply to liability for death or personal injury resulting from such\n   party's negligence to the extent applicable law prohibits such limitation.\n   Some jurisdictions do not allow the exclusion or limitation of incidental or\n   consequential damages, so this exclusion and limitation may not apply to You.\n\n8. Litigation\n\n   Any litigation relating to this License may be brought only in the courts of\n   a jurisdiction where the defendant maintains its principal place of business\n   and such litigation shall be governed by laws of that jurisdiction, without\n   reference to its conflict-of-law provisions. Nothing in this Section shall\n   prevent a party's ability to bring cross-claims or counter-claims.\n\n9. Miscellaneous\n\n   This License represents the complete agreement concerning the subject matter\n   hereof. If any provision of this License is held to be unenforceable, such\n   provision shall be reformed only to the extent necessary to make it\n   enforceable. Any law or regulation which provides that the language of a\n   contract shall be construed against the drafter shall not be used to construe\n   this License against a Contributor.\n\n10. Versions of the License\n\n10.1. New Versions\n\n      Mozilla Foundation is the license steward. Except as provided in Section\n      10.3, no one other than the license steward has the right to modify or\n      publish new versions of this License. Each version will be given a\n      distinguishing version number.\n\n10.2. Effect of New Versions\n\n      You may distribute the Covered Software under the terms of the version of\n      the License under which You originally received the Covered Software, or\n      under the terms of any subsequent version published by the license\n      steward.\n\n10.3. Modified Versions\n\n      If you create software not governed by this License, and you want to\n      create a new license for such software, you may create and use a modified\n      version of this License if you rename the license and remove any\n      references to the name of the license steward (except to note that such\n      modified license differs from this License).\n\n10.4. Distributing Source Code Form that is Incompatible With Secondary Licenses\n      If You choose to distribute Source Code Form that is Incompatible With\n      Secondary Licenses under the terms of this version of the License, the\n      notice described in Exhibit B of this License must be attached.\n\nExhibit A - Source Code Form License Notice\n\n      This Source Code Form is subject to the\n      terms of the Mozilla Public License, v.\n      2.0. If a copy of the MPL was not\n      distributed with this file, You can\n      obtain one at\n      mozilla.org/MPL/2.0/.\n\nIf it is not possible or desirable to put the notice in a particular file, then\nYou may include the notice in a location (such as a LICENSE file in a relevant\ndirectory) where a recipient would be likely to look for such a notice.\n\nYou may add additional accurate notices of copyright ownership.\n\nExhibit B - "Incompatible With Secondary Licenses" Notice\n\n      This Source Code Form is "Incompatible\n      With Secondary Licenses", as defined by\n      the Mozilla Public License, v. 2.0.\n`;
@@ -195479,6 +195559,33 @@ function inferPaneLanguage(fileNames) {
     return "plaintext";
 }
 
+function cloneRecalcPerfSnapshot(snapshot) {
+    return {
+        ...snapshot,
+        phases: {
+            ...snapshot.phases
+        }
+    };
+}
+
+function createDiffViewerPerfMonitor(getEngineStatus) {
+    let lastRecalc = null;
+    return {
+        clearLastRecalc: () => {
+            lastRecalc = null;
+        },
+        getSnapshot: () => ({
+            engine: {
+                ...getEngineStatus()
+            },
+            lastRecalc: lastRecalc ? cloneRecalcPerfSnapshot(lastRecalc) : null
+        }),
+        recordRecalc: snapshot => {
+            lastRecalc = cloneRecalcPerfSnapshot(snapshot);
+        }
+    };
+}
+
 setupMonacoWorkers();
 
 registerBasicLanguages();
@@ -195585,6 +195692,14 @@ if (!app) {
 const appMode = resolveAppMode(window.location);
 
 const writebackEnabled = appMode.writebackEnabled;
+
+const diffEngine = await createDiffEngine({
+    mode: appMode.diffEngineMode
+});
+
+const diffViewerPerf = createDiffViewerPerfMonitor(() => diffEngine.getStatus());
+
+window.__diffViewerPerf = diffViewerPerf;
 
 app.innerHTML = createAppTemplate({
     writebackEnabled: writebackEnabled
@@ -199112,11 +199227,13 @@ function setEditorHiddenAreas(editor2, ranges) {
 }
 
 function recalcDiff() {
+    const recalcStartedAt = performance.now();
     const leftText = leftEditor.getValue();
     const rightText = rightEditor.getValue();
     const leftLeadingFileWhitespaceEligible = canIgnoreLeadingFileWhitespaceFromEditorText(leftText);
     const rightLeadingFileWhitespaceEligible = canIgnoreLeadingFileWhitespaceFromEditorText(rightText);
     const decorationVariantKey = [ ignoreLeadingFileWhitespace ? "1" : "0", leftLeadingFileWhitespaceEligible ? "1" : "0", rightLeadingFileWhitespaceEligible ? "1" : "0" ].join("|");
+    const anchorValidationStartedAt = performance.now();
     const validation = validateAnchors(manualAnchors, getNormalizedLineCount(leftText), getNormalizedLineCount(rightText));
     if (validation.invalid.length > 0) {
         console.warn("無効なアンカーが検出されました:", validation.invalid);
@@ -199143,20 +199260,26 @@ function recalcDiff() {
     }
     updateAnchorWarning(validation.invalid);
     renderAnchors(validation.invalid, validation.valid);
+    const anchorValidationMs = performance.now() - anchorValidationStartedAt;
+    const diffComputeStartedAt = performance.now();
     if (anchorsForDiff.length > 0) {
-        pairedOps = diffWithAnchors(leftText, rightText, anchorsForDiff, {
+        pairedOps = diffEngine.diffWithAnchors(leftText, rightText, anchorsForDiff, {
             ignoreLeadingFileWhitespace: ignoreLeadingFileWhitespace
         });
     } else {
-        pairedOps = pairReplace(diffLines(leftText, rightText, {
+        pairedOps = pairReplace(diffEngine.diffLines(leftText, rightText, {
             ignoreLeadingFileWhitespace: ignoreLeadingFileWhitespace
         }));
     }
+    const diffComputeMs = performance.now() - diffComputeStartedAt;
+    const normalizeStartedAt = performance.now();
     pairedOps = normalizeReplaceOpsForDisplay(pairedOps, {
         ignoreLeadingFileWhitespace: ignoreLeadingFileWhitespace,
         leftLeadingFileWhitespaceEligible: leftLeadingFileWhitespaceEligible,
         rightLeadingFileWhitespaceEligible: rightLeadingFileWhitespaceEligible
     });
+    const normalizeMs = performance.now() - normalizeStartedAt;
+    const deriveStartedAt = performance.now();
     const opsSignature = buildPairedOpsSignature(pairedOps);
     const segmentSignature = `${buildSegmentsSignature(leftSegments)}\n---\n${buildSegmentsSignature(rightSegments)}`;
     const useCachedDerived = derivedDiffCache !== null && derivedDiffCache.opsSignature === opsSignature && derivedDiffCache.segmentSignature === segmentSignature && derivedDiffCache.decorationVariantKey === decorationVariantKey;
@@ -199187,6 +199310,8 @@ function recalcDiff() {
     const findOffsets = buildFindWidgetOffsetZones(leftEditor, rightEditor);
     const leftZones = findOffsets.left.concat(zones.left, fileZones.left);
     const rightZones = findOffsets.right.concat(zones.right, fileZones.right);
+    const deriveMs = performance.now() - deriveStartedAt;
+    const renderStartedAt = performance.now();
     const forceRenderRefresh = diffRenderingInvalidated;
     const nextLeftDecorationSignatures = buildDecorationSignatures(left);
     if (shouldApplyBySignature(leftDecorationSignatures, nextLeftDecorationSignatures, leftDecorationIds, {
@@ -199235,6 +199360,20 @@ function recalcDiff() {
     updateDiffJumpButtons(prevButton, nextButton, diffBlockStarts.length > 0);
     applyFolding();
     focusDiffLines(null, null);
+    const renderMs = performance.now() - renderStartedAt;
+    diffViewerPerf.recordRecalc({
+        diffBlockCount: diffBlockStarts.length,
+        pairedOpCount: pairedOps.length,
+        phases: {
+            anchorValidationMs: anchorValidationMs,
+            deriveMs: deriveMs,
+            diffComputeMs: diffComputeMs,
+            normalizeMs: normalizeMs,
+            renderMs: renderMs
+        },
+        totalMs: performance.now() - recalcStartedAt,
+        usedCachedDerived: useCachedDerived
+    });
 }
 
 function buildPaneClearOptions(side, config) {
