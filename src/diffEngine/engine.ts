@@ -7,7 +7,8 @@ import {
   type DiffLinesOptions,
   type DiffStep,
 } from "./diffLines";
-import { setDiffInlineCore } from "./diffInline";
+import type { DiffInlineBatchInput } from "./diffInline";
+import { setDiffInlineBatchCore, setDiffInlineCore } from "./diffInline";
 import {
   EMBEDDED_DIFF_WASM_BUILD_ID,
   EMBEDDED_DIFF_WASM_BYTES,
@@ -60,6 +61,8 @@ const DIFF_ENGINE_WASM_INPUT_VERSION = 1;
 const DIFF_ENGINE_WASM_OUTPUT_VERSION = 1;
 const INLINE_DIFF_WASM_INPUT_VERSION = 1;
 const INLINE_DIFF_WASM_OUTPUT_VERSION = 1;
+const INLINE_DIFF_BATCH_WASM_INPUT_VERSION = 1;
+const INLINE_DIFF_BATCH_WASM_OUTPUT_VERSION = 1;
 const DIFF_STEP_DELETE = 0;
 const DIFF_STEP_INSERT = 1;
 const DIFF_STEP_EQUAL = 2;
@@ -73,6 +76,7 @@ type EmbeddedWasmExports = WebAssembly.Exports & {
   diff_engine_dealloc: (ptr: number, len: number) => void;
   diff_engine_diff_steps: (ptr: number, len: number) => number;
   diff_engine_inline_diff: (ptr: number, len: number) => number;
+  diff_engine_inline_diff_batch: (ptr: number, len: number) => number;
   diff_engine_take_error_len: () => number;
   diff_engine_take_error_ptr: () => number;
   diff_engine_take_result_len: () => number;
@@ -83,6 +87,7 @@ type EmbeddedWasmExports = WebAssembly.Exports & {
 function createTypeScriptBindings(): DiffEngineBindings {
   return {
     activateRuntimeFeatures: () => {
+      setDiffInlineBatchCore(null);
       setDiffInlineCore(null);
     },
     buildId: null,
@@ -151,6 +156,10 @@ function createEmbeddedWasmExports(instance: WebAssembly.Instance): EmbeddedWasm
     diff_engine_dealloc: requireFunctionExport(exports, "diff_engine_dealloc"),
     diff_engine_diff_steps: requireFunctionExport(exports, "diff_engine_diff_steps"),
     diff_engine_inline_diff: requireFunctionExport(exports, "diff_engine_inline_diff"),
+    diff_engine_inline_diff_batch: requireFunctionExport(
+      exports,
+      "diff_engine_inline_diff_batch",
+    ),
     diff_engine_take_error_len: requireFunctionExport(exports, "diff_engine_take_error_len"),
     diff_engine_take_error_ptr: requireFunctionExport(exports, "diff_engine_take_error_ptr"),
     diff_engine_take_result_len: requireFunctionExport(exports, "diff_engine_take_result_len"),
@@ -271,6 +280,42 @@ function encodeInlineDiffRequest(leftLine: string, rightLine: string): Uint8Arra
   return bytes;
 }
 
+function encodeInlineDiffBatchRequest(inputs: readonly DiffInlineBatchInput[]): Uint8Array {
+  let totalCodeUnits = 0;
+  for (const input of inputs) {
+    totalCodeUnits += input.leftLine.length + input.rightLine.length;
+  }
+
+  const bytes = new Uint8Array(8 + inputs.length * 8 + totalCodeUnits * 2);
+  const view = new DataView(bytes.buffer);
+  let offset = 0;
+
+  const writeU32 = (value: number) => {
+    view.setUint32(offset, value, true);
+    offset += 4;
+  };
+  const writeU16 = (value: number) => {
+    view.setUint16(offset, value, true);
+    offset += 2;
+  };
+
+  writeU32(INLINE_DIFF_BATCH_WASM_INPUT_VERSION);
+  writeU32(inputs.length);
+
+  for (const input of inputs) {
+    writeU32(input.leftLine.length);
+    writeU32(input.rightLine.length);
+    for (let index = 0; index < input.leftLine.length; index += 1) {
+      writeU16(input.leftLine.charCodeAt(index));
+    }
+    for (let index = 0; index < input.rightLine.length; index += 1) {
+      writeU16(input.rightLine.charCodeAt(index));
+    }
+  }
+
+  return bytes;
+}
+
 function parseDiffStepResponse(bytes: Uint8Array): DiffStep[] {
   if (bytes.length < 8) {
     throw new Error("embedded wasm diff response is truncated");
@@ -369,6 +414,43 @@ function parseInlineDiffResponse(bytes: Uint8Array): InlineDiff {
   };
 }
 
+function parseInlineDiffBatchResponse(bytes: Uint8Array): InlineDiff[] {
+  if (bytes.length < 8) {
+    throw new Error("embedded wasm inline batch response is truncated");
+  }
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const version = view.getUint32(0, true);
+  if (version !== INLINE_DIFF_BATCH_WASM_OUTPUT_VERSION) {
+    throw new Error("embedded wasm inline batch response version is unsupported");
+  }
+  const pairCount = view.getUint32(4, true);
+  const results: InlineDiff[] = [];
+  let offset = 8;
+
+  for (let index = 0; index < pairCount; index += 1) {
+    if (offset + 8 > bytes.length) {
+      throw new Error("embedded wasm inline batch response is truncated");
+    }
+    const leftRangeCount = view.getUint32(offset, true);
+    const rightRangeCount = view.getUint32(offset + 4, true);
+    offset += 8;
+
+    const left = parseRanges(view, offset, leftRangeCount);
+    const right = parseRanges(view, left.nextOffset, rightRangeCount);
+    offset = right.nextOffset;
+    results.push({
+      leftRanges: left.ranges,
+      rightRanges: right.ranges,
+    });
+  }
+
+  if (offset !== bytes.length) {
+    throw new Error("embedded wasm inline batch response size is invalid");
+  }
+
+  return results;
+}
+
 function runEmbeddedWasmDiff(
   exports: EmbeddedWasmExports,
   leftCompare: string[],
@@ -433,6 +515,43 @@ function runEmbeddedWasmInlineDiff(
       () => exports.diff_engine_take_result_len(),
     );
     return parseInlineDiffResponse(response);
+  } finally {
+    if (ptr !== 0) {
+      exports.diff_engine_dealloc(ptr, request.length);
+    }
+  }
+}
+
+function runEmbeddedWasmInlineDiffBatch(
+  exports: EmbeddedWasmExports,
+  inputs: readonly DiffInlineBatchInput[],
+): InlineDiff[] {
+  if (inputs.length === 0) {
+    return [];
+  }
+  const request = encodeInlineDiffBatchRequest(inputs);
+  const ptr = exports.diff_engine_alloc(request.length);
+  if (ptr === 0 && request.length > 0) {
+    throw new Error("embedded wasm allocation failed");
+  }
+
+  try {
+    new Uint8Array(exports.memory.buffer, ptr, request.length).set(request);
+    const status = exports.diff_engine_inline_diff_batch(ptr, request.length);
+    if (status !== 0) {
+      const message = takeOwnedString(
+        exports,
+        () => exports.diff_engine_take_error_ptr(),
+        () => exports.diff_engine_take_error_len(),
+      );
+      throw new Error(message || "embedded wasm inline batch computation failed");
+    }
+    const response = takeOwnedBytes(
+      exports,
+      () => exports.diff_engine_take_result_ptr(),
+      () => exports.diff_engine_take_result_len(),
+    );
+    return parseInlineDiffBatchResponse(response);
   } finally {
     if (ptr !== 0) {
       exports.diff_engine_dealloc(ptr, request.length);
@@ -506,9 +625,13 @@ export async function loadEmbeddedWasmDiffEngine(): Promise<DiffEngineBindings> 
     leftLine: string,
     rightLine: string,
   ): InlineDiff => runEmbeddedWasmInlineDiff(exports, leftLine, rightLine);
+  const diffInlineBatchWithEmbeddedWasm = (
+    inputs: readonly DiffInlineBatchInput[],
+  ): InlineDiff[] => runEmbeddedWasmInlineDiffBatch(exports, inputs);
 
   return {
     activateRuntimeFeatures: () => {
+      setDiffInlineBatchCore(diffInlineBatchWithEmbeddedWasm);
       setDiffInlineCore(diffInlineWithEmbeddedWasm);
     },
     buildId,

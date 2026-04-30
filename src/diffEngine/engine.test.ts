@@ -1,6 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { diffLines } from "./diffLines";
-import { diffInline } from "./diffInline";
+import {
+  diffInline,
+  diffInlineWithAppendLiteralBatch,
+  setDiffInlineBatchCore,
+  setDiffInlineCore,
+} from "./diffInline";
 import { diffWithAnchors, type Anchor } from "./anchors";
 import {
   EMBEDDED_DIFF_WASM_BUILD_ID,
@@ -9,6 +14,11 @@ import {
 import type { DiffLinesOptions, DiffEngineBindings, DiffEngineMode } from "./engine";
 import { createDiffEngine, loadEmbeddedWasmDiffEngine } from "./engine";
 import type { LineOp, PairedOp } from "./types";
+
+afterEach(() => {
+  setDiffInlineCore(null);
+  setDiffInlineBatchCore(null);
+});
 
 function createNow(values: number[]) {
   let index = 0;
@@ -68,6 +78,33 @@ describe("createDiffEngine", () => {
 
     expect(engine.getStatus().activeMode).toBe("wasm");
     expect(diffInline(left, right)).toEqual(baseline);
+  });
+
+  it("keeps embedded wasm append-literal batch diff output aligned with the TypeScript implementation", async () => {
+    const inputs = [
+      {
+        leftLine: "<head>",
+        rightLine: "sb.AppendLine(\"<headx>\");",
+      },
+      {
+        leftLine: "    value = 1;",
+        rightLine: "value = 1;",
+        options: {
+          ignoreLeadingFileWhitespace: true,
+          leftLeadingFileWhitespaceEligible: true,
+          rightLeadingFileWhitespaceEligible: true,
+        },
+      },
+    ] as const;
+    const baseline = diffInlineWithAppendLiteralBatch(inputs);
+
+    const engine = await createDiffEngine({
+      mode: "wasm",
+      loadWasmDiffEngine: loadEmbeddedWasmDiffEngine,
+    });
+
+    expect(engine.getStatus().activeMode).toBe("wasm");
+    expect(diffInlineWithAppendLiteralBatch(inputs)).toEqual(baseline);
   });
 
   it("keeps anchor-aware diff output aligned when wasm is active", async () => {
