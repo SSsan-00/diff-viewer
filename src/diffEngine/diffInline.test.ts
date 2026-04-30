@@ -1,5 +1,19 @@
-import { describe, it, expect, vi } from "vitest";
-import { createDiffInline, diffInline, diffInlineWithAppendLiteral } from "./diffInline";
+import { afterEach, describe, it, expect, vi } from "vitest";
+import {
+  createDiffInline,
+  createDiffInlineBatch,
+  diffInline,
+  diffInlineBatch,
+  diffInlineWithAppendLiteral,
+  diffInlineWithAppendLiteralBatch,
+  setDiffInlineBatchCore,
+  setDiffInlineCore,
+} from "./diffInline";
+
+afterEach(() => {
+  setDiffInlineCore(null);
+  setDiffInlineBatchCore(null);
+});
 
 describe("diffInline", () => {
   it("returns empty ranges for identical lines", () => {
@@ -208,5 +222,48 @@ describe("diffInline", () => {
     });
     expect(diffCore).toHaveBeenCalledOnce();
     expect(diffCore).toHaveBeenCalledWith("left", "right");
+  });
+
+  it("lets callers replace the batched inline diff core", () => {
+    const diffBatchCore = vi.fn(() => [
+      {
+        leftRanges: [{ start: 1, end: 2 }],
+        rightRanges: [{ start: 3, end: 4 }],
+      },
+    ]);
+    const diffWithBatchCore = createDiffInlineBatch(diffBatchCore);
+
+    expect(diffWithBatchCore([{ leftLine: "left", rightLine: "right" }])).toEqual([
+      {
+        leftRanges: [{ start: 1, end: 2 }],
+        rightRanges: [{ start: 3, end: 4 }],
+      },
+    ]);
+    expect(diffBatchCore).toHaveBeenCalledOnce();
+    expect(diffBatchCore).toHaveBeenCalledWith([{ leftLine: "left", rightLine: "right" }]);
+  });
+
+  it("keeps append-literal batch results aligned with single-row diffing", () => {
+    const inputs = [
+      {
+        leftLine: "<head>",
+        rightLine: "sb.AppendLine(\"<headx>\");",
+      },
+      {
+        leftLine: "    value = 1;",
+        rightLine: "value = 1;",
+        options: {
+          ignoreLeadingFileWhitespace: true,
+          leftLeadingFileWhitespaceEligible: true,
+          rightLeadingFileWhitespaceEligible: true,
+        },
+      },
+    ] as const;
+
+    expect(diffInlineWithAppendLiteralBatch(inputs)).toEqual(
+      inputs.map((input) =>
+        diffInlineWithAppendLiteral(input.leftLine, input.rightLine, input.options),
+      ),
+    );
   });
 });

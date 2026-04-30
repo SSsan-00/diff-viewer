@@ -1,4 +1,4 @@
-import { diffInlineWithAppendLiteral } from "./diffInline";
+import { diffInlineWithAppendLiteralBatch } from "./diffInline";
 import { extractHtmlAttributeSpaceDiffRangesPair } from "./htmlAttributeSpaceDiff";
 import type { InlineDiff, PairedOp, Range } from "./types";
 
@@ -25,9 +25,8 @@ export type PreparedReplaceOpsForDisplay = {
 function buildReplaceDisplayDiff(
   leftLine: string,
   rightLine: string,
-  options: ReplaceVisibilityOptions,
+  inline: InlineDiff,
 ): ReplaceDisplayDiff {
-  const inline = diffInlineWithAppendLiteral(leftLine, rightLine, options);
   const spaceRanges = extractHtmlAttributeSpaceDiffRangesPair(
     leftLine,
     rightLine,
@@ -49,7 +48,21 @@ export function prepareReplaceOpsForDisplay(
   ops: readonly PairedOp[],
   options: ReplaceVisibilityOptions,
 ): PreparedReplaceOpsForDisplay {
+  const batchInputs = ops.flatMap((op) => {
+    if (op.type !== "replace" && op.type !== "equal") {
+      return [];
+    }
+    return [
+      {
+        leftLine: op.leftLine ?? "",
+        options,
+        rightLine: op.rightLine ?? "",
+      },
+    ];
+  });
+  const inlineDiffs = diffInlineWithAppendLiteralBatch(batchInputs);
   const displayDiffs: Array<ReplaceDisplayDiff | null> = [];
+  let inlineDiffIndex = 0;
   const normalizedOps = ops.map((op) => {
     if (op.type !== "replace" && op.type !== "equal") {
       displayDiffs.push(null);
@@ -58,7 +71,12 @@ export function prepareReplaceOpsForDisplay(
 
     const leftLine = op.leftLine ?? "";
     const rightLine = op.rightLine ?? "";
-    const displayDiff = buildReplaceDisplayDiff(leftLine, rightLine, options);
+    const inline = inlineDiffs[inlineDiffIndex];
+    if (!inline) {
+      throw new Error("Inline diff batch result is missing.");
+    }
+    inlineDiffIndex += 1;
+    const displayDiff = buildReplaceDisplayDiff(leftLine, rightLine, inline);
     displayDiffs.push(displayDiff);
 
     if (op.type === "equal" && displayDiff.hasVisibleDiff) {

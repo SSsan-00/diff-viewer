@@ -3,6 +3,14 @@ import { extractAppendLiteralInlineMap } from "./appendLiteral";
 
 type MatchPair = { leftIndex: number; rightIndex: number };
 export type DiffInlineCore = (leftLine: string, rightLine: string) => InlineDiff;
+export type DiffInlineBatchInput = {
+  leftLine: string;
+  rightLine: string;
+};
+export type DiffInlineBatchCore = (inputs: DiffInlineBatchInput[]) => InlineDiff[];
+export type DiffInlineWithAppendLiteralBatchInput = DiffInlineBatchInput & {
+  options?: DiffInlineWithAppendLiteralOptions;
+};
 
 function buildLcsTable(left: string, right: string): number[][] {
   const rows = left.length + 1;
@@ -121,6 +129,8 @@ function diffInlineTypeScript(leftLine: string, rightLine: string): InlineDiff {
 }
 
 let activeDiffInlineCore: DiffInlineCore = diffInlineTypeScript;
+let activeDiffInlineBatchCore: DiffInlineBatchCore = (inputs) =>
+  inputs.map((input) => activeDiffInlineCore(input.leftLine, input.rightLine));
 
 export function createDiffInline(
   diffCore: DiffInlineCore = diffInlineTypeScript,
@@ -128,12 +138,34 @@ export function createDiffInline(
   return (leftLine, rightLine) => diffCore(leftLine, rightLine);
 }
 
+export function createDiffInlineBatch(
+  diffBatchCore: DiffInlineBatchCore = activeDiffInlineBatchCore,
+): DiffInlineBatchCore {
+  return (inputs) => diffBatchCore(inputs);
+}
+
 export function setDiffInlineCore(diffCore: DiffInlineCore | null): void {
   activeDiffInlineCore = diffCore ?? diffInlineTypeScript;
 }
 
+export function setDiffInlineBatchCore(diffBatchCore: DiffInlineBatchCore | null): void {
+  activeDiffInlineBatchCore = diffBatchCore ?? ((inputs) =>
+    inputs.map((input) => activeDiffInlineCore(input.leftLine, input.rightLine)));
+}
+
 export function diffInline(leftLine: string, rightLine: string): InlineDiff {
   return activeDiffInlineCore(leftLine, rightLine);
+}
+
+export function diffInlineBatch(inputs: DiffInlineBatchInput[]): InlineDiff[] {
+  if (inputs.length === 0) {
+    return [];
+  }
+  const results = activeDiffInlineBatchCore(inputs);
+  if (results.length !== inputs.length) {
+    throw new Error("Inline diff batch core returned an unexpected result count.");
+  }
+  return results;
 }
 
 type RangeMap = {
@@ -141,6 +173,17 @@ type RangeMap = {
   indices: number[] | null;
   wrapperRanges: Range[];
   payloadRange: Range | null;
+};
+
+type PreparedDiffInlineWithAppendLiteral = {
+  leftCompare: string;
+  leftMap: RangeMap;
+  leftOriginalPrefixOffset: number;
+  leftPrefixOffset: number;
+  rightCompare: string;
+  rightMap: RangeMap;
+  rightOriginalPrefixOffset: number;
+  rightPrefixOffset: number;
 };
 
 function buildRangeMap(line: string): RangeMap {
@@ -153,6 +196,61 @@ function buildRangeMap(line: string): RangeMap {
     indices: parsed.indices,
     wrapperRanges: parsed.wrapperRanges,
     payloadRange: parsed.payloadRange,
+  };
+}
+
+function prepareDiffInlineWithAppendLiteral(
+  leftLine: string,
+  rightLine: string,
+  options: DiffInlineWithAppendLiteralOptions,
+): PreparedDiffInlineWithAppendLiteral {
+  const leftMap = buildRangeMap(leftLine);
+  const rightMap = buildRangeMap(rightLine);
+  let leftCompare = leftMap.compareText;
+  let rightCompare = rightMap.compareText;
+  let leftPrefixOffset = 0;
+  let rightPrefixOffset = 0;
+  let leftOriginalPrefixOffset = 0;
+  let rightOriginalPrefixOffset = 0;
+
+  if (shouldIgnoreLeadingFileWhitespaceInInlineDiff(options)) {
+    leftPrefixOffset = countLeadingSpacesAndTabs(leftCompare);
+    rightPrefixOffset = countLeadingSpacesAndTabs(rightCompare);
+    leftOriginalPrefixOffset = countLeadingSpacesAndTabs(leftLine);
+    rightOriginalPrefixOffset = countLeadingSpacesAndTabs(rightLine);
+    if (leftPrefixOffset > 0 || rightPrefixOffset > 0) {
+      leftCompare = leftCompare.slice(leftPrefixOffset);
+      rightCompare = rightCompare.slice(rightPrefixOffset);
+    }
+  }
+
+  return {
+    leftCompare,
+    leftMap,
+    leftOriginalPrefixOffset,
+    leftPrefixOffset,
+    rightCompare,
+    rightMap,
+    rightOriginalPrefixOffset,
+    rightPrefixOffset,
+  };
+}
+
+function mapInlineDiffWithAppendLiteral(
+  inline: InlineDiff,
+  prepared: PreparedDiffInlineWithAppendLiteral,
+): InlineDiff {
+  const leftMapped = combineRanges(
+    mapRanges(offsetRanges(inline.leftRanges, prepared.leftPrefixOffset), prepared.leftMap),
+    prepared.leftMap.wrapperRanges,
+  );
+  const rightMapped = combineRanges(
+    mapRanges(offsetRanges(inline.rightRanges, prepared.rightPrefixOffset), prepared.rightMap),
+    prepared.rightMap.wrapperRanges,
+  );
+  return {
+    leftRanges: trimRangesBefore(leftMapped, prepared.leftOriginalPrefixOffset),
+    rightRanges: trimRangesBefore(rightMapped, prepared.rightOriginalPrefixOffset),
   };
 }
 
@@ -284,37 +382,31 @@ export function diffInlineWithAppendLiteral(
   rightLine: string,
   options: DiffInlineWithAppendLiteralOptions = {},
 ): InlineDiff {
-  const leftMap = buildRangeMap(leftLine);
-  const rightMap = buildRangeMap(rightLine);
-  let leftCompare = leftMap.compareText;
-  let rightCompare = rightMap.compareText;
-  let leftPrefixOffset = 0;
-  let rightPrefixOffset = 0;
-  let leftOriginalPrefixOffset = 0;
-  let rightOriginalPrefixOffset = 0;
+  const prepared = prepareDiffInlineWithAppendLiteral(leftLine, rightLine, options);
+  const inline = diffInline(prepared.leftCompare, prepared.rightCompare);
+  return mapInlineDiffWithAppendLiteral(inline, prepared);
+}
 
-  if (shouldIgnoreLeadingFileWhitespaceInInlineDiff(options)) {
-    leftPrefixOffset = countLeadingSpacesAndTabs(leftCompare);
-    rightPrefixOffset = countLeadingSpacesAndTabs(rightCompare);
-    leftOriginalPrefixOffset = countLeadingSpacesAndTabs(leftLine);
-    rightOriginalPrefixOffset = countLeadingSpacesAndTabs(rightLine);
-    if (leftPrefixOffset > 0 || rightPrefixOffset > 0) {
-      leftCompare = leftCompare.slice(leftPrefixOffset);
-      rightCompare = rightCompare.slice(rightPrefixOffset);
-    }
+export function diffInlineWithAppendLiteralBatch(
+  inputs: readonly DiffInlineWithAppendLiteralBatchInput[],
+): InlineDiff[] {
+  if (inputs.length === 0) {
+    return [];
   }
-
-  const inline = diffInline(leftCompare, rightCompare);
-  const leftMapped = combineRanges(
-    mapRanges(offsetRanges(inline.leftRanges, leftPrefixOffset), leftMap),
-    leftMap.wrapperRanges,
+  const prepared = inputs.map((input) =>
+    prepareDiffInlineWithAppendLiteral(
+      input.leftLine,
+      input.rightLine,
+      input.options ?? {},
+    ),
   );
-  const rightMapped = combineRanges(
-    mapRanges(offsetRanges(inline.rightRanges, rightPrefixOffset), rightMap),
-    rightMap.wrapperRanges,
+  const inlineResults = diffInlineBatch(
+    prepared.map((entry) => ({
+      leftLine: entry.leftCompare,
+      rightLine: entry.rightCompare,
+    })),
   );
-  return {
-    leftRanges: trimRangesBefore(leftMapped, leftOriginalPrefixOffset),
-    rightRanges: trimRangesBefore(rightMapped, rightOriginalPrefixOffset),
-  };
+  return inlineResults.map((inline, index) =>
+    mapInlineDiffWithAppendLiteral(inline, prepared[index]),
+  );
 }
