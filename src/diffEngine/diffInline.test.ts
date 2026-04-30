@@ -54,6 +54,16 @@ describe("diffInline", () => {
     }
   });
 
+  it("does not highlight matching AppendLine wrappers when both sides are identical", () => {
+    const line = '        sb.AppendLine("      const qty = safeParseInt(formData.qty, NaN);");';
+    const result = diffInlineWithAppendLiteral(line, line);
+
+    expect(result).toEqual({
+      leftRanges: [],
+      rightRanges: [],
+    });
+  });
+
   it("highlights AppendLine wrapper and escape backslashes without flooding the payload", () => {
     const left = "sb.AppendLine(\"    console.log(\\\"test\\\");\");";
     const right = "    console.log(\"test\");";

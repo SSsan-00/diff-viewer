@@ -11,6 +11,7 @@ import {
   EMBEDDED_DIFF_WASM_BUILD_ID,
   EMBEDDED_DIFF_WASM_STATUS,
 } from "./embeddedDiffWasm";
+import { pairReplace } from "./pairReplace";
 import type { DiffLinesOptions, DiffEngineBindings, DiffEngineMode } from "./engine";
 import { createDiffEngine, loadEmbeddedWasmDiffEngine } from "./engine";
 import type { LineOp, PairedOp } from "./types";
@@ -115,6 +116,32 @@ describe("createDiffEngine", () => {
 
     expect(bindings.diffWithAnchors(left, right, anchors)).toEqual(
       diffWithAnchors(left, right, anchors),
+    );
+  });
+
+  it("keeps AppendLine-heavy paired alignment stable when wasm is active", async () => {
+    const bindings = await loadEmbeddedWasmDiffEngine();
+    const left = [
+      "<script>",
+      "  const btn = document.querySelector(\"#btn\");",
+      "  const msg = document.querySelector(\"#msg\");",
+      "  btn.addEventListener(\"click\", () => {",
+      "    msg.textContent = \"クリックされた！\";",
+      "  });",
+      "</script>",
+    ].join("\n");
+    const right = [
+      "        sb.AppendLine(\"  <script>\");",
+      "        sb.AppendLine(\"    const btn = document.querySelector(\\\"#btn\\\");\");",
+      "        sb.AppendLine(\"    const msg = document.querySelector(\\\"#msg\\\");\");",
+      "        sb.AppendLine(\"    btn.addEventListener(\\\"click\\\", () => {\");",
+      "        sb.AppendLine(\"      msg.textContent = \\\"クリックされた！\\\";\");",
+      "        sb.AppendLine(\"    });\");",
+      "        sb.AppendLine(\"  </script>\");",
+    ].join("\n");
+
+    expect(pairReplace(bindings.diffLines(left, right))).toEqual(
+      pairReplace(diffLines(left, right)),
     );
   });
 

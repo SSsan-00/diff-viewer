@@ -176,10 +176,12 @@ type RangeMap = {
 };
 
 type PreparedDiffInlineWithAppendLiteral = {
+  leftLine: string;
   leftCompare: string;
   leftMap: RangeMap;
   leftOriginalPrefixOffset: number;
   leftPrefixOffset: number;
+  rightLine: string;
   rightCompare: string;
   rightMap: RangeMap;
   rightOriginalPrefixOffset: number;
@@ -225,10 +227,12 @@ function prepareDiffInlineWithAppendLiteral(
   }
 
   return {
+    leftLine,
     leftCompare,
     leftMap,
     leftOriginalPrefixOffset,
     leftPrefixOffset,
+    rightLine,
     rightCompare,
     rightMap,
     rightOriginalPrefixOffset,
@@ -240,18 +244,55 @@ function mapInlineDiffWithAppendLiteral(
   inline: InlineDiff,
   prepared: PreparedDiffInlineWithAppendLiteral,
 ): InlineDiff {
+  const leftWrapperRanges = resolveWrapperRanges(
+    prepared.leftLine,
+    prepared.leftMap,
+    prepared.rightLine,
+    prepared.rightMap,
+  );
+  const rightWrapperRanges = resolveWrapperRanges(
+    prepared.rightLine,
+    prepared.rightMap,
+    prepared.leftLine,
+    prepared.leftMap,
+  );
   const leftMapped = combineRanges(
     mapRanges(offsetRanges(inline.leftRanges, prepared.leftPrefixOffset), prepared.leftMap),
-    prepared.leftMap.wrapperRanges,
+    leftWrapperRanges,
   );
   const rightMapped = combineRanges(
     mapRanges(offsetRanges(inline.rightRanges, prepared.rightPrefixOffset), prepared.rightMap),
-    prepared.rightMap.wrapperRanges,
+    rightWrapperRanges,
   );
   return {
     leftRanges: trimRangesBefore(leftMapped, prepared.leftOriginalPrefixOffset),
     rightRanges: trimRangesBefore(rightMapped, prepared.rightOriginalPrefixOffset),
   };
+}
+
+function resolveWrapperRanges(
+  currentLine: string,
+  currentMap: RangeMap,
+  otherLine: string,
+  otherMap: RangeMap,
+): Range[] {
+  if (currentMap.wrapperRanges.length === 0) {
+    return [];
+  }
+  if (otherMap.wrapperRanges.length === 0) {
+    return currentMap.wrapperRanges;
+  }
+  if (extractWrapperText(currentLine, currentMap) !== extractWrapperText(otherLine, otherMap)) {
+    return currentMap.wrapperRanges;
+  }
+  return [];
+}
+
+function extractWrapperText(line: string, map: RangeMap): string {
+  if (!map.payloadRange) {
+    return line;
+  }
+  return line.slice(0, map.payloadRange.start) + line.slice(map.payloadRange.end);
 }
 
 function mapRanges(ranges: Range[], map: RangeMap): Range[] {

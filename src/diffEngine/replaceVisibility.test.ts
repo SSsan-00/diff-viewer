@@ -104,6 +104,30 @@ describe("normalizeReplaceOpsForDisplay", () => {
     })[0]?.type).toBe("equal");
   });
 
+  it("keeps identical AppendLine rows equal without wrapper-only highlights", () => {
+    const line = '        sb.AppendLine("      const qty = safeParseInt(formData.qty, NaN);");';
+    const ops: PairedOp[] = [
+      {
+        type: "equal",
+        leftLine: line,
+        rightLine: line,
+        leftLineNo: 4,
+        rightLineNo: 4,
+      },
+    ];
+
+    const prepared = prepareReplaceOpsForDisplay(ops, {
+      ignoreLeadingFileWhitespace: false,
+    });
+
+    expect(prepared.ops[0]?.type).toBe("equal");
+    expect(prepared.displayDiffs[0]?.hasVisibleDiff).toBe(false);
+    expect(prepared.displayDiffs[0]?.inline).toEqual({
+      leftRanges: [],
+      rightRanges: [],
+    });
+  });
+
   it("upgrades AppendLine-aligned rows so wrapper differences are highlighted without anchors", () => {
     const ops: PairedOp[] = [
       {
