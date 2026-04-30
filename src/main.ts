@@ -8,7 +8,10 @@ import { registerBasicLanguages } from "./monaco/basicLanguages";
 import { pairReplace } from "./diffEngine/pairReplace";
 import { diffInlineWithAppendLiteral } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
-import { normalizeReplaceOpsForDisplay } from "./diffEngine/replaceVisibility";
+import {
+  prepareReplaceOpsForDisplay,
+  type ReplaceDisplayDiff,
+} from "./diffEngine/replaceVisibility";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
 import { getDiffBlockStarts, mapRowToLineNumbers } from "./diffEngine/diffBlocks";
 import { type FileEncoding } from "./file/decode";
@@ -4123,6 +4126,7 @@ function canIgnoreLeadingFileWhitespaceFromEditorText(text: string): boolean {
 function buildDecorations(
   ops: PairedOp[],
   options: {
+    displayDiffs?: Array<ReplaceDisplayDiff | null>;
     ignoreLeadingFileWhitespace: boolean;
     leftLeadingFileWhitespaceEligible: boolean;
     rightLeadingFileWhitespaceEligible: boolean;
@@ -4134,7 +4138,9 @@ function buildDecorations(
   const left: monaco.editor.IModelDeltaDecoration[] = [];
   const right: monaco.editor.IModelDeltaDecoration[] = [];
 
-  for (const op of ops) {
+  for (let index = 0; index < ops.length; index += 1) {
+    const op = ops[index];
+    const displayDiff = options.displayDiffs?.[index] ?? null;
     if (op.type === "insert" && op.rightLineNo !== undefined) {
       addLineDecoration(right, op.rightLineNo, "line-insert");
       continue;
@@ -4149,21 +4155,25 @@ function buildDecorations(
       addLineDecoration(left, op.leftLineNo, "line-replace");
       addLineDecoration(right, op.rightLineNo, "line-replace");
 
-      const inline = diffInlineWithAppendLiteral(op.leftLine ?? "", op.rightLine ?? "", {
-        ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace,
-        leftLineNo: op.leftLineNo,
-        rightLineNo: op.rightLineNo,
-        leftLeadingFileWhitespaceEligible: options.leftLeadingFileWhitespaceEligible,
-        rightLeadingFileWhitespaceEligible: options.rightLeadingFileWhitespaceEligible,
-      });
+      const inline =
+        displayDiff?.inline ??
+        diffInlineWithAppendLiteral(op.leftLine ?? "", op.rightLine ?? "", {
+          ignoreLeadingFileWhitespace: options.ignoreLeadingFileWhitespace,
+          leftLineNo: op.leftLineNo,
+          rightLineNo: op.rightLineNo,
+          leftLeadingFileWhitespaceEligible: options.leftLeadingFileWhitespaceEligible,
+          rightLeadingFileWhitespaceEligible: options.rightLeadingFileWhitespaceEligible,
+        });
       addInlineDecorations(left, op.leftLineNo, inline.leftRanges, "inline-delete");
       addInlineDecorations(right, op.rightLineNo, inline.rightRanges, "inline-insert");
-      const spaceRanges = extractHtmlAttributeSpaceDiffRangesPair(
-        op.leftLine ?? "",
-        op.rightLine ?? "",
-        inline.leftRanges,
-        inline.rightRanges,
-      );
+      const spaceRanges =
+        displayDiff?.spaceRanges ??
+        extractHtmlAttributeSpaceDiffRangesPair(
+          op.leftLine ?? "",
+          op.rightLine ?? "",
+          inline.leftRanges,
+          inline.rightRanges,
+        );
       addInlineDecorations(left, op.leftLineNo, spaceRanges.left, "inline-space-diff");
       addInlineDecorations(right, op.rightLineNo, spaceRanges.right, "inline-space-diff");
     }
@@ -4487,11 +4497,12 @@ function recalcDiff() {
   const diffComputeMs = performance.now() - diffComputeStartedAt;
 
   const normalizeStartedAt = performance.now();
-  pairedOps = normalizeReplaceOpsForDisplay(pairedOps, {
+  const preparedReplaceOps = prepareReplaceOpsForDisplay(pairedOps, {
     ignoreLeadingFileWhitespace,
     leftLeadingFileWhitespaceEligible,
     rightLeadingFileWhitespaceEligible,
   });
+  pairedOps = preparedReplaceOps.ops;
   const normalizeMs = performance.now() - normalizeStartedAt;
 
   const deriveStartedAt = performance.now();
@@ -4510,6 +4521,7 @@ function recalcDiff() {
         decorationVariantKey,
         foldRanges: buildFoldRanges(pairedOps, foldOptions),
         decorations: buildDecorations(pairedOps, {
+          displayDiffs: preparedReplaceOps.displayDiffs,
           ignoreLeadingFileWhitespace,
           leftLeadingFileWhitespaceEligible,
           rightLeadingFileWhitespaceEligible,

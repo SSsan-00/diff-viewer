@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import type { PairedOp } from "./types";
-import { normalizeReplaceOpsForDisplay } from "./replaceVisibility";
+import {
+  normalizeReplaceOpsForDisplay,
+  prepareReplaceOpsForDisplay,
+} from "./replaceVisibility";
 
 describe("normalizeReplaceOpsForDisplay", () => {
   it("downgrades identical replace rows to equal", () => {
@@ -115,5 +118,26 @@ describe("normalizeReplaceOpsForDisplay", () => {
     expect(normalizeReplaceOpsForDisplay(ops, {
       ignoreLeadingFileWhitespace: false,
     })[0]?.type).toBe("replace");
+  });
+
+  it("returns reusable inline display data alongside normalized ops", () => {
+    const ops: PairedOp[] = [
+      {
+        type: "replace",
+        leftLine: "<head>",
+        rightLine: "sb.AppendLine(\"<head>\");",
+        leftLineNo: 2,
+        rightLineNo: 8,
+      },
+    ];
+
+    const prepared = prepareReplaceOpsForDisplay(ops, {
+      ignoreLeadingFileWhitespace: false,
+    });
+
+    expect(prepared.ops[0]?.type).toBe("replace");
+    expect(prepared.displayDiffs).toHaveLength(1);
+    expect(prepared.displayDiffs[0]?.hasVisibleDiff).toBe(true);
+    expect(prepared.displayDiffs[0]?.inline.rightRanges.length).toBeGreaterThan(0);
   });
 });
