@@ -9,7 +9,7 @@ describe("file card bar styles", () => {
     const match = css.match(/\.file-cards-bar\s*\{[^}]*\}/s);
 
     expect(match).toBeTruthy();
-    expect(match?.[0]).toContain("height: 38px");
+    expect(match?.[0]).toContain("height: 30px");
     expect(match?.[0]).toContain("scrollbar-gutter: stable");
   });
 });
