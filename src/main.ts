@@ -199,7 +199,7 @@ import {
   getFileStartLine,
   getGlobalLineFromLocal,
 } from "./file/segmentIndex";
-import { clearPaneMessage, setPaneMessage } from "./ui/paneMessages";
+import { clearPaneMessage, setPaneMessage, syncPaneMessages } from "./ui/paneMessages";
 import { inferPaneLanguage } from "./file/language";
 import { createDiffViewerPerfMonitor } from "./perf/runtimePerf";
 
@@ -336,6 +336,21 @@ const workspaceList = getRequiredElement<HTMLDivElement>("#workspace-list");
 const workspaceCreate = getRequiredElement<HTMLButtonElement>("#workspace-create");
 const leftMessage = getRequiredElement<HTMLDivElement>("#left-message");
 const rightMessage = getRequiredElement<HTMLDivElement>("#right-message");
+const syncPaneMessagesLayout = (): void => {
+  syncPaneMessages(leftMessage, rightMessage);
+};
+const showPaneMessage = (
+  target: HTMLDivElement,
+  message: string,
+  isError: boolean,
+): void => {
+  setPaneMessage(target, message, isError);
+  syncPaneMessagesLayout();
+};
+const resetPaneMessage = (target: HTMLDivElement): void => {
+  clearPaneMessage(target);
+  syncPaneMessagesLayout();
+};
 const leftFileCards = getRequiredElement<HTMLDivElement>("#left-file-cards");
 const rightFileCards = getRequiredElement<HTMLDivElement>("#right-file-cards");
 const leftFavoriteAdd = getRequiredElement<HTMLButtonElement>("#left-favorite-add");
@@ -722,8 +737,8 @@ function applyWorkspaceState(
       refreshSyntaxHighlight();
       clearPaneSourceState("left", { persistSaveTarget: false });
       clearPaneSourceState("right", { persistSaveTarget: false });
-      clearPaneMessage(leftMessage);
-      clearPaneMessage(rightMessage);
+      resetPaneMessage(leftMessage);
+      resetPaneMessage(rightMessage);
       clearPaneSummary(storage, "left");
       clearPaneSummary(storage, "right");
       applyWorkspaceAnchors(selected.anchors);
@@ -799,8 +814,8 @@ function switchWorkspaceById(
         refreshSyntaxHighlight();
         clearPaneSourceState("left");
         clearPaneSourceState("right");
-        clearPaneMessage(leftMessage);
-        clearPaneMessage(rightMessage);
+        resetPaneMessage(leftMessage);
+        resetPaneMessage(rightMessage);
         clearPaneSummary(storage, "left");
         clearPaneSummary(storage, "right");
         applyWorkspaceAnchors(target.anchors);
@@ -1280,12 +1295,17 @@ const scheduleRecalc = () => {
   recalcScheduler.schedule();
 };
 
+syncPaneMessagesLayout();
+window.addEventListener("resize", syncPaneMessagesLayout);
 bindEditorLayoutRecalc([leftEditor, rightEditor], scheduleRecalc);
 bindPaneResize({
   container: editorsContainer,
   divider: paneDivider,
   editors: [leftEditor, rightEditor],
-  onAfterResize: scheduleRecalc,
+  onAfterResize: () => {
+    syncPaneMessagesLayout();
+    scheduleRecalc();
+  },
 });
 
 let lastFocusedSide: "left" | "right" = "left";
@@ -1636,10 +1656,10 @@ function clearAfterRedoPane(side: "left" | "right"): void {
   updateFileCards(side, []);
   setGoToLineSelection(side, null, { persist: false });
   if (side === "left") {
-    clearPaneMessage(leftMessage);
+    resetPaneMessage(leftMessage);
     clearPaneSummary(storage, "left");
   } else {
-    clearPaneMessage(rightMessage);
+    resetPaneMessage(rightMessage);
     clearPaneSummary(storage, "right");
   }
   resetAllAnchorsAndDecorations();
@@ -2155,7 +2175,7 @@ async function appendFilesToEditor(
 ): Promise<boolean> {
   const fileList = reorderRazorPairs(Array.from(files));
   if (fileList.length === 0) {
-    setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
+    showPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
     return false;
   }
 
@@ -2195,11 +2215,11 @@ async function appendFilesToEditor(
       console.warn("File load failed without details.");
     }
     const detail = formatFileLoadError(error, currentFileName);
-    setPaneMessage(messageTarget, detail, true);
+    showPaneMessage(messageTarget, detail, true);
     return false;
   }
 
-  clearPaneMessage(messageTarget);
+  resetPaneMessage(messageTarget);
   clearPaneSummary(storage, side);
   updateFileCards(side, loadedNames);
   if (!goToLineSelection[side] || !loadedNames.includes(goToLineSelection[side] ?? "")) {
@@ -2255,7 +2275,7 @@ function bindDropZone(
     void (async () => {
       const dropped = await collectDroppedFiles(dataTransfer);
       if (dropped.length === 0) {
-        setPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
+        showPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
         return;
       }
 
@@ -2312,7 +2332,7 @@ function bindDropZone(
       } else {
         console.warn("Dropped file load failed without details.");
       }
-      setPaneMessage(messageTarget, formatFileLoadError(error), true);
+      showPaneMessage(messageTarget, formatFileLoadError(error), true);
     });
   });
 }
@@ -2732,7 +2752,7 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
     if (!goToLineSelection[side] || !fileNames.includes(goToLineSelection[side] ?? "")) {
       setGoToLineSelection(side, fileNames[0] ?? null);
     }
-    clearPaneMessage(config.message);
+    resetPaneMessage(config.message);
     clearPaneSummary(storage, side);
     setPaneSaveTargets(side, reloaded.map((item) => item.target));
     refreshSyntaxHighlight();
@@ -4696,7 +4716,7 @@ function buildPaneClearOptions(
       resetAllAnchorsAndDecorations();
       clearPaneSourceState(side);
       updateFileCards(side, []);
-      clearPaneMessage(config.message);
+      resetPaneMessage(config.message);
       clearPaneSummary(storage, side);
       refreshSyntaxHighlight();
       recalcDiff();
@@ -4933,8 +4953,8 @@ function clearAllPanes(): void {
     resetAllAnchorsAndDecorations();
     updateFileCards("left", []);
     updateFileCards("right", []);
-    clearPaneMessage(leftMessage);
-    clearPaneMessage(rightMessage);
+    resetPaneMessage(leftMessage);
+    resetPaneMessage(rightMessage);
     clearPaneSummary(storage, "left");
     clearPaneSummary(storage, "right");
     updateLineNumbers(leftEditor, leftSegments);

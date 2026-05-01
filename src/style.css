@@ -1204,7 +1204,7 @@ body {
 }
 
 .pane-message {
-  min-height: 20px;
+  display: none;
   margin: 6px 16px 0;
   font-size: 0.75rem;
   color: #5b4a37;
