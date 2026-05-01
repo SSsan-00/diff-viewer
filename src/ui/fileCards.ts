@@ -21,3 +21,16 @@ export function renderFileCards(
 
   container.appendChild(fragment);
 }
+
+function hasLoadedFiles(container: HTMLElement): boolean {
+  return container.dataset.hasFiles === "true";
+}
+
+export function syncFileCards(
+  left: HTMLDivElement,
+  right: HTMLDivElement,
+): void {
+  const showBars = hasLoadedFiles(left) || hasLoadedFiles(right);
+  left.style.display = showBars ? "flex" : "none";
+  right.style.display = showBars ? "flex" : "none";
+}

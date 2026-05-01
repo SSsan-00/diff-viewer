@@ -102,7 +102,7 @@ import { bindEditorLayoutRecalc } from "./ui/layoutRecalcWatcher";
 import { bindPaneResize } from "./ui/paneResize";
 import { buildFindWidgetOffsetZones } from "./ui/findWidgetOffset";
 import { createEditorOptions } from "./ui/editorOptions";
-import { renderFileCards } from "./ui/fileCards";
+import { renderFileCards, syncFileCards } from "./ui/fileCards";
 import { bindFileCardJump } from "./ui/fileCardJump";
 import { extractHtmlAttributeSpaceDiffRangesPair } from "./diffEngine/htmlAttributeSpaceDiff";
 import { copyText } from "./ui/clipboard";
@@ -353,6 +353,9 @@ const resetPaneMessage = (target: HTMLDivElement): void => {
 };
 const leftFileCards = getRequiredElement<HTMLDivElement>("#left-file-cards");
 const rightFileCards = getRequiredElement<HTMLDivElement>("#right-file-cards");
+const syncFileCardsLayout = (): void => {
+  syncFileCards(leftFileCards, rightFileCards);
+};
 const leftFavoriteAdd = getRequiredElement<HTMLButtonElement>("#left-favorite-add");
 const rightFavoriteAdd = getRequiredElement<HTMLButtonElement>("#right-favorite-add");
 const leftFavoriteOverlay =
@@ -1296,6 +1299,7 @@ const scheduleRecalc = () => {
 };
 
 syncPaneMessagesLayout();
+syncFileCardsLayout();
 window.addEventListener("resize", syncPaneMessagesLayout);
 bindEditorLayoutRecalc([leftEditor, rightEditor], scheduleRecalc);
 bindPaneResize({
@@ -1304,6 +1308,7 @@ bindPaneResize({
   editors: [leftEditor, rightEditor],
   onAfterResize: () => {
     syncPaneMessagesLayout();
+    syncFileCardsLayout();
     scheduleRecalc();
   },
 });
@@ -1418,6 +1423,7 @@ function updateFileCards(
 ): void {
   const target = side === "left" ? leftFileCards : rightFileCards;
   renderFileCards(target, names);
+  syncFileCardsLayout();
 }
 
 function getOpenFavoriteSide(): FavoritePane | null {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
-import { renderFileCards } from "./fileCards";
+import { renderFileCards, syncFileCards } from "./fileCards";
 
 describe("renderFileCards", () => {
   it("renders file names as button cards", () => {
@@ -40,5 +40,43 @@ describe("renderFileCards", () => {
     expect(container.querySelectorAll("button.file-card")).toHaveLength(0);
     expect(container.dataset.hasFiles).toBe("false");
     expect(container.getAttribute("aria-hidden")).toBe("true");
+  });
+
+  it("hides both bars when neither pane has loaded files", () => {
+    const dom = new JSDOM(`<div id="left"></div><div id="right"></div>`);
+    const doc = dom.window.document;
+    const left = doc.querySelector<HTMLDivElement>("#left");
+    const right = doc.querySelector<HTMLDivElement>("#right");
+
+    if (!left || !right) {
+      throw new Error("Missing test containers.");
+    }
+
+    renderFileCards(left, []);
+    renderFileCards(right, []);
+    syncFileCards(left, right);
+
+    expect(left.style.display).toBe("none");
+    expect(right.style.display).toBe("none");
+  });
+
+  it("shows both bars when either pane has loaded files", () => {
+    const dom = new JSDOM(`<div id="left"></div><div id="right"></div>`);
+    const doc = dom.window.document;
+    const left = doc.querySelector<HTMLDivElement>("#left");
+    const right = doc.querySelector<HTMLDivElement>("#right");
+
+    if (!left || !right) {
+      throw new Error("Missing test containers.");
+    }
+
+    renderFileCards(left, ["alpha.txt"]);
+    renderFileCards(right, []);
+    syncFileCards(left, right);
+
+    expect(left.style.display).toBe("flex");
+    expect(right.style.display).toBe("flex");
+    expect(right.dataset.hasFiles).toBe("false");
+    expect(right.querySelectorAll("button.file-card")).toHaveLength(0);
   });
 });
