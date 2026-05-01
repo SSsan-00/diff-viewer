@@ -2,7 +2,8 @@
 
 ## 概要
 - 本ドキュメントは `diff-viewer` のパフォーマンス調査結果をまとめたもの。
-- 本調査では**修正は行っていない**（アプリ挙動を変える変更なし）。
+- ここにある数値は **調査当時のベースライン** です。現在のリポジトリには、その後の WASM 組み込みや `lineSimilarity` / `inline diff` 周辺の改善が入っています。
+- 現在の比較は、`pnpm run perf:capture -- --engine auto|ts|wasm` と `pnpm run perf:compare` を使って取り直してください。
 - 方針:
   - 推測で断定しない
   - 実測値（CPU profile / Heap / JS heap metrics）を根拠に記述
@@ -17,7 +18,7 @@
 - App 起動: `pnpm run dev --host 127.0.0.1 --port 4173`
 
 ## 調査対象操作
-- 差分再計算（`#recalc` ボタン）
+- 差分再計算（入力更新/即時再計算フック）
 - ワークスペース切替（workspace パネルで別 workspace を選択）
 - スクロール（左ペインの連続スクロール操作）
 - 大きめ入力でのメモリ挙動
@@ -213,4 +214,4 @@ pnpm run perf:compare -- perf-results/baseline-<timestamp>.json perf-results/aft
 ### 4. 補足
 - `perf:capture` は `--auto-dev` を使って dev server を自動起動する。
 - 出力は `perf-results/` に JSON で保存される。
-- 比較指標は `recalc` / `workspace-switch` の median wall time。
+- 比較指標は `recalc` / `workspace-switch` の median wall time に加え、`perfSnapshot.lastRecalc` の `diffCompute` / `total` も参照できる。

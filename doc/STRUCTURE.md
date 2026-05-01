@@ -16,11 +16,13 @@
 │   └── STRUCTURE.md
 ├── dist/
 ├── public/
+├── rust/
 ├── scripts/
 ├── src/
 │   ├── diffEngine/
 │   ├── file/
 │   ├── monaco/
+│   ├── perf/
 │   ├── scrollSync/
 │   ├── storage/
 │   ├── types/
@@ -41,9 +43,9 @@
 
 ### src/
 
-- `src/main.ts` アプリ起点。Monaco 初期化、ショートカット/フォーカス管理、差分再計算、アンカー描画、読み込み/保存を統合。`src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` を束ねる。
-- `src/appMode.ts` URL パラメータから保存あり/保存なし画面の起動モードを解決する。export: `resolveAppMode`。
-- `src/appMode.test.ts` 保存あり/保存なしモード解決のテスト。
+- `src/main.ts` アプリ起点。Monaco 初期化、ショートカット/フォーカス管理、差分再計算、アンカー描画、読み込み/保存、runtime perf 記録を統合。`src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` / `src/perf/*` を束ねる。
+- `src/appMode.ts` URL パラメータから保存あり/保存なし画面と diff engine (`auto|ts|wasm`) を解決する。exports: `resolveAppMode`, `resolveDiffEngineMode`。
+- `src/appMode.test.ts` 保存あり/保存なしモードと diff engine モード解決のテスト。
 - `src/style.css` 画面全体のレイアウト/配色/差分ハイライト/アンカー/境界表示のスタイル。ワークスペース/パス登録UIのパネルも定義する。`src/main.ts` から読み込む。
 - `src/licenses.ts` 依存ライセンス本文データ。export: `THIRD_PARTY_LICENSES`（`src/main.ts` から参照）。
 - `src/smoke.test.ts` Vitest の起動確認用スモークテスト。
@@ -62,20 +64,33 @@
 - `src/diffEngine/lineSignature.ts` 行の識別キー抽出（ユニーク行・対応付け補助）。Razor `@:` の比較用正規化を含む。export: `extractLineKey`。
 - `src/diffEngine/lineSignature.test.ts` 識別キー抽出のテスト。
 - `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル/埋め込みCSS/JS/HTMLの補助トークン）。Razor `@:` を比較時に除去し、AppendLine や `+=`/`.=` の文字列中身（空白正規化）を比較に活用する。コメント行は本文を抽出して比較する。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`, `normalizeCommentText`。
+- `src/diffEngine/lineSimilarity.test.ts` 行類似度スコア計算のテスト。
+- `src/diffEngine/lineSimilarityComment.test.ts` コメント行比較のテスト。
 - `src/diffEngine/diffLines.ts` 行レベル差分（Myers + ユニーク行優先）。exports: `diffLinesFromLines`, `diffLines`。
 - `src/diffEngine/diffLines.test.ts` 行差分の基本ケーステスト。
 - `src/diffEngine/diffLinesAlignment.test.ts` 行対応の安定性テスト。
+- `src/diffEngine/diffLinesIgnoreLeadingWhitespace.test.ts` 行頭空白無視時の対応付けテスト。
 - `src/diffEngine/diffLinesSemanticAlignment.test.ts` 識別子ベースの対応付けテスト。
 - `src/diffEngine/pairReplace.ts` delete/insert を replace にペアリングする補助。空行が挟まるケースでも順序を崩さず対応行を揃える。export: `pairReplace`。
 - `src/diffEngine/pairReplace.test.ts` `pairReplace` のテスト。
-- `src/diffEngine/diffInline.ts` 行内差分の算出（LCS ベース）。export: `diffInline`。
+- `src/diffEngine/appendLiteral.ts` AppendLine 系のラッパー文字列を扱う補助。exports: `extractAppendLiteral`, `isAppendLiteralWrapperPair` ほか。
+- `src/diffEngine/appendLiteral.test.ts` AppendLine ラッパー判定のテスト。
+- `src/diffEngine/diffInline.ts` 行内差分の算出（LCS ベース）。batched 実行と AppendLine 向け補正を含む。exports: `diffInline`, `diffInlineBatch` ほか。
 - `src/diffEngine/diffInline.test.ts` 行内差分のテスト。
+- `src/diffEngine/htmlAttributeSpaceDiff.ts` HTML 属性内空白差分の可視化補助。export: `diffHtmlAttributeSpace`.
+- `src/diffEngine/htmlAttributeSpaceDiff.test.ts` HTML 属性内空白差分のテスト。
+- `src/diffEngine/replaceVisibility.ts` replace 行の表示可否判定と inline diff 再利用を担当。export: `prepareReplaceOpsForDisplay`。
+- `src/diffEngine/replaceVisibility.test.ts` replace 表示判定のテスト。
 - `src/diffEngine/diffBlocks.ts` 行差分を表示用のペア行へ変換する補助。exports: `getDiffBlockStarts`, `mapRowToLineNumbers`。
 - `src/diffEngine/diffBlocks.test.ts` ブロック/行マッピングのテスト。
 - `src/diffEngine/anchors.ts` アンカー検証・分割差分のロジック。exports: `addAnchor`, `removeAnchorByLeft`, `removeAnchorByRight`, `validateAnchors`, `diffWithAnchors` ほか。
 - `src/diffEngine/anchors.test.ts` アンカー検証のテスト。
 - `src/diffEngine/folding.ts` 折りたたみ対象範囲の算出。exports: `buildFoldRanges`, `findFoldContainingRow`。
 - `src/diffEngine/folding.test.ts` 折りたたみ範囲のテスト。
+- `src/diffEngine/embeddedOutputCall.ts` 埋め込み WASM 呼び出し結果の decode/検証を共通化する補助。exports: `decodeEmbeddedDiffResponse` ほか。
+- `src/diffEngine/embeddedDiffWasm.ts` 単一 HTML に埋め込む WASM バイナリ本体と metadata。exports: `EMBEDDED_DIFF_WASM_*`。
+- `src/diffEngine/engine.ts` `ts|wasm|auto` の差し替え層。line diff / inline diff / anchors セグメントを optional に WASM 実装へ流す。exports: `createDiffEngine`, `getDiffEngineAvailability`。
+- `src/diffEngine/engine.test.ts` TS/WASM parity と fallback のテスト。
 
 ### src/file/
 
@@ -101,7 +116,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/file/postLoad.test.ts` post-load 実行のテスト。
 - `src/file/language.ts` ファイル名から Monaco の言語IDを推定し、ペイン単位の言語を決定。exports: `detectLanguageFromFileName`, `inferPaneLanguage`。
 - `src/file/language.test.ts` 拡張子→言語推定のテスト。
-- `src/file/writeback.ts` 単一ファイル書き戻しの可否判定、File System Access API 経由の読み取りハンドル取得、再読み込み、文字コード/改行/BOMを維持した保存処理を担当。exports: `pickFilesWithHandles`, `collectDroppedFiles`, `getPaneWriteAvailability`, `readCurrentFileFromPaneTarget`, `saveTextWithPaneTarget` ほか。
+- `src/file/writeback.ts` File System Access API 経由の読み取り/保存ハンドル取得、再読み込み、文字コード/改行/BOMを維持した単一/複数ファイル書き戻しを担当。exports: `pickFilesWithHandles`, `collectDroppedFiles`, `getPaneWriteAvailability`, `readCurrentFileFromPaneTarget`, `saveTextWithPaneTarget` ほか。
 - `src/file/writeback.test.ts` 保存可否、読み取り専用ハンドルでの再読み込み、UTF-8/Shift_JIS/EUC-JP の安全な書き戻し、破損防止のテスト。
 - `src/file/multiFileEditModel.ts` 連結表示された複数ファイルの境界判定、ファイル別テキスト抽出、複数ファイル保存の事前エンコード検証を担当。exports: `areChangesWithinSingleFileSegments`, `extractSegmentTexts`, `buildMultiFileWritePlan`。
 - `src/file/multiFileEditModel.test.ts` 境界をまたぐ編集の拒否、ファイル別抽出、保存前エンコード検証のテスト。
@@ -112,13 +127,13 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/template.test.ts` テンプレート内の UI 配置テスト。
 - `src/ui/paneClear.ts` ペイン別クリアボタンのバインド。exports: `clearPaneState`, `bindPaneClearButton`。
 - `src/ui/paneClear.test.ts` クリア挙動のテスト。
-- `src/ui/paneMessages.ts` ペインの読み込み/エラーメッセージ制御。exports: `setPaneMessage`, `clearPaneMessage`。
+- `src/ui/paneMessages.ts` ペインの読み込み/エラーメッセージ制御と左右高さ同期。exports: `setPaneMessage`, `clearPaneMessage`, `syncPaneMessages`。
 - `src/ui/paneMessages.test.ts` メッセージ制御のテスト。
 - `src/ui/paneSourceCopy.ts` 各ペインの「コピー」向けに表示行（仮想行含む）を文字列化し、コピー処理を接続。exports: `buildCopyVisualRowsFromAlignedDiff`, `buildCopyTextFromVisualRows`, `bindPaneSourceCopyButton`。
 - `src/ui/paneSourceCopy.test.ts` コピー用表示行とボタン接続のテスト。
 - `src/ui/diffReport.ts` 表示行（仮想行含む）から左右2列のHTMLレポートを生成し、ダウンロード処理を接続。exports: `buildDiffReportHtml`, `downloadDiffReportHtml`, `bindExportReportButton`。
 - `src/ui/diffReport.test.ts` レポートHTML生成・ダウンロード接続のテスト。
-- `src/ui/fileCards.ts` ファイル一覧カードの描画。export: `renderFileCards`。
+- `src/ui/fileCards.ts` ファイル一覧カードの描画と左右高さ同期。exports: `renderFileCards`, `syncFileCards`。
 - `src/ui/fileCards.test.ts` カード描画のテスト。
 - `src/ui/fileCardJump.ts` ファイルカードクリックのハンドラ接続。export: `bindFileCardJump`。
 - `src/ui/fileCardJump.test.ts` カードクリックハンドラのテスト。
@@ -136,7 +151,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 ## doc/
 
 - `doc/manual.md` テキスト版の利用マニュアル（Windows前提の操作一覧）。
-- `doc/MANUAL.html` 画像付きの操作マニュアル（単一HTML）。
+- `doc/MANUAL.html` 画像付きの操作マニュアル（単一HTML）。`scripts/build-manual-html.mjs` でスクリーンショット data URL を更新する。
 - `doc/manual-assets/` MANUAL.html 生成用のスクリーンショット素材。
 
 ## text/
@@ -155,7 +170,12 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 ## scripts/
 
 - `scripts/capture-manual-screenshots.mjs` Playwrightでマニュアル用スクショを取得。
-- `scripts/build-manual-html.mjs` スクショをBase64埋め込みして MANUAL.html を生成。
+- `scripts/build-manual-html.mjs` 現行 MANUAL.html の画像だけを manual-assets から data URL へ差し替える。
+- `scripts/generate-embedded-wasm.mjs` Rust/WASM 差分エンジンをビルドし、埋め込み TS モジュールを再生成する。
+- `scripts/perf-compare.mjs` perf capture JSON の比較と差分表示を行う。
+
+### src/ui/ 続き
+
 - `src/ui/editorOptions.ts` Monaco エディタ生成用の共通オプション（sticky scroll 無効化含む）。export: `createEditorOptions`。
 - `src/ui/editorOptions.test.ts` エディタ生成オプションのテスト。
 - `src/ui/themeToggle.ts` ☀️/🌙 テーマ切替と保存。exports: `setupThemeToggle`, `ThemeMode`。
@@ -239,6 +259,11 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/scrollSync/ScrollSyncController.ts` 左右スクロール連動の制御クラス。exports: `ScrollSyncController` と関連型。
 - `src/scrollSync/ScrollSyncController.test.ts` スクロール連動のテスト。
 
+### src/perf/
+
+- `src/perf/runtimePerf.ts` runtime perf 記録と `window.__diffViewerPerf` 公開を担当。exports: `recordPerfEvent`, `getPerfSnapshot`, `setEnginePerfStatus` ほか。
+- `src/perf/runtimePerf.test.ts` perf snapshot 記録のテスト。
+
 ### src/monaco/
 
 - `src/monaco/monacoWorkers.ts` Monaco worker の URL 設定（単体 HTML 向け）。export: `setupMonacoWorkers`。
@@ -247,3 +272,10 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 ### src/types/
 
 - `src/types/monaco-editor-api.d.ts` Monaco API の型補助（`monaco` 型の最小サポート）。
+
+## rust/
+
+- `rust/diff-engine-wasm/` 埋め込み用 Rust/WASM 差分エンジン。
+- `rust/diff-engine-wasm/src/lib.rs` line diff / inline diff / batch diff の export とメモリ境界を管理。
+- `rust/diff-engine-wasm/src/diff_steps.rs` 行差分コアのステップ計算を担当。
+- `rust/diff-engine-wasm/src/inline_diff.rs` 行内差分コアと batched request 処理を担当。
