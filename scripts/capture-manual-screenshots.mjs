@@ -70,6 +70,10 @@ const workspaceBase = (anchors, options = {}) => ({
       name: "Workspace A",
       leftText: options.leftText ?? leftText,
       rightText: options.rightText ?? rightText,
+      leftSegments: options.leftSegments ?? [],
+      rightSegments: options.rightSegments ?? [],
+      leftActiveFile: options.leftActiveFile ?? null,
+      rightActiveFile: options.rightActiveFile ?? null,
       anchors,
     },
     {
@@ -213,6 +217,8 @@ const scenarios = [
     workspaces: workspaceBase(emptyAnchors(), {
       leftText: multiFileText,
       rightText: multiFileText,
+      leftSegments: multiFileSegments,
+      rightSegments: multiFileSegments,
     }),
     persistedState: {
       ...basePersistedState,
@@ -231,6 +237,8 @@ const scenarios = [
     workspaces: workspaceBase(emptyAnchors(), {
       leftText: multiFileText,
       rightText: multiFileText,
+      leftSegments: multiFileSegments,
+      rightSegments: multiFileSegments,
     }),
     persistedState: {
       ...basePersistedState,
