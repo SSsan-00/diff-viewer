@@ -74,4 +74,34 @@ describe("anchor transfer", () => {
 
     expect(result.ok).toBe(false);
   });
+
+  it("uses the editor line when the file-local segment count is shorter than the current content", () => {
+    const payload = {
+      kind: "diff-viewer-anchors",
+      version: 1,
+      panes: {
+        left: { files: 1 },
+        right: { files: 1 },
+      },
+      anchors: [
+        {
+          left: { file: 1, line: 8 },
+          right: { file: 1, line: 9 },
+        },
+      ],
+    };
+
+    const result = resolveImportedAnchors(payload, {
+      leftSegments: [{ startLine: 1, lineCount: 5, fileIndex: 1 }],
+      rightSegments: [{ startLine: 1, lineCount: 5, fileIndex: 1 }],
+      leftLineCount: 10,
+      rightLineCount: 10,
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      swapped: false,
+      anchors: [{ leftLineNo: 7, rightLineNo: 8 }],
+    });
+  });
 });
