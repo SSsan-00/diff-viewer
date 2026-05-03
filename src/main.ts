@@ -789,8 +789,7 @@ function applyWorkspaceState(
         applyText: true,
       });
       refreshSyntaxHighlight();
-      clearPaneSourceState("left", { persistSaveTarget: false });
-      clearPaneSourceState("right", { persistSaveTarget: false });
+      clearPaneSourceStateForWorkspaceRestore();
       resetPaneMessage(leftMessage);
       resetPaneMessage(rightMessage);
       clearPaneSummary(storage, "left");
@@ -866,8 +865,7 @@ function switchWorkspaceById(
           applyText: false,
         });
         refreshSyntaxHighlight();
-        clearPaneSourceState("left");
-        clearPaneSourceState("right");
+        clearPaneSourceStateForWorkspaceRestore();
         resetPaneMessage(leftMessage);
         resetPaneMessage(rightMessage);
         clearPaneSummary(storage, "left");
@@ -885,6 +883,7 @@ function switchWorkspaceById(
     return;
   }
   workspaceState = nextState;
+  void restorePaneSaveTargetsForWorkspace(workspaceState.selectedId);
   void saveWorkspaces(storage, workspaceState, { textStore });
   renderWorkspacePanel({
     focusItemId: options?.focusItem ? id : null,
@@ -2593,6 +2592,11 @@ function clearPaneSourceState(
   clearPaneRawFiles(side);
   clearPaneSaveTarget(side, { persist: options?.persistSaveTarget });
   commitPaneBoundarySnapshot(side);
+}
+
+function clearPaneSourceStateForWorkspaceRestore(): void {
+  clearPaneSourceState("left", { persistSaveTarget: false });
+  clearPaneSourceState("right", { persistSaveTarget: false });
 }
 
 function isAbortError(error: unknown): boolean {
