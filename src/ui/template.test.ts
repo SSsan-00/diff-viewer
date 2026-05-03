@@ -77,6 +77,32 @@ describe("pane action layout", () => {
     );
   });
 
+  it("renders anchor import/export buttons and the shortened collapse label", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    expect(doc.querySelector("#anchor-import")).toBeTruthy();
+    expect(doc.querySelector("#anchor-export")).toBeTruthy();
+    expect(doc.querySelector<HTMLInputElement>("#anchor-import-file")?.accept).toContain(
+      ".json",
+    );
+    expect(doc.querySelector("#anchor-toggle")?.parentElement?.textContent?.trim()).toBe(
+      "折りたたみ",
+    );
+  });
+
+  it("renders workspace import control next to create", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+    const header = doc.querySelector("#workspace-panel .workspace-panel__header");
+
+    expect(header?.querySelector("#workspace-import")).toBeTruthy();
+    expect(header?.querySelector("#workspace-create")).toBeTruthy();
+    expect(doc.querySelector<HTMLInputElement>("#workspace-import-file")?.accept).toContain(
+      ".json",
+    );
+  });
+
   it("places the diff-only toggle in the toolbar and removes pane toggles", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;

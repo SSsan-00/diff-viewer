@@ -49,6 +49,7 @@ describe("workspaces ui helpers", () => {
     const items = container.querySelectorAll(".workspace-item");
     expect(items.length).toBe(2);
     expect(items[0]?.querySelector("[data-action='select']")).toBeTruthy();
+    expect(items[0]?.querySelector("[data-action='export']")).toBeTruthy();
     expect(items[0]?.querySelector("[data-action='rename']")).toBeTruthy();
     expect(items[0]?.querySelector("[data-action='remove']")).toBeTruthy();
   });
@@ -84,6 +85,39 @@ describe("workspaces ui helpers", () => {
     const action = renameButton ? getWorkspaceAction(renameButton) : null;
 
     expect(action).toEqual({ type: "rename", id: "alpha" });
+  });
+
+  it("extracts workspace export actions from targets", () => {
+    const dom = new JSDOM("<!doctype html><html><body></body></html>");
+    const doc = dom.window.document;
+    const container = doc.createElement("div");
+    renderWorkspaces(
+      container,
+      [
+        {
+          id: "alpha",
+          name: "Alpha",
+          leftText: "",
+          rightText: "",
+          anchors: {
+            manualAnchors: [],
+            autoAnchor: null,
+            suppressedAutoAnchorKey: null,
+            pendingLeftLineNo: null,
+            pendingRightLineNo: null,
+            selectedAnchorKey: null,
+          },
+        },
+      ],
+      { selectedId: "alpha", editingId: null, focusedId: null },
+    );
+
+    const exportButton = container.querySelector<HTMLElement>(
+      "[data-action='export']",
+    );
+    const action = exportButton ? getWorkspaceAction(exportButton) : null;
+
+    expect(action).toEqual({ type: "export", id: "alpha" });
   });
 
   it("treats workspace item clicks as selection", () => {

@@ -1,6 +1,6 @@
 import type { Workspace } from "../storage/workspaces";
 
-export type WorkspaceActionType = "select" | "rename" | "remove";
+export type WorkspaceActionType = "select" | "export" | "rename" | "remove";
 
 export type WorkspaceAction = {
   type: WorkspaceActionType;
@@ -78,6 +78,14 @@ export function renderWorkspaces(
     const actions = doc.createElement("div");
     actions.className = "workspace-item__actions";
 
+    const exportButton = doc.createElement("button");
+    exportButton.type = "button";
+    exportButton.className = "workspace-item__action";
+    exportButton.dataset.action = "export";
+    exportButton.textContent = "⇩";
+    exportButton.title = "エクスポート";
+    exportButton.setAttribute("aria-label", "エクスポート");
+
     const rename = doc.createElement("button");
     rename.type = "button";
     rename.className = "workspace-item__action";
@@ -94,7 +102,7 @@ export function renderWorkspaces(
     remove.title = "削除";
     remove.setAttribute("aria-label", "削除");
 
-    actions.append(rename, remove);
+    actions.append(exportButton, rename, remove);
     item.append(dragHandle, content, actions);
     fragment.appendChild(item);
   });

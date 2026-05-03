@@ -233,7 +233,13 @@ body {
   color: #6b5a46;
 }
 
-.workspace-panel__create {
+.workspace-panel__header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-panel__icon {
   border: 1px solid rgba(140, 130, 105, 0.35);
   background: rgba(160, 145, 120, 0.2);
   color: inherit;
@@ -244,7 +250,7 @@ body {
   cursor: pointer;
 }
 
-.workspace-panel__create:disabled {
+.workspace-panel__icon:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -2362,7 +2368,7 @@ body {
   color: #c9c2b7;
 }
 
-[data-theme="dark"] .workspace-panel__create {
+[data-theme="dark"] .workspace-panel__icon {
   border-color: rgba(160, 140, 110, 0.5);
   background: rgba(80, 70, 55, 0.4);
 }

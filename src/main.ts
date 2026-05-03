@@ -117,6 +117,7 @@ import {
 } from "./storage/favoritePaths";
 import {
   createWorkspace,
+  importWorkspace,
   loadWorkspaces,
   renameWorkspace,
   reorderWorkspaces,
@@ -168,6 +169,14 @@ import {
   collectPaneSnapshot,
   cloneSegments,
 } from "./ui/workspacePaneState";
+import {
+  buildAnchorTransferPayload,
+  resolveImportedAnchors,
+} from "./ui/anchorTransfer";
+import {
+  buildWorkspaceTransferPayload,
+  parseWorkspaceTransferPayload,
+} from "./ui/workspaceTransfer";
 import { createToastManager } from "./ui/toast";
 import {
   clearPersistedState,
@@ -333,6 +342,10 @@ const workspaceToggle = getRequiredElement<HTMLButtonElement>("#workspace-toggle
 const workspacePanel = getRequiredElement<HTMLDivElement>("#workspace-panel");
 const workspaceOverlay = getRequiredElement<HTMLDivElement>("#workspace-overlay");
 const workspaceList = getRequiredElement<HTMLDivElement>("#workspace-list");
+const workspaceImportButton =
+  getRequiredElement<HTMLButtonElement>("#workspace-import");
+const workspaceImportFileInput =
+  getRequiredElement<HTMLInputElement>("#workspace-import-file");
 const workspaceCreate = getRequiredElement<HTMLButtonElement>("#workspace-create");
 const leftMessage = getRequiredElement<HTMLDivElement>("#left-message");
 const rightMessage = getRequiredElement<HTMLDivElement>("#right-message");
@@ -404,6 +417,10 @@ const ignoreLeadingWhitespaceToggle = document.querySelector<HTMLInputElement>(
 const anchorMessage = getRequiredElement<HTMLDivElement>("#anchor-message");
 const anchorWarning = getRequiredElement<HTMLDivElement>("#anchor-warning");
 const anchorList = getRequiredElement<HTMLUListElement>("#anchor-list");
+const anchorImportButton = getRequiredElement<HTMLButtonElement>("#anchor-import");
+const anchorExportButton = getRequiredElement<HTMLButtonElement>("#anchor-export");
+const anchorImportFileInput =
+  getRequiredElement<HTMLInputElement>("#anchor-import-file");
 const clearButton = getRequiredElement<HTMLButtonElement>("#clear");
 const exportReportButton = getRequiredElement<HTMLButtonElement>("#export-report");
 const reportModeToggleButton =
@@ -506,6 +523,40 @@ const favoriteFocusIndex: Record<FavoritePane, number | null> = {
 let editingWorkspaceId: string | null = null;
 let focusedWorkspaceId: string | null = null;
 const toast = createToastManager(toastRoot);
+
+function downloadJsonFile(data: unknown, fileName: string): boolean {
+  let objectUrl: string | null = null;
+  try {
+    const json = `${JSON.stringify(data, null, 2)}\n`;
+    const blob = new Blob([json], { type: "application/json;charset=utf-8" });
+    objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = fileName;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    return true;
+  } catch (error) {
+    console.warn("JSON download failed:", error);
+    return false;
+  } finally {
+    if (objectUrl) {
+      URL.revokeObjectURL(objectUrl);
+    }
+  }
+}
+
+async function readJsonFile(file: File): Promise<unknown> {
+  return JSON.parse(await file.text());
+}
+
+function sanitizeJsonFileNamePart(value: string, fallback: string): string {
+  const normalized = value.trim().replace(/[\\/:*?"<>|]+/g, "-");
+  const compact = normalized.replace(/\s+/g, "-").replace(/-+/g, "-");
+  return compact || fallback;
+}
 
 function setFavoriteError(target: HTMLDivElement, message: string) {
   target.textContent = message;
@@ -2936,6 +2987,75 @@ workspaceCreate.addEventListener("click", () => {
   applyWorkspaceState(result.state, { focusInput: true });
 });
 
+workspaceImportButton.addEventListener("click", () => {
+  workspaceImportFileInput.click();
+});
+
+workspaceImportFileInput.addEventListener("change", () => {
+  const file = workspaceImportFileInput.files?.[0];
+  workspaceImportFileInput.value = "";
+  if (!file) {
+    return;
+  }
+  void (async () => {
+    let raw: unknown;
+    try {
+      raw = await readJsonFile(file);
+    } catch (error) {
+      console.warn("Workspace import parse failed:", error);
+      toast.show("ワークスペースJSONを読み込めませんでした", "error");
+      return;
+    }
+    const parsed = parseWorkspaceTransferPayload(raw);
+    if (!parsed.ok) {
+      toast.show("ワークスペースJSONの形式が違います", "error");
+      return;
+    }
+    persistCurrentWorkspaceState();
+    const result = importWorkspace(
+      storage,
+      workspaceState,
+      parsed.workspace,
+      { textStore },
+    );
+    if (!result.ok) {
+      if (result.reason === "limit") {
+        toast.show("最大10件です", "error");
+      } else if (result.reason === "length") {
+        toast.show(`名前は${WORKSPACE_NAME_LIMIT}文字以内です`, "error");
+      } else {
+        toast.show("ワークスペースをインポートできませんでした", "error");
+      }
+      return;
+    }
+    editingWorkspaceId = null;
+    applyWorkspaceState(result.state, { focusItemId: result.state.selectedId });
+    toast.show("ワークスペースをインポートしました");
+  })();
+});
+
+function exportWorkspaceById(id: string): void {
+  if (id === workspaceState.selectedId) {
+    persistCurrentWorkspaceState();
+  }
+  const workspace = workspaceState.workspaces.find((item) => item.id === id);
+  if (!workspace) {
+    toast.show("ワークスペースをエクスポートできませんでした", "error");
+    return;
+  }
+  const name = sanitizeJsonFileNamePart(workspace.name, "workspace");
+  const ok = downloadJsonFile(
+    buildWorkspaceTransferPayload(workspace),
+    `diff-viewer-workspace-${name}.json`,
+  );
+  toast.show(
+    ok
+      ? "ワークスペースをエクスポートしました"
+      : "ワークスペースをエクスポートできませんでした",
+    ok ? undefined : "error",
+  );
+}
+
 workspaceList.addEventListener("click", (event) => {
   const action = getWorkspaceAction(event.target as HTMLElement);
   if (!action) {
@@ -2956,6 +3076,10 @@ workspaceList.addEventListener("click", (event) => {
     editingWorkspaceId = action.id;
     focusedWorkspaceId = action.id;
     renderWorkspacePanel({ focusInput: true });
+    return;
+  }
+  if (action.type === "export") {
+    exportWorkspaceById(action.id);
     return;
   }
   if (action.type === "remove") {
@@ -4913,6 +5037,82 @@ bindExportReportButton({
     });
   },
   fileName: "diff-report.html",
+});
+
+anchorExportButton.addEventListener("click", () => {
+  const ok = downloadJsonFile(
+    buildAnchorTransferPayload(manualAnchors, {
+      leftSegments,
+      rightSegments,
+    }),
+    "diff-viewer-anchors.json",
+  );
+  toast.show(
+    ok
+      ? "アンカーをエクスポートしました"
+      : "アンカーをエクスポートできませんでした",
+    ok ? undefined : "error",
+  );
+});
+
+anchorImportButton.addEventListener("click", () => {
+  anchorImportFileInput.click();
+});
+
+anchorImportFileInput.addEventListener("change", () => {
+  const file = anchorImportFileInput.files?.[0];
+  anchorImportFileInput.value = "";
+  if (!file) {
+    return;
+  }
+  void (async () => {
+    let raw: unknown;
+    try {
+      raw = await readJsonFile(file);
+    } catch (error) {
+      console.warn("Anchor import parse failed:", error);
+      toast.show("アンカーJSONを読み込めませんでした", "error");
+      return;
+    }
+
+    const result = resolveImportedAnchors(raw, {
+      leftSegments,
+      rightSegments,
+      leftLineCount: getNormalizedLineCount(leftEditor.getValue()),
+      rightLineCount: getNormalizedLineCount(rightEditor.getValue()),
+    });
+    if (!result.ok) {
+      const message =
+        result.reason === "layout"
+          ? "現在の左右ファイル数と一致しません"
+          : result.reason === "range"
+            ? "現在のファイル行数に存在しないアンカーがあります"
+            : "アンカーJSONの形式が違います";
+      toast.show(message, "error");
+      return;
+    }
+
+    manualAnchors = result.anchors.map((anchor) => ({ ...anchor }));
+    pendingLeftLineNo = null;
+    pendingRightLineNo = null;
+    selectedAnchorKey = null;
+    anchorUndoState = null;
+    updatePendingAnchorDecoration();
+    leftFocusDecorationIds = leftEditor.deltaDecorations(leftFocusDecorationIds, []);
+    rightFocusDecorationIds = rightEditor.deltaDecorations(rightFocusDecorationIds, []);
+    setAnchorMessage(
+      result.swapped
+        ? "アンカーを左右反転してインポートしました。"
+        : "アンカーをインポートしました。",
+    );
+    recalcDiff();
+    schedulePersistAll();
+    toast.show(
+      result.swapped
+        ? "アンカーを左右反転してインポートしました"
+        : "アンカーをインポートしました",
+    );
+  })();
 });
 
 function clearFocusedPane(): void {

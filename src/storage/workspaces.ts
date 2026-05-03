@@ -46,6 +46,8 @@ export type Workspace = {
   anchors: WorkspaceAnchorState;
 };
 
+export type WorkspaceDraft = Omit<Workspace, "id">;
+
 export type WorkspacesState = {
   workspaces: Workspace[];
   selectedId: string;
@@ -537,6 +539,45 @@ export function createWorkspace(
   const nextState: WorkspacesState = {
     workspaces: [...state.workspaces, nextWorkspace],
     selectedId: nextWorkspace.id,
+  };
+  void saveWorkspaces(storage, nextState, options);
+  return { ok: true, state: nextState };
+}
+
+export function importWorkspace(
+  storage: Storage | null,
+  state: WorkspacesState,
+  draft: WorkspaceDraft,
+  options?: WorkspaceStorageOptions,
+): WorkspaceResult {
+  if (state.workspaces.length >= WORKSPACE_LIMIT) {
+    return { ok: false, reason: "limit", state };
+  }
+  const name = normalizeName(draft.name);
+  const error = isValidName(name);
+  if (error) {
+    return { ok: false, reason: error, state };
+  }
+  const workspace: Workspace = {
+    id: createWorkspaceId(),
+    name,
+    leftText: draft.leftText,
+    rightText: draft.rightText,
+    leftSegments: normalizeSegments(draft.leftSegments),
+    rightSegments: normalizeSegments(draft.rightSegments),
+    leftActiveFile:
+      typeof draft.leftActiveFile === "string" ? draft.leftActiveFile : null,
+    rightActiveFile:
+      typeof draft.rightActiveFile === "string" ? draft.rightActiveFile : null,
+    leftCursor: normalizeCursor(draft.leftCursor),
+    rightCursor: normalizeCursor(draft.rightCursor),
+    leftScrollTop: normalizeScrollTop(draft.leftScrollTop),
+    rightScrollTop: normalizeScrollTop(draft.rightScrollTop),
+    anchors: normalizeAnchorState(draft.anchors),
+  };
+  const nextState: WorkspacesState = {
+    workspaces: [...state.workspaces, workspace],
+    selectedId: workspace.id,
   };
   void saveWorkspaces(storage, nextState, options);
   return { ok: true, state: nextState };

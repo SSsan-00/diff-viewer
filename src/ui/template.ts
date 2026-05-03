@@ -45,14 +45,34 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
           >
             <div class="workspace-panel__header">
               <span>Workspace</span>
-              <button
-                id="workspace-create"
-                class="workspace-panel__create"
-                type="button"
-                aria-label="ワークスペースを追加"
-              >
-                ＋
-              </button>
+              <div class="workspace-panel__header-actions">
+                <button
+                  id="workspace-import"
+                  class="workspace-panel__icon"
+                  type="button"
+                  title="インポート"
+                  aria-label="ワークスペースをインポート"
+                >
+                  ⇧
+                </button>
+                <button
+                  id="workspace-create"
+                  class="workspace-panel__create workspace-panel__icon"
+                  type="button"
+                  aria-label="ワークスペースを追加"
+                >
+                  ＋
+                </button>
+              </div>
+              <input
+                id="workspace-import-file"
+                class="file-input"
+                type="file"
+                accept=".json,application/json"
+                hidden
+                aria-hidden="true"
+                tabindex="-1"
+              />
             </div>
             <div
               id="workspace-list"
@@ -220,9 +240,32 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
         <div class="anchor-title">アンカー</div>
         <div class="anchor-header-right">
           <div id="anchor-message" class="anchor-message" aria-live="polite"></div>
+          <input
+            id="anchor-import-file"
+            class="file-input"
+            type="file"
+            accept=".json,application/json"
+            hidden
+            aria-hidden="true"
+            tabindex="-1"
+          />
+          <button
+            id="anchor-import"
+            class="button button-subtle anchor-transfer-button"
+            type="button"
+          >
+            インポート
+          </button>
+          <button
+            id="anchor-export"
+            class="button button-subtle anchor-transfer-button"
+            type="button"
+          >
+            エクスポート
+          </button>
           <label class="toggle">
             <input id="anchor-toggle" type="checkbox" />
-            <span>アンカーを折りたたみ</span>
+            <span>折りたたみ</span>
           </label>
         </div>
       </div>

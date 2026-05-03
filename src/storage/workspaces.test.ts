@@ -6,6 +6,7 @@ import { pairReplace } from "../diffEngine/pairReplace";
 import {
   createWorkspace,
   deleteWorkspace,
+  importWorkspace,
   loadWorkspaces,
   renameWorkspace,
   reorderWorkspaces,
@@ -117,6 +118,45 @@ describe("workspaces storage", () => {
         "C",
         "A",
       ]);
+    }
+  });
+
+  it("imports a workspace as a new selected workspace", () => {
+    const storage = createStorage();
+    const state = createState(["A"]);
+    const result = importWorkspace(storage, state, {
+      name: "Imported",
+      leftText: "left",
+      rightText: "right",
+      leftSegments: [
+        { startLine: 1, lineCount: 1, fileIndex: 1, fileName: "left.txt" },
+      ],
+      rightSegments: [
+        { startLine: 1, lineCount: 1, fileIndex: 1, fileName: "right.txt" },
+      ],
+      leftActiveFile: "left.txt",
+      rightActiveFile: "right.txt",
+      leftCursor: null,
+      rightCursor: null,
+      leftScrollTop: null,
+      rightScrollTop: null,
+      anchors: {
+        manualAnchors: [{ leftLineNo: 0, rightLineNo: 0 }],
+        autoAnchor: null,
+        suppressedAutoAnchorKey: null,
+        pendingLeftLineNo: null,
+        pendingRightLineNo: null,
+        selectedAnchorKey: "manual:0:0",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      const imported = result.state.workspaces.at(-1);
+      expect(imported?.id).not.toBe("ws-0");
+      expect(imported?.name).toBe("Imported");
+      expect(imported?.leftSegments?.[0]?.fileName).toBe("left.txt");
+      expect(result.state.selectedId).toBe(imported?.id);
     }
   });
 
