@@ -4846,6 +4846,11 @@ function buildPaneClearOptions(
     editor: config.editor,
     segments: config.segments,
     updateLineNumbers,
+    clearEditor: (editor) => {
+      withProgrammaticEdit(side, () => {
+        clearEditorModel(editor);
+      });
+    },
     onBeforeClear: () => {
       anchorUndoState = null;
       clearUndoState = {

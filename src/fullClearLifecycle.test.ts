@@ -24,4 +24,13 @@ describe("full clear lifecycle", () => {
     expect(clearAllPanes).toContain("clearEditorModel(rightEditor);");
     expect(clearAllPanes).not.toContain("clearEditorsForUndo");
   });
+
+  it("clears a single pane as a programmatic edit so file-boundary guards do not reject it", () => {
+    const source = readMainSource();
+    const buildPaneClearOptions = extractFunction(source, "buildPaneClearOptions");
+
+    expect(buildPaneClearOptions).toContain("clearEditor: (editor) => {");
+    expect(buildPaneClearOptions).toContain("withProgrammaticEdit(side");
+    expect(buildPaneClearOptions).toContain("clearEditorModel(editor);");
+  });
 });

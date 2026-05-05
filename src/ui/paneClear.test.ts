@@ -158,6 +158,33 @@ describe("pane clear buttons", () => {
     expect(leftEditor.value).toBe("");
   });
 
+  it("can route the editor clear through a caller-provided clear action", () => {
+    const document = setupDocument();
+    const leftButton = document.querySelector<HTMLButtonElement>("#left-clear");
+    const leftEditor = createEditor("left");
+    const leftSegments: LineSegment[] = [
+      { startLine: 1, lineCount: 2, fileIndex: 1 },
+    ];
+    const updateLeft = vi.fn();
+    const clearEditor = vi.fn((editor: typeof leftEditor) => {
+      clearEditorModel(editor);
+    });
+
+    bindPaneClearButton(leftButton, {
+      editor: leftEditor,
+      segments: leftSegments,
+      updateLineNumbers: updateLeft,
+      clearEditor,
+    });
+
+    leftButton?.click();
+
+    expect(clearEditor).toHaveBeenCalledWith(leftEditor);
+    expect(leftEditor.value).toBe("");
+    expect(leftSegments.length).toBe(0);
+    expect(updateLeft).toHaveBeenCalledTimes(1);
+  });
+
   it("clears multiple editors and focuses the target", () => {
     const leftEditor = createEditor("left");
     const rightEditor = createEditor("right");

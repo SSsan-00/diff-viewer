@@ -25,6 +25,7 @@ type PaneClearOptions<Editor extends EditorLike> = {
   editor: Editor;
   segments: LineSegment[];
   updateLineNumbers: (editor: Editor, segments: LineSegment[]) => void;
+  clearEditor?: (editor: Editor) => void;
   onBeforeClear?: () => void;
   onAfterClear?: () => void;
 };
@@ -32,9 +33,16 @@ type PaneClearOptions<Editor extends EditorLike> = {
 export function clearPaneState<Editor extends EditorLike>(
   options: PaneClearOptions<Editor>,
 ): void {
-  const { editor, segments, updateLineNumbers, onBeforeClear, onAfterClear } = options;
+  const {
+    editor,
+    segments,
+    updateLineNumbers,
+    clearEditor = clearEditorModel,
+    onBeforeClear,
+    onAfterClear,
+  } = options;
   onBeforeClear?.();
-  clearEditorModel(editor);
+  clearEditor(editor);
   segments.length = 0;
   updateLineNumbers(editor, segments);
   onAfterClear?.();
