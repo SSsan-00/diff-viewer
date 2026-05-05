@@ -47,6 +47,11 @@ describe("manual viewer", () => {
           <h1>Manual</h1>
           <a href="#overview">Overview</a>
           <a href="#top" class="to-top">TOP</a>
+          <img src="data:image/png;base64,AA==" onerror="window.bad = true">
+          <a href="java\u0000script:window.bad = true">bad link</a>
+          <form action="javascript:window.bad = true"></form>
+          <iframe srcdoc="<script>window.bad = true;</script>"></iframe>
+          <object data="data:text/html,<script>window.bad = true;</script>"></object>
           <script type="module">window.bad = true;</script>
         </body>
       </html>`;
@@ -61,15 +66,31 @@ describe("manual viewer", () => {
     const topLink = preparedDom.window.document.querySelector<HTMLAnchorElement>(
       ".to-top",
     );
+    const csp = preparedDom.window.document.querySelector<HTMLMetaElement>(
+      'meta[http-equiv="Content-Security-Policy"]',
+    );
+    const image = preparedDom.window.document.querySelector("img");
+    const badLink = Array.from(preparedDom.window.document.querySelectorAll("a"))
+      .find((link) => link.textContent === "bad link");
+    const form = preparedDom.window.document.querySelector("form");
 
     expect(prepared).toContain("<h1>Manual</h1>");
     expect(prepared).not.toContain("window.bad");
     expect(scripts).toHaveLength(1);
     expect(scripts[0]?.textContent).toContain("data-manual-anchor-target");
+    expect(scripts[0]?.getAttribute("nonce")).toBeTruthy();
+    expect(csp?.content).toContain(`script-src 'nonce-${scripts[0]?.getAttribute("nonce")}'`);
+    expect(csp?.content).toContain("default-src 'none'");
     expect(overviewLink?.getAttribute("href")).toBeNull();
     expect(overviewLink?.getAttribute("role")).toBe("button");
     expect(topLink?.dataset.manualAnchorTarget).toBe("top");
     expect(topLink?.getAttribute("href")).toBeNull();
+    expect(image?.getAttribute("src")).toBe("data:image/png;base64,AA==");
+    expect(image?.getAttribute("onerror")).toBeNull();
+    expect(badLink?.getAttribute("href")).toBeNull();
+    expect(form?.getAttribute("action")).toBeNull();
+    expect(preparedDom.window.document.querySelector("iframe")).toBeNull();
+    expect(preparedDom.window.document.querySelector("object")).toBeNull();
   });
 
   it("renders a fullscreen manual iframe with a return action", () => {
@@ -125,8 +146,9 @@ describe("manual viewer", () => {
       ".manual-viewer__frame",
     );
 
-    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-popups allow-forms");
+    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
     expect(iframe?.getAttribute("sandbox")).not.toContain("allow-same-origin");
+    expect(iframe?.getAttribute("referrerpolicy")).toBe("no-referrer");
     expect(iframe?.getAttribute("srcdoc")).toContain("data-manual-anchor-target=\"top\"");
     expect(iframe?.getAttribute("srcdoc")).not.toContain("href=\"#top\"");
   });

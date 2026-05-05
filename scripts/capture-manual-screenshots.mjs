@@ -4,8 +4,8 @@ import path from "node:path";
 
 const BASE_URL = process.env.MANUAL_URL ?? "http://localhost:5173/";
 const OUT_DIR = path.resolve("doc/manual-assets");
-const APP_VIEWPORT = { width: 1920, height: 1080 };
-const REPORT_VIEWPORT = { width: 1920, height: 1080 };
+const APP_VIEWPORT = { width: 1680, height: 945 };
+const REPORT_VIEWPORT = { width: 1680, height: 945 };
 
 const leftText = `const project = "Diff Viewer";
 const side = "left";

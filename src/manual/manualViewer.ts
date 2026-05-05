@@ -46,9 +46,81 @@ function removeExecutableManualScripts(
   return parsed;
 }
 
+function removeManualActiveContent(doc: Document): void {
+  doc
+    .querySelectorAll("iframe, object, embed")
+    .forEach((element) => element.remove());
+}
+
+function removeManualInlineHandlers(doc: Document): void {
+  doc.querySelectorAll("*").forEach((element) => {
+    Array.from(element.attributes).forEach((attribute) => {
+      if (attribute.name.toLowerCase().startsWith("on")) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+}
+
+function stripDangerousManualUrls(doc: Document): void {
+  doc.querySelectorAll("*").forEach((element) => {
+    Array.from(element.attributes).forEach((attribute) => {
+      const name = attribute.name.toLowerCase();
+      if (
+        name !== "href" &&
+        name !== "src" &&
+        name !== "xlink:href" &&
+        name !== "action" &&
+        name !== "formaction" &&
+        name !== "srcdoc"
+      ) {
+        return;
+      }
+      const value = attribute.value
+        .trim()
+        .replace(/[\u0000-\u001f\u007f\s\uFFFD]+/g, "");
+      if (/^(?:javascript|vbscript):/i.test(value) || /^data:text\/html/i.test(value)) {
+        element.removeAttribute(attribute.name);
+      }
+    });
+  });
+}
+
+function removeManualBaseElements(doc: Document): void {
+  doc.querySelectorAll("base").forEach((element) => element.remove());
+}
+
 function serializeManualDocument(doc: Document): string {
   const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>\n` : "";
   return `${doctype}${doc.documentElement.outerHTML}`;
+}
+
+function createManualScriptNonce(doc: Document): string {
+  const cryptoSource = doc.defaultView?.crypto ?? globalThis.crypto;
+  if (cryptoSource?.getRandomValues) {
+    const bytes = new Uint8Array(16);
+    cryptoSource.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  }
+  return "manual-navigation";
+}
+
+function installManualContentSecurityPolicy(doc: Document, nonce: string): void {
+  doc
+    .querySelectorAll('meta[http-equiv="Content-Security-Policy" i]')
+    .forEach((element) => element.remove());
+  const meta = doc.createElement("meta");
+  meta.httpEquiv = "Content-Security-Policy";
+  meta.content = [
+    "default-src 'none'",
+    "img-src data:",
+    "style-src 'unsafe-inline'",
+    `script-src 'nonce-${nonce}'`,
+    "base-uri 'none'",
+    "form-action 'none'",
+    "object-src 'none'",
+  ].join("; ");
+  doc.head.prepend(meta);
 }
 
 function rewriteManualHashLinks(doc: Document): void {
@@ -64,8 +136,9 @@ function rewriteManualHashLinks(doc: Document): void {
   });
 }
 
-function appendManualNavigationScript(doc: Document): void {
+function appendManualNavigationScript(doc: Document, nonce: string): void {
   const script = doc.createElement("script");
+  script.setAttribute("nonce", nonce);
   script.textContent = `
 (() => {
   const scrollToTarget = (targetId) => {
@@ -113,8 +186,14 @@ export function prepareManualHtmlForSandbox(
   doc: Document = document,
 ): string {
   const parsed = removeExecutableManualScripts(html, doc);
+  removeManualActiveContent(parsed);
+  removeManualInlineHandlers(parsed);
+  stripDangerousManualUrls(parsed);
+  removeManualBaseElements(parsed);
+  const nonce = createManualScriptNonce(doc);
+  installManualContentSecurityPolicy(parsed, nonce);
   rewriteManualHashLinks(parsed);
-  appendManualNavigationScript(parsed);
+  appendManualNavigationScript(parsed, nonce);
   return serializeManualDocument(parsed);
 }
 
@@ -169,7 +248,8 @@ export function renderManualViewer(
       <iframe
         class="manual-viewer__frame"
         title="${options.title}"
-        sandbox="allow-scripts allow-popups allow-forms"
+        sandbox="allow-scripts"
+        referrerpolicy="no-referrer"
       ></iframe>
     </section>
   `;
