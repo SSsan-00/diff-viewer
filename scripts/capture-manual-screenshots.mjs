@@ -4,6 +4,8 @@ import path from "node:path";
 
 const BASE_URL = process.env.MANUAL_URL ?? "http://localhost:5173/";
 const OUT_DIR = path.resolve("doc/manual-assets");
+const APP_VIEWPORT = { width: 1920, height: 1080 };
+const REPORT_VIEWPORT = { width: 1920, height: 1080 };
 
 const leftText = `const project = "Diff Viewer";
 const side = "left";
@@ -302,7 +304,7 @@ async function preparePage(page, payload) {
 await fs.mkdir(OUT_DIR, { recursive: true });
 
 const browser = await chromium.launch({ headless: true });
-const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+const page = await browser.newPage({ viewport: APP_VIEWPORT });
 
 async function captureReportScreenshot(basePage, scenario) {
   if (!scenario.captureReport) {
@@ -322,7 +324,7 @@ async function captureReportScreenshot(basePage, scenario) {
   const reportFile = path.join(OUT_DIR, `${scenario.name}.html`);
   await download.saveAs(reportFile);
 
-  const reportPage = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const reportPage = await browser.newPage({ viewport: REPORT_VIEWPORT });
   await reportPage.goto(`file://${reportFile}`, { waitUntil: "networkidle" });
   await reportPage.screenshot({
     path: path.join(OUT_DIR, `${scenario.name}.png`),

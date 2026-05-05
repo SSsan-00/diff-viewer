@@ -25,24 +25,97 @@ export function getEmbeddedManualHtml(doc: Document = document): string | null {
   return decodeManualHtmlForEmbedding(raw);
 }
 
-export function removeExecutableManualScripts(
+function removeExecutableManualScripts(
   html: string,
   doc: Document = document,
-): string {
+): Document {
   const parser = doc.defaultView?.DOMParser
     ? new doc.defaultView.DOMParser()
     : null;
   if (parser) {
     const parsed = parser.parseFromString(html, "text/html");
     parsed.querySelectorAll("script").forEach((script) => script.remove());
-    const doctype = parsed.doctype ? `<!doctype ${parsed.doctype.name}>\n` : "";
-    return `${doctype}${parsed.documentElement.outerHTML}`;
+    return parsed;
   }
 
   const template = doc.createElement("template");
   template.innerHTML = html;
   template.content.querySelectorAll("script").forEach((script) => script.remove());
-  return template.innerHTML.trim();
+  const parsed = doc.implementation.createHTMLDocument("");
+  parsed.body.append(...Array.from(template.content.childNodes));
+  return parsed;
+}
+
+function serializeManualDocument(doc: Document): string {
+  const doctype = doc.doctype ? `<!doctype ${doc.doctype.name}>\n` : "";
+  return `${doctype}${doc.documentElement.outerHTML}`;
+}
+
+function rewriteManualHashLinks(doc: Document): void {
+  doc.querySelectorAll<HTMLAnchorElement>('a[href^="#"]').forEach((link) => {
+    const targetId = link.getAttribute("href")?.slice(1);
+    if (!targetId) {
+      return;
+    }
+    link.dataset.manualAnchorTarget = targetId;
+    link.setAttribute("role", "button");
+    link.setAttribute("tabindex", "0");
+    link.removeAttribute("href");
+  });
+}
+
+function appendManualNavigationScript(doc: Document): void {
+  const script = doc.createElement("script");
+  script.textContent = `
+(() => {
+  const scrollToTarget = (targetId) => {
+    const target = document.getElementById(targetId);
+    if (!target) {
+      return;
+    }
+    target.scrollIntoView({ block: "start" });
+    if (targetId === "top") {
+      window.scrollTo({ top: 0, left: 0 });
+    }
+  };
+
+  document.addEventListener("click", (event) => {
+    const source = event.target instanceof Element
+      ? event.target.closest("[data-manual-anchor-target]")
+      : null;
+    if (!source) {
+      return;
+    }
+    event.preventDefault();
+    scrollToTarget(source.getAttribute("data-manual-anchor-target") || "");
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") {
+      return;
+    }
+    const source = event.target instanceof Element
+      ? event.target.closest("[data-manual-anchor-target]")
+      : null;
+    if (!source) {
+      return;
+    }
+    event.preventDefault();
+    scrollToTarget(source.getAttribute("data-manual-anchor-target") || "");
+  });
+})();
+`;
+  doc.body.append(script);
+}
+
+export function prepareManualHtmlForSandbox(
+  html: string,
+  doc: Document = document,
+): string {
+  const parsed = removeExecutableManualScripts(html, doc);
+  rewriteManualHashLinks(parsed);
+  appendManualNavigationScript(parsed);
+  return serializeManualDocument(parsed);
 }
 
 function createFallbackManualHtml(): string {
@@ -78,32 +151,12 @@ function createFallbackManualHtml(): string {
 </html>`;
 }
 
-export function bindManualTopNavigation(iframe: HTMLIFrameElement): void {
-  let boundControl: Element | null = null;
-  const bind = (): void => {
-    const frameDoc = iframe.contentDocument;
-    const frameWindow = iframe.contentWindow;
-    const topControl = frameDoc?.querySelector(".to-top");
-    if (!frameDoc || !topControl || topControl === boundControl) {
-      return;
-    }
-    topControl.addEventListener("click", (event) => {
-      event.preventDefault();
-      frameDoc.getElementById("top")?.scrollIntoView({ block: "start" });
-      frameWindow?.scrollTo({ top: 0, left: 0 });
-    });
-    boundControl = topControl;
-  };
-  iframe.addEventListener("load", bind);
-  bind();
-}
-
 export function renderManualViewer(
   container: Element,
   options: ManualViewerOptions,
 ): void {
   const doc = options.document ?? document;
-  const manualHtml = removeExecutableManualScripts(
+  const manualHtml = prepareManualHtmlForSandbox(
     getEmbeddedManualHtml(doc) ?? createFallbackManualHtml(),
     doc,
   );
@@ -116,13 +169,12 @@ export function renderManualViewer(
       <iframe
         class="manual-viewer__frame"
         title="${options.title}"
-        sandbox="allow-same-origin allow-popups allow-forms"
+        sandbox="allow-scripts allow-popups allow-forms"
       ></iframe>
     </section>
   `;
   const iframe = container.querySelector<HTMLIFrameElement>(".manual-viewer__frame");
   if (iframe) {
-    bindManualTopNavigation(iframe);
     iframe.srcdoc = manualHtml;
   }
   container

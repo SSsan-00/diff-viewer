@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { JSDOM } from "jsdom";
 import {
-  bindManualTopNavigation,
   decodeManualHtmlForEmbedding,
   encodeManualHtmlForEmbedding,
   getEmbeddedManualHtml,
-  removeExecutableManualScripts,
+  prepareManualHtmlForSandbox,
   renderManualViewer,
 } from "./manualViewer";
 
@@ -39,19 +38,38 @@ describe("manual viewer", () => {
     expect(decodeManualHtmlForEmbedding(encodeManualHtmlForEmbedding(html))).toBe(html);
   });
 
-  it("removes scripts before passing manual html to a sandboxed srcdoc iframe", () => {
+  it("removes manual scripts and installs sandbox-safe in-page navigation", () => {
     const dom = new JSDOM("<body></body>");
     const html = `<!doctype html>
       <html>
         <head><title>Manual</title><script>window.bad = true;</script></head>
-        <body><h1>Manual</h1><script type="module">window.bad = true;</script></body>
+        <body id="top">
+          <h1>Manual</h1>
+          <a href="#overview">Overview</a>
+          <a href="#top" class="to-top">TOP</a>
+          <script type="module">window.bad = true;</script>
+        </body>
       </html>`;
 
-    const sanitized = removeExecutableManualScripts(html, dom.window.document);
+    const prepared = prepareManualHtmlForSandbox(html, dom.window.document);
+    const preparedDom = new JSDOM(prepared);
+    const scripts = preparedDom.window.document.querySelectorAll("script");
+    const overviewLink =
+      preparedDom.window.document.querySelector<HTMLAnchorElement>(
+        "[data-manual-anchor-target='overview']",
+      );
+    const topLink = preparedDom.window.document.querySelector<HTMLAnchorElement>(
+      ".to-top",
+    );
 
-    expect(sanitized).toContain("<h1>Manual</h1>");
-    expect(sanitized).not.toContain("<script");
-    expect(sanitized).not.toContain("window.bad");
+    expect(prepared).toContain("<h1>Manual</h1>");
+    expect(prepared).not.toContain("window.bad");
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]?.textContent).toContain("data-manual-anchor-target");
+    expect(overviewLink?.getAttribute("href")).toBeNull();
+    expect(overviewLink?.getAttribute("role")).toBe("button");
+    expect(topLink?.dataset.manualAnchorTarget).toBe("top");
+    expect(topLink?.getAttribute("href")).toBeNull();
   });
 
   it("renders a fullscreen manual iframe with a return action", () => {
@@ -86,42 +104,30 @@ describe("manual viewer", () => {
     expect(onBack).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the manual TOP control inside the iframe and scrolls to the top", () => {
-    const dom = new JSDOM("<body><iframe></iframe></body>");
-    const frameDom = new JSDOM(`
-      <body id="top">
-        <main style="height: 2000px"></main>
-        <a href="#top" class="to-top">TOP</a>
+  it("renders the manual iframe with script execution enabled for its own sanitized navigation", () => {
+    const dom = new JSDOM(`
+      <body>
+        <script id="manual-html-source" type="text/plain">
+          <html><body id="top"><a href="#top" class="to-top">TOP</a></body></html>
+        </script>
+        <div id="app"></div>
       </body>
     `);
-    const iframe = dom.window.document.querySelector("iframe")!;
-    const top = frameDom.window.document.querySelector("#top")!;
-    const scrollIntoView = vi.fn();
-    const scrollTo = vi.fn();
-    Object.defineProperty(top, "scrollIntoView", {
-      value: scrollIntoView,
-      configurable: true,
-    });
-    Object.defineProperty(iframe, "contentDocument", {
-      value: frameDom.window.document,
-      configurable: true,
-    });
-    Object.defineProperty(iframe, "contentWindow", {
-      value: { scrollTo },
-      configurable: true,
+
+    renderManualViewer(dom.window.document.querySelector("#app")!, {
+      document: dom.window.document,
+      onBack: vi.fn(),
+      title: "操作マニュアル",
+      backLabel: "アプリに戻る",
     });
 
-    bindManualTopNavigation(iframe);
+    const iframe = dom.window.document.querySelector<HTMLIFrameElement>(
+      ".manual-viewer__frame",
+    );
 
-    const topLink = frameDom.window.document.querySelector<HTMLAnchorElement>(".to-top")!;
-    const event = new frameDom.window.MouseEvent("click", {
-      bubbles: true,
-      cancelable: true,
-    });
-    topLink.dispatchEvent(event);
-
-    expect(event.defaultPrevented).toBe(true);
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start" });
-    expect(scrollTo).toHaveBeenCalledWith({ top: 0, left: 0 });
+    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts allow-popups allow-forms");
+    expect(iframe?.getAttribute("sandbox")).not.toContain("allow-same-origin");
+    expect(iframe?.getAttribute("srcdoc")).toContain("data-manual-anchor-target=\"top\"");
+    expect(iframe?.getAttribute("srcdoc")).not.toContain("href=\"#top\"");
   });
 });
