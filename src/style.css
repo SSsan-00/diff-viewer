@@ -164,6 +164,38 @@ body {
   border-bottom: 1px solid #c9bea9;
 }
 
+.panel-visibility-toggle {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(96, 82, 60, 0.35);
+  background-color: rgba(255, 255, 255, 0.56);
+  color: #4b3b2a;
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.panel-visibility-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.78);
+}
+
+.toolbar.is-fully-collapsed {
+  justify-content: flex-start;
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.toolbar.is-fully-collapsed .toolbar-left,
+.toolbar.is-fully-collapsed .toolbar-right {
+  display: none;
+}
+
 .toolbar-left {
   min-width: 0;
   flex: 0 0 auto;
@@ -428,6 +460,23 @@ body {
   padding: 10px 24px;
   background-color: rgba(255, 255, 255, 0.65);
   border-bottom: 1px solid #d7cbb6;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+
+.anchor-panel-content {
+  min-width: 0;
+}
+
+.anchor-panel.is-fully-collapsed {
+  padding-top: 6px;
+  padding-bottom: 6px;
+}
+
+.anchor-panel.is-fully-collapsed .anchor-panel-content {
+  display: none;
 }
 
 .anchor-header {
@@ -1854,6 +1903,10 @@ body {
     padding: 8px 14px;
   }
 
+  .anchor-panel.is-fully-collapsed {
+    padding: 6px 14px;
+  }
+
   .anchor-header {
     flex-wrap: wrap;
     gap: 8px;
@@ -2119,6 +2172,10 @@ body {
     padding: 4px 8px;
   }
 
+  .anchor-panel.is-fully-collapsed {
+    padding: 4px 8px;
+  }
+
   .anchor-header {
     gap: 4px;
   }
@@ -2342,6 +2399,16 @@ body {
 [data-theme="dark"] .toolbar {
   background: linear-gradient(120deg, #2b2621, #201c18);
   border-bottom-color: #3b342d;
+}
+
+[data-theme="dark"] .panel-visibility-toggle {
+  background-color: rgba(50, 46, 42, 0.78);
+  border-color: rgba(150, 140, 120, 0.42);
+  color: #f4efe6;
+}
+
+[data-theme="dark"] .panel-visibility-toggle:hover {
+  background-color: rgba(66, 60, 54, 0.9);
 }
 
 [data-theme="dark"] .app-title {

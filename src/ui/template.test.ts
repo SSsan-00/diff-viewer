@@ -81,6 +81,16 @@ describe("pane action layout", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
 
+    const anchorPanel = doc.querySelector(".anchor-panel");
+    const anchorVisibilityToggle = doc.querySelector<HTMLButtonElement>(
+      "#anchor-panel-visibility-toggle",
+    );
+
+    expect(anchorPanel?.querySelector("#anchor-panel-content")).toBeTruthy();
+    expect(anchorVisibilityToggle).toBeTruthy();
+    expect(anchorVisibilityToggle?.getAttribute("aria-controls")).toBe(
+      "anchor-panel-content",
+    );
     expect(doc.querySelector("#anchor-import")).toBeTruthy();
     expect(doc.querySelector("#anchor-export")).toBeTruthy();
     expect(doc.querySelector<HTMLInputElement>("#anchor-import-file")?.accept).toContain(
@@ -89,6 +99,26 @@ describe("pane action layout", () => {
     expect(doc.querySelector("#anchor-toggle")?.parentElement?.textContent?.trim()).toBe(
       "折りたたみ",
     );
+  });
+
+  it("renders a toolbar visibility toggle while keeping toolbar controls grouped", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const toolbar = doc.querySelector(".toolbar");
+    const toolbarToggle = doc.querySelector<HTMLButtonElement>(
+      "#toolbar-visibility-toggle",
+    );
+    const left = doc.querySelector("#toolbar-left");
+    const right = doc.querySelector("#toolbar-right");
+
+    expect(toolbarToggle).toBeTruthy();
+    expect(toolbarToggle?.getAttribute("aria-controls")).toBe(
+      "toolbar-left toolbar-right",
+    );
+    expect(left).toBeTruthy();
+    expect(right).toBeTruthy();
+    expect(toolbar?.firstElementChild).toBe(toolbarToggle);
   });
 
   it("renders workspace import control next to create", () => {

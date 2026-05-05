@@ -14,7 +14,7 @@ type PaneResizeOptions = {
   eventTarget?: Window;
 };
 
-const DEFAULT_MIN_PANE_WIDTH = 240;
+const DEFAULT_MIN_PANE_WIDTH = 0;
 const DEFAULT_DIVIDER_WIDTH = 12;
 
 function clamp(value: number, min: number, max: number): number {
@@ -75,8 +75,9 @@ export function bindPaneResize(options: PaneResizeOptions): void {
       return;
     }
 
-    const effectiveMin = Math.min(minPaneWidth, Math.floor(availableWidth / 2));
-    const maxLeft = Math.max(effectiveMin, availableWidth - effectiveMin);
+    const normalizedMin = Math.max(0, minPaneWidth);
+    const effectiveMin = Math.min(normalizedMin, Math.floor(availableWidth / 2));
+    const maxLeft = availableWidth - effectiveMin;
     const rawLeft = Math.round(event.clientX - containerRect.left - dividerWidth / 2);
     const nextLeft = clamp(rawLeft, effectiveMin, maxLeft);
     const nextRight = availableWidth - nextLeft;

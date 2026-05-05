@@ -26,7 +26,7 @@ function defineRect(
   });
 }
 
-function setup() {
+function setup(options: { minPaneWidth?: number } = {}) {
   const container = document.createElement("div");
   const divider = document.createElement("div");
   const left = { layout: vi.fn() };
@@ -53,6 +53,7 @@ function setup() {
     container,
     divider,
     editors: [left, right],
+    minPaneWidth: options.minPaneWidth,
     onAfterResize,
     requestFrame: ((callback: FrameRequestCallback) => {
       callback(0);
@@ -81,8 +82,27 @@ describe("bindPaneResize", () => {
     expect(onAfterResize).toHaveBeenCalledTimes(1);
   });
 
-  it("clamps pane widths to the configured minimum", () => {
+  it("allows either pane to be resized down to zero width by default", () => {
     const { container, divider } = setup();
+
+    divider.dispatchEvent(
+      new window.MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 600 }),
+    );
+    window.dispatchEvent(
+      new window.MouseEvent("mousemove", { bubbles: true, clientX: 80 }),
+    );
+
+    expect(container.style.gridTemplateColumns).toBe("0px 12px 988px");
+
+    window.dispatchEvent(
+      new window.MouseEvent("mousemove", { bubbles: true, clientX: 1200 }),
+    );
+
+    expect(container.style.gridTemplateColumns).toBe("988px 12px 0px");
+  });
+
+  it("honors a configured minimum pane width", () => {
+    const { container, divider } = setup({ minPaneWidth: 240 });
 
     divider.dispatchEvent(
       new window.MouseEvent("mousedown", { bubbles: true, button: 0, clientX: 600 }),

@@ -61,9 +61,9 @@ import { setupAnchorPanelToggle } from "./ui/anchorPanelToggle";
 import {
   bindPaneClearButton,
   clearEditorModel,
-  clearEditorsForUndo,
   clearPaneState,
 } from "./ui/paneClear";
+import { bindPanelVisibilityToggle } from "./ui/panelVisibilityToggle";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import { shouldApplyBySignature } from "./ui/renderSignatures";
@@ -338,6 +338,14 @@ const editorsContainer = getRequiredElement<HTMLDivElement>(".editors");
 const paneDivider = getRequiredElement<HTMLDivElement>("#pane-divider");
 const leftPane = getRequiredElement<HTMLElement>("#left-pane");
 const rightPane = getRequiredElement<HTMLElement>("#right-pane");
+const toolbar = getRequiredElement<HTMLElement>(".toolbar");
+const toolbarVisibilityToggle = getRequiredElement<HTMLButtonElement>(
+  "#toolbar-visibility-toggle",
+);
+const anchorPanel = getRequiredElement<HTMLElement>(".anchor-panel");
+const anchorPanelVisibilityToggle = getRequiredElement<HTMLButtonElement>(
+  "#anchor-panel-visibility-toggle",
+);
 const workspaceToggle = getRequiredElement<HTMLButtonElement>("#workspace-toggle");
 const workspacePanel = getRequiredElement<HTMLDivElement>("#workspace-panel");
 const workspaceOverlay = getRequiredElement<HTMLDivElement>("#workspace-overlay");
@@ -1350,6 +1358,26 @@ const scheduleRecalc = () => {
 
 syncPaneMessagesLayout();
 syncFileCardsLayout();
+const relayoutEditors = (): void => {
+  leftEditor.layout();
+  rightEditor.layout();
+  syncPaneMessagesLayout();
+  syncFileCardsLayout();
+};
+bindPanelVisibilityToggle({
+  root: toolbar,
+  button: toolbarVisibilityToggle,
+  collapseLabel: "ツールバーを閉じる",
+  expandLabel: "ツールバーを開く",
+  onToggle: relayoutEditors,
+});
+bindPanelVisibilityToggle({
+  root: anchorPanel,
+  button: anchorPanelVisibilityToggle,
+  collapseLabel: "アンカーを閉じる",
+  expandLabel: "アンカーを開く",
+  onToggle: relayoutEditors,
+});
 window.addEventListener("resize", syncPaneMessagesLayout);
 bindEditorLayoutRecalc([leftEditor, rightEditor], scheduleRecalc);
 bindPaneResize({
@@ -5155,7 +5183,13 @@ function clearAllPanes(): void {
   cancelPersist();
   void clearPersistedState(storage, { textStore });
   withPersistSuppressed(() => {
-    clearEditorsForUndo([leftEditor, rightEditor], targetEditor);
+    withProgrammaticEdit("left", () => {
+      clearEditorModel(leftEditor);
+    });
+    withProgrammaticEdit("right", () => {
+      clearEditorModel(rightEditor);
+    });
+    targetEditor.focus();
     leftSegments.length = 0;
     rightSegments.length = 0;
     clearPaneSourceState("left");

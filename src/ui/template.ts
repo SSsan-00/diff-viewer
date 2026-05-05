@@ -26,7 +26,17 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
   return `
   <div class="app" data-writeback="${writebackEnabled ? "on" : "off"}">
     <header class="toolbar">
-      <div class="toolbar-left">
+      <button
+        id="toolbar-visibility-toggle"
+        class="panel-visibility-toggle toolbar-visibility-toggle"
+        type="button"
+        aria-label="ツールバーを閉じる"
+        aria-expanded="true"
+        aria-controls="toolbar-left toolbar-right"
+      >
+        ▾
+      </button>
+      <div id="toolbar-left" class="toolbar-left">
         <div class="workspace">
           <button
             id="workspace-toggle"
@@ -82,7 +92,7 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
           </div>
         </div>
       </div>
-      <div class="toolbar-right">
+      <div id="toolbar-right" class="toolbar-right">
         <div class="report-export-control">
           <button
             id="export-report"
@@ -236,42 +246,54 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
       hidden
     ></div>
     <section class="anchor-panel">
-      <div class="anchor-header">
-        <div class="anchor-title">アンカー</div>
-        <div class="anchor-header-right">
-          <div id="anchor-message" class="anchor-message" aria-live="polite"></div>
-          <input
-            id="anchor-import-file"
-            class="file-input"
-            type="file"
-            accept=".json,application/json"
-            hidden
-            aria-hidden="true"
-            tabindex="-1"
-          />
-          <button
-            id="anchor-import"
-            class="button button-subtle anchor-transfer-button"
-            type="button"
-          >
-            インポート
-          </button>
-          <button
-            id="anchor-export"
-            class="button button-subtle anchor-transfer-button"
-            type="button"
-          >
-            エクスポート
-          </button>
-          <label class="toggle">
-            <input id="anchor-toggle" type="checkbox" />
-            <span>折りたたみ</span>
-          </label>
+      <button
+        id="anchor-panel-visibility-toggle"
+        class="panel-visibility-toggle anchor-panel-visibility-toggle"
+        type="button"
+        aria-label="アンカーを閉じる"
+        aria-expanded="true"
+        aria-controls="anchor-panel-content"
+      >
+        ▾
+      </button>
+      <div id="anchor-panel-content" class="anchor-panel-content">
+        <div class="anchor-header">
+          <div class="anchor-title">アンカー</div>
+          <div class="anchor-header-right">
+            <div id="anchor-message" class="anchor-message" aria-live="polite"></div>
+            <input
+              id="anchor-import-file"
+              class="file-input"
+              type="file"
+              accept=".json,application/json"
+              hidden
+              aria-hidden="true"
+              tabindex="-1"
+            />
+            <button
+              id="anchor-import"
+              class="button button-subtle anchor-transfer-button"
+              type="button"
+            >
+              インポート
+            </button>
+            <button
+              id="anchor-export"
+              class="button button-subtle anchor-transfer-button"
+              type="button"
+            >
+              エクスポート
+            </button>
+            <label class="toggle">
+              <input id="anchor-toggle" type="checkbox" />
+              <span>折りたたみ</span>
+            </label>
+          </div>
         </div>
-      </div>
-      <div id="anchor-panel-body" class="anchor-panel-body">
-        <div id="anchor-warning" class="anchor-warning" aria-live="polite"></div>
-        <ul id="anchor-list" class="anchor-list" tabindex="0"></ul>
+        <div id="anchor-panel-body" class="anchor-panel-body">
+          <div id="anchor-warning" class="anchor-warning" aria-live="polite"></div>
+          <ul id="anchor-list" class="anchor-list" tabindex="0"></ul>
+        </div>
       </div>
     </section>
     <div class="editors">
