@@ -244,6 +244,24 @@ describe("pane action layout", () => {
     expect(clearButton?.textContent?.trim()).toBe("全クリア");
   });
 
+  it("renders the manual button at the far right of the toolbar", () => {
+    const dom = new JSDOM(APP_TEMPLATE);
+    const doc = dom.window.document;
+
+    const toolbar = doc.querySelector(".toolbar-right");
+    const manualButton = doc.querySelector<HTMLButtonElement>("#manual-open");
+    const clearButton = doc.querySelector<HTMLButtonElement>("#clear");
+    const toolbarChildren = Array.from(toolbar?.children ?? []);
+
+    expect(manualButton).toBeTruthy();
+    expect(manualButton?.getAttribute("aria-label")).toBe("マニュアルを開く");
+    expect(manualButton?.querySelector(".manual-open-button__icon-svg")).toBeTruthy();
+    expect(toolbarChildren.at(-1)).toBe(manualButton);
+    expect(toolbarChildren.indexOf(clearButton!)).toBeLessThan(
+      toolbarChildren.indexOf(manualButton!),
+    );
+  });
+
   it("renders a highlight icon button to the right of the diff-only toggle", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;

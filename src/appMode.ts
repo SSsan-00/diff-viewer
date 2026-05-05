@@ -4,11 +4,13 @@ export type AppMode = {
   diffCalculationMode: DiffCalculationMode;
   diffEngineMode: DiffEngineMode;
   diffHighlightMode: DiffHighlightMode;
+  manualMode: ManualMode;
   writebackEnabled: boolean;
 };
 
 export type DiffCalculationMode = "normal" | "anchor-only";
 export type DiffHighlightMode = "normal" | "manual-anchor-only";
+export type ManualMode = "app" | "manual";
 
 type LocationLike = {
   search?: string;
@@ -50,6 +52,11 @@ function readDiffHighlightMode(params: URLSearchParams): DiffHighlightMode | nul
   return highlight === "off" ? "manual-anchor-only" : null;
 }
 
+function readManualMode(params: URLSearchParams): ManualMode | null {
+  const manual = normalizeValue(params.get("manual"));
+  return manual === "on" ? "manual" : null;
+}
+
 export function resolveAppMode(location: LocationLike): AppMode {
   const searchParams = parseParams(location.search);
   const hashParams = parseParams(location.hash);
@@ -67,6 +74,10 @@ export function resolveAppMode(location: LocationLike): AppMode {
       readDiffHighlightMode(searchParams) ??
       readDiffHighlightMode(hashParams) ??
       "normal",
+    manualMode:
+      readManualMode(searchParams) ??
+      readManualMode(hashParams) ??
+      "app",
     writebackEnabled:
       readWritebackEnabled(searchParams) ?? false,
   };

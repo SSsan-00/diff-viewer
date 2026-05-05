@@ -21,6 +21,7 @@
 ├── src/
 │   ├── diffEngine/
 │   ├── file/
+│   ├── manual/
 │   ├── monaco/
 │   ├── perf/
 │   ├── scrollSync/
@@ -43,9 +44,9 @@
 
 ### src/
 
-- `src/main.ts` アプリ起点。Monaco 初期化、ショートカット/フォーカス管理、差分再計算、アンカー描画、読み込み/保存、runtime perf 記録を統合。`src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` / `src/perf/*` を束ねる。
-- `src/appMode.ts` URL パラメータから保存あり/保存なし画面と diff engine (`auto|ts|wasm`) を解決する。exports: `resolveAppMode`, `resolveDiffEngineMode`。
-- `src/appMode.test.ts` 保存あり/保存なしモードと diff engine モード解決のテスト。
+- `src/main.ts` アプリ起点。マニュアル表示モードの早期分岐、Monaco 初期化、ショートカット/フォーカス管理、差分再計算、アンカー描画、読み込み/保存、runtime perf 記録を統合。`src/ui/*` / `src/diffEngine/*` / `src/file/*` / `src/storage/*` / `src/manual/*` / `src/perf/*` を束ねる。
+- `src/appMode.ts` URL パラメータから保存あり/保存なし画面、manual 表示、diff engine (`auto|ts|wasm`) を解決する。export: `resolveAppMode`。
+- `src/appMode.test.ts` 保存あり/保存なし、manual、diff engine モード解決のテスト。
 - `src/style.css` 画面全体のレイアウト/配色/差分ハイライト/アンカー/境界表示のスタイル。ワークスペース/パス登録UIのパネルも定義する。`src/main.ts` から読み込む。
 - `src/licenses.ts` 依存ライセンス本文データ。export: `THIRD_PARTY_LICENSES`（`src/main.ts` から参照）。
 - `src/smoke.test.ts` Vitest の起動確認用スモークテスト。
@@ -55,6 +56,13 @@
 - `src/styleFileBoundary.test.ts` ファイル境界 CSS が大文字化しないことのテスト。
 - `src/styleThemeDark.test.ts` ダークテーマの inline diff 配色トークン検証テスト。
 - `src/indexHtml.test.ts` `index.html` の favicon 埋め込み（data URL）テスト。
+
+### src/manual/
+
+- `src/manual/navigation.ts` マニュアル表示URL生成と、ファイルハンドル復元可否に応じた遷移/全面表示の判定。exports: `createManualUrl`, `createAppUrl`, `resolveManualPresentationMode`。
+- `src/manual/navigation.test.ts` マニュアルURL生成と表示方式判定のテスト。
+- `src/manual/manualViewer.ts` 埋め込み `MANUAL.html` の取得、script-safe エンコード、iframe ベースのマニュアル表示。exports: `renderManualViewer`, `getEmbeddedManualHtml` ほか。
+- `src/manual/manualViewer.test.ts` マニュアル埋め込み取得と表示のテスト。
 
 ### src/diffEngine/
 
@@ -175,6 +183,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 - `scripts/capture-manual-screenshots.mjs` Playwrightでマニュアル用スクショを取得。
 - `scripts/build-manual-html.mjs` 現行 MANUAL.html の画像だけを manual-assets から data URL へ差し替える。
+- `scripts/embed-manual-html.mjs` `doc/MANUAL.html` を配布HTML内の inert なテキスト領域へ埋め込む。
 - `scripts/generate-embedded-wasm.mjs` Rust/WASM 差分エンジンをビルドし、埋め込み TS モジュールを再生成する。
 - `scripts/perf-compare.mjs` perf capture JSON の比較と差分表示を行う。
 

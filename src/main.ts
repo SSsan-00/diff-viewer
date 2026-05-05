@@ -171,6 +171,12 @@ import { getWorkspaceTitle } from "./ui/workspaceTitle";
 import { handleWorkspaceNavigation } from "./ui/workspaceNavigation";
 import { runWorkspaceSwitch } from "./ui/workspaceSwitchFlow";
 import {
+  createAppUrl,
+  createManualUrl,
+  resolveManualPresentationMode,
+} from "./manual/navigation";
+import { renderManualViewer } from "./manual/manualViewer";
+import {
   applyPaneSnapshot,
   collectPaneSnapshot,
   cloneSegments,
@@ -188,6 +194,7 @@ import {
   clearPersistedState,
   createPersistScheduler,
   loadPersistedState,
+  savePersistedState,
   saveInlinePersistedStateSnapshot,
   type PersistedState,
 } from "./storage/persistedState";
@@ -218,6 +225,23 @@ import { clearPaneMessage, setPaneMessage, syncPaneMessages } from "./ui/paneMes
 import { inferPaneLanguage } from "./file/language";
 import { createDiffViewerPerfMonitor } from "./perf/runtimePerf";
 
+const app = document.querySelector<HTMLDivElement>("#app");
+
+if (!app) {
+  throw new Error("App container is missing.");
+}
+
+const appMode = resolveAppMode(window.location);
+if (appMode.manualMode === "manual") {
+  renderManualViewer(app, {
+    document,
+    title: "diff-viewer 操作マニュアル",
+    backLabel: "アプリに戻る",
+    onBack: () => {
+      window.location.assign(createAppUrl(window.location.href));
+    },
+  });
+} else {
 // Run once before creating any editor instances.
 setupMonacoWorkers();
 registerBasicLanguages();
@@ -309,13 +333,6 @@ function withPersistSuppressed(action: () => void) {
   }
 }
 
-const app = document.querySelector<HTMLDivElement>("#app");
-
-if (!app) {
-  throw new Error("App container is missing.");
-}
-
-const appMode = resolveAppMode(window.location);
 const writebackEnabled = appMode.writebackEnabled;
 const anchorOnlyDiffMode = appMode.diffCalculationMode === "anchor-only";
 const diffHighlightMode: DiffHighlightMode = appMode.diffHighlightMode;
@@ -348,6 +365,7 @@ const paneDivider = getRequiredElement<HTMLDivElement>("#pane-divider");
 const leftPane = getRequiredElement<HTMLElement>("#left-pane");
 const rightPane = getRequiredElement<HTMLElement>("#right-pane");
 const toolbar = getRequiredElement<HTMLElement>(".toolbar");
+const manualOpenButton = getRequiredElement<HTMLButtonElement>("#manual-open");
 const toolbarVisibilityToggle = getRequiredElement<HTMLButtonElement>(
   "#toolbar-visibility-toggle",
 );
@@ -3387,6 +3405,79 @@ function flushStateForLifecycle(): void {
   saveInlinePersistedStateSnapshot(storage, getPersistedStateSnapshot());
 }
 
+async function persistPaneSaveTargetsForManualNavigation(): Promise<void> {
+  if (!paneSaveTargetStore.isAvailable) {
+    return;
+  }
+  await Promise.all(
+    paneSides.map((side) => {
+      const targets = paneSaveTargetLists[side];
+      return targets.length > 0
+        ? savePaneSaveTargets(paneSaveTargetStore, workspaceState.selectedId, side, targets)
+        : clearStoredPaneSaveTarget(paneSaveTargetStore, workspaceState.selectedId, side);
+    }),
+  );
+}
+
+async function flushStateForManualNavigation(): Promise<void> {
+  cancelWorkspacePersist();
+  persistCurrentWorkspaceState();
+  const snapshot = getPersistedStateSnapshot();
+  await Promise.all([
+    savePersistedState(storage, snapshot, { textStore }),
+    saveWorkspaces(storage, workspaceState, { textStore }),
+    persistPaneSaveTargetsForManualNavigation(),
+  ]);
+  saveInlinePersistedStateSnapshot(storage, snapshot);
+}
+
+function showManualOverlay(): void {
+  const host = document.createElement("div");
+  host.className = "manual-overlay-host";
+  document.body.append(host);
+  renderManualViewer(host, {
+    document,
+    title: "diff-viewer 操作マニュアル",
+    backLabel: "閉じる",
+    onBack: () => {
+      host.remove();
+      relayoutEditors();
+    },
+  });
+}
+
+async function openManual(): Promise<void> {
+  const hasPaneSaveTargets =
+    paneSaveTargetLists.left.length > 0 || paneSaveTargetLists.right.length > 0;
+  const presentationMode = resolveManualPresentationMode({
+    hasPaneSaveTargets,
+    paneSaveTargetStoreAvailable: paneSaveTargetStore.isAvailable,
+    fileSystemAccessSupported: supportsFileSystemAccess(
+      window as unknown as FileSystemAccessWindow,
+    ),
+  });
+
+  if (presentationMode === "overlay") {
+    showManualOverlay();
+    return;
+  }
+
+  manualOpenButton.disabled = true;
+  try {
+    await flushStateForManualNavigation();
+    window.location.assign(createManualUrl(window.location.href));
+  } catch (error) {
+    console.warn("Failed to persist state before opening manual:", error);
+    showManualOverlay();
+  } finally {
+    manualOpenButton.disabled = false;
+  }
+}
+
+manualOpenButton.addEventListener("click", () => {
+  void openManual();
+});
+
 function preventWindowDrop(event: DragEvent) {
   event.preventDefault();
   event.stopPropagation();
@@ -5379,3 +5470,4 @@ recalcDiff();
 // 1) pnpm install
 // 2) pnpm run dev
 // 3) ブラウザコンソールで "Could not create web worker(s)" が出ないことを確認
+}

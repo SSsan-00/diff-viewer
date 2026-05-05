@@ -7,6 +7,7 @@ describe("resolveAppMode", () => {
       diffCalculationMode: "normal",
       diffEngineMode: "auto",
       diffHighlightMode: "normal",
+      manualMode: "app",
       writebackEnabled: false,
     });
   });
@@ -64,6 +65,7 @@ describe("resolveAppMode", () => {
       diffCalculationMode: "anchor-only",
       diffEngineMode: "auto",
       diffHighlightMode: "normal",
+      manualMode: "app",
       writebackEnabled: true,
     });
   });
@@ -83,6 +85,29 @@ describe("resolveAppMode", () => {
       diffCalculationMode: "anchor-only",
       diffEngineMode: "auto",
       diffHighlightMode: "manual-anchor-only",
+      manualMode: "app",
+      writebackEnabled: true,
+    });
+  });
+
+  it("opens the manual screen from ?manual=on", () => {
+    expect(resolveAppMode({ search: "?manual=on" }).manualMode).toBe("manual");
+  });
+
+  it("can read manual mode from hash parameters for standalone html use", () => {
+    expect(resolveAppMode({ hash: "#manual=on" }).manualMode).toBe("manual");
+  });
+
+  it("keeps manual mode when combined with other startup parameters", () => {
+    expect(
+      resolveAppMode({
+        search: "?manual=on&save=on&diff=off&highlight=off",
+      }),
+    ).toEqual({
+      diffCalculationMode: "anchor-only",
+      diffEngineMode: "auto",
+      diffHighlightMode: "manual-anchor-only",
+      manualMode: "manual",
       writebackEnabled: true,
     });
   });

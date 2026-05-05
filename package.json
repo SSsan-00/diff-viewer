@@ -10,7 +10,7 @@
     "build:single:readable": "pnpm run wasm:embed && vite build",
     "build:single:minify:raw": "pnpm run wasm:embed && MINIFY=true OUT_DIR=dist-min vite build",
     "build:single:minify": "pnpm run build:single:minify:raw && node scripts/assemble-dist.mjs --minify-only",
-    "build:single": "pnpm run build:single:readable && pnpm run build:single:minify:raw && node scripts/assemble-dist.mjs && pnpm run verify:dist",
+    "build:single": "pnpm run build:single:readable && pnpm run build:single:minify:raw && node scripts/assemble-dist.mjs && node scripts/embed-manual-html.mjs && pnpm run verify:dist",
     "preview": "vite preview",
     "test": "vitest",
     "test:ui": "vitest --ui",

@@ -15,4 +15,14 @@ describe("index.html favicon", () => {
       true,
     );
   });
+
+  it("contains an inert manual html source placeholder", () => {
+    const html = readFileSync(resolve(process.cwd(), "index.html"), "utf8");
+    const doc = new JSDOM(html).window.document;
+    const source = doc.querySelector<HTMLScriptElement>("#manual-html-source");
+
+    expect(source).toBeTruthy();
+    expect(source?.getAttribute("type")).toBe("text/plain");
+    expect(source?.textContent?.trim()).toBe("__DIFF_VIEWER_MANUAL_HTML__");
+  });
 });

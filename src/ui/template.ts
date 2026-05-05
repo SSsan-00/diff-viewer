@@ -11,6 +11,13 @@ const HIGHLIGHT_ICON_SVG = highlightIconSvgRaw
   .replace(/\sstyle="[^"]*"/g, "")
   .trim();
 
+const MANUAL_ICON_SVG = `
+  <svg class="manual-open-button__icon-svg" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M5 4.5C5 3.67 5.67 3 6.5 3H20v16H7.4C6.63 19 6 19.63 6 20.4V21h14v-2H8V5h12V3H6.5C4.57 3 3 4.57 3 6.5v12C3 19.88 4.12 21 5.5 21H6v-1.5C6 18.67 6.67 18 7.5 18H20V3H6.5C5.67 3 5 3.67 5 4.5Z" />
+    <path d="M8 7h8v1.6H8V7Zm0 3.2h8v1.6H8v-1.6Zm0 3.2h5.5V15H8v-1.6Z" />
+  </svg>
+`.trim();
+
 export type AppTemplateOptions = {
   diffCalculationMode?: "normal" | "anchor-only";
   writebackEnabled?: boolean;
@@ -249,6 +256,15 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
           </span>
         </label>
         <button id="clear" class="button button-subtle" type="button">全クリア</button>
+        <button
+          id="manual-open"
+          class="manual-open-button"
+          type="button"
+          title="マニュアル"
+          aria-label="マニュアルを開く"
+        >
+          ${MANUAL_ICON_SVG}
+        </button>
       </div>
     </header>
     <div
