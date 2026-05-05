@@ -25,6 +25,26 @@ export function getEmbeddedManualHtml(doc: Document = document): string | null {
   return decodeManualHtmlForEmbedding(raw);
 }
 
+export function removeExecutableManualScripts(
+  html: string,
+  doc: Document = document,
+): string {
+  const parser = doc.defaultView?.DOMParser
+    ? new doc.defaultView.DOMParser()
+    : null;
+  if (parser) {
+    const parsed = parser.parseFromString(html, "text/html");
+    parsed.querySelectorAll("script").forEach((script) => script.remove());
+    const doctype = parsed.doctype ? `<!doctype ${parsed.doctype.name}>\n` : "";
+    return `${doctype}${parsed.documentElement.outerHTML}`;
+  }
+
+  const template = doc.createElement("template");
+  template.innerHTML = html;
+  template.content.querySelectorAll("script").forEach((script) => script.remove());
+  return template.innerHTML.trim();
+}
+
 function createFallbackManualHtml(): string {
   return `<!doctype html>
 <html lang="ja">
@@ -58,12 +78,35 @@ function createFallbackManualHtml(): string {
 </html>`;
 }
 
+export function bindManualTopNavigation(iframe: HTMLIFrameElement): void {
+  let boundControl: Element | null = null;
+  const bind = (): void => {
+    const frameDoc = iframe.contentDocument;
+    const frameWindow = iframe.contentWindow;
+    const topControl = frameDoc?.querySelector(".to-top");
+    if (!frameDoc || !topControl || topControl === boundControl) {
+      return;
+    }
+    topControl.addEventListener("click", (event) => {
+      event.preventDefault();
+      frameDoc.getElementById("top")?.scrollIntoView({ block: "start" });
+      frameWindow?.scrollTo({ top: 0, left: 0 });
+    });
+    boundControl = topControl;
+  };
+  iframe.addEventListener("load", bind);
+  bind();
+}
+
 export function renderManualViewer(
   container: Element,
   options: ManualViewerOptions,
 ): void {
   const doc = options.document ?? document;
-  const manualHtml = getEmbeddedManualHtml(doc) ?? createFallbackManualHtml();
+  const manualHtml = removeExecutableManualScripts(
+    getEmbeddedManualHtml(doc) ?? createFallbackManualHtml(),
+    doc,
+  );
   container.innerHTML = `
     <section class="manual-viewer" aria-label="${options.title}">
       <header class="manual-viewer__bar">
@@ -79,7 +122,8 @@ export function renderManualViewer(
   `;
   const iframe = container.querySelector<HTMLIFrameElement>(".manual-viewer__frame");
   if (iframe) {
-    iframe.setAttribute("srcdoc", manualHtml);
+    bindManualTopNavigation(iframe);
+    iframe.srcdoc = manualHtml;
   }
   container
     .querySelector<HTMLButtonElement>(".manual-viewer__back")
