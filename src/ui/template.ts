@@ -12,10 +12,22 @@ const HIGHLIGHT_ICON_SVG = highlightIconSvgRaw
   .trim();
 
 export type AppTemplateOptions = {
+  diffCalculationMode?: "normal" | "anchor-only";
   writebackEnabled?: boolean;
 };
 
 export function createAppTemplate(options: AppTemplateOptions = {}): string {
+  const diffCalculationMode = options.diffCalculationMode ?? "normal";
+  const normalDiffControlsHidden = diffCalculationMode === "normal"
+    ? ""
+    : `
+          hidden
+          aria-hidden="true"`;
+  const normalDiffToggleHidden = diffCalculationMode === "normal"
+    ? ""
+    : `
+          hidden
+          aria-hidden="true"`;
   const writebackEnabled = options.writebackEnabled ?? false;
   const saveButtonHiddenAttrs = writebackEnabled
     ? ""
@@ -24,7 +36,7 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
               aria-hidden="true"`;
 
   return `
-  <div class="app" data-writeback="${writebackEnabled ? "on" : "off"}">
+  <div class="app" data-writeback="${writebackEnabled ? "on" : "off"}" data-diff="${diffCalculationMode}">
     <header class="toolbar">
       <button
         id="toolbar-visibility-toggle"
@@ -139,17 +151,17 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
             </button>
           </div>
         </div>
-        <button id="diff-prev" class="button" type="button">前の差分</button>
-        <button id="diff-next" class="button" type="button">次の差分</button>
+        <button id="diff-prev" class="button" type="button"${normalDiffControlsHidden}>前の差分</button>
+        <button id="diff-next" class="button" type="button"${normalDiffControlsHidden}>次の差分</button>
         <label class="toggle">
           <input id="sync-toggle" type="checkbox" checked />
           <span>スクロール連動</span>
         </label>
-        <label class="toggle">
+        <label class="toggle"${normalDiffToggleHidden}>
           <input id="ignore-leading-whitespace-toggle" type="checkbox" />
           <span>先頭の空白を無視</span>
         </label>
-        <label class="toggle">
+        <label class="toggle"${normalDiffToggleHidden}>
           <input id="fold-toggle" type="checkbox" aria-label="差分のみ" />
           <span>差分のみ</span>
         </label>

@@ -4,7 +4,9 @@ import { resolveAppMode } from "./appMode";
 describe("resolveAppMode", () => {
   it("keeps writeback disabled by default", () => {
     expect(resolveAppMode({ search: "", hash: "" })).toEqual({
+      diffCalculationMode: "normal",
       diffEngineMode: "auto",
+      diffHighlightMode: "normal",
       writebackEnabled: false,
     });
   });
@@ -45,5 +47,43 @@ describe("resolveAppMode", () => {
 
   it("ignores unknown diff engine modes", () => {
     expect(resolveAppMode({ search: "?engine=unknown" }).diffEngineMode).toBe("auto");
+  });
+
+  it("uses normal diff calculation by default", () => {
+    expect(resolveAppMode({ search: "" }).diffCalculationMode).toBe("normal");
+  });
+
+  it("enables anchor-only diff calculation from ?diff=off", () => {
+    expect(resolveAppMode({ search: "?diff=off" }).diffCalculationMode).toBe(
+      "anchor-only",
+    );
+  });
+
+  it("keeps writeback enabled when ?save=on is combined with ?diff=off", () => {
+    expect(resolveAppMode({ search: "?save=on&diff=off" })).toEqual({
+      diffCalculationMode: "anchor-only",
+      diffEngineMode: "auto",
+      diffHighlightMode: "normal",
+      writebackEnabled: true,
+    });
+  });
+
+  it("uses normal diff highlighting by default", () => {
+    expect(resolveAppMode({ search: "" }).diffHighlightMode).toBe("normal");
+  });
+
+  it("keeps only manual-anchor diff highlighting from ?highlight=off", () => {
+    expect(resolveAppMode({ search: "?highlight=off" }).diffHighlightMode).toBe(
+      "manual-anchor-only",
+    );
+  });
+
+  it("combines highlight=off with save=on and diff=off", () => {
+    expect(resolveAppMode({ search: "?save=on&diff=off&highlight=off" })).toEqual({
+      diffCalculationMode: "anchor-only",
+      diffEngineMode: "auto",
+      diffHighlightMode: "manual-anchor-only",
+      writebackEnabled: true,
+    });
   });
 });

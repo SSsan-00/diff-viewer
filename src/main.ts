@@ -5,6 +5,12 @@ import { resolveAppMode } from "./appMode";
 import { createDiffEngine } from "./diffEngine/engine";
 import { setupMonacoWorkers } from "./monaco/monacoWorkers";
 import { registerBasicLanguages } from "./monaco/basicLanguages";
+import { buildAnchorOnlyPairedOps } from "./diffEngine/anchorOnly";
+import {
+  buildManualAnchorHighlightKeys,
+  shouldShowDiffHighlight,
+  type DiffHighlightMode,
+} from "./diffEngine/highlightPolicy";
 import { pairReplace } from "./diffEngine/pairReplace";
 import { diffInlineWithAppendLiteral } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
@@ -311,12 +317,15 @@ if (!app) {
 
 const appMode = resolveAppMode(window.location);
 const writebackEnabled = appMode.writebackEnabled;
+const anchorOnlyDiffMode = appMode.diffCalculationMode === "anchor-only";
+const diffHighlightMode: DiffHighlightMode = appMode.diffHighlightMode;
 const diffEngine = await createDiffEngine({
   mode: appMode.diffEngineMode,
 });
 const diffViewerPerf = createDiffViewerPerfMonitor(() => diffEngine.getStatus());
 window.__diffViewerPerf = diffViewerPerf;
 app.innerHTML = createAppTemplate({
+  diffCalculationMode: appMode.diffCalculationMode,
   writebackEnabled,
 });
 setupAnchorPanelToggle(document, {
@@ -3643,7 +3652,7 @@ let diffBlockStarts: number[] = [];
 let currentBlockIndex = 0;
 let leftFocusDecorationIds: string[] = [];
 let rightFocusDecorationIds: string[] = [];
-let foldEnabled = persistedState?.foldEnabled ?? false;
+let foldEnabled = anchorOnlyDiffMode ? false : persistedState?.foldEnabled ?? false;
 let ignoreLeadingFileWhitespace = false;
 let foldRanges: FoldRange[] = [];
 let leftFoldZoneIds: string[] = [];
@@ -4308,9 +4317,11 @@ function canIgnoreLeadingFileWhitespaceFromEditorText(text: string): boolean {
 function buildDecorations(
   ops: PairedOp[],
   options: {
+    diffHighlightMode: DiffHighlightMode;
     displayDiffs?: Array<ReplaceDisplayDiff | null>;
     ignoreLeadingFileWhitespace: boolean;
     leftLeadingFileWhitespaceEligible: boolean;
+    manualAnchorKeys: ReadonlySet<string>;
     rightLeadingFileWhitespaceEligible: boolean;
   },
 ): {
@@ -4322,6 +4333,9 @@ function buildDecorations(
 
   for (let index = 0; index < ops.length; index += 1) {
     const op = ops[index];
+    if (!shouldShowDiffHighlight(op, options.diffHighlightMode, options.manualAnchorKeys)) {
+      continue;
+    }
     const displayDiff = options.displayDiffs?.[index] ?? null;
     if (op.type === "insert" && op.rightLineNo !== undefined) {
       addLineDecoration(right, op.rightLineNo, "line-insert");
@@ -4369,7 +4383,8 @@ function buildPairedOpSignature(op: PairedOp): string {
   const rightLineNo = op.rightLineNo ?? "";
   const leftLine = op.leftLine ?? "";
   const rightLine = op.rightLine ?? "";
-  return `${op.type}|${leftLineNo}|${rightLineNo}|${leftLine}|${rightLine}`;
+  const diffVisible = op.diffVisible === false ? "0" : "1";
+  return `${op.type}|${diffVisible}|${leftLineNo}|${rightLineNo}|${leftLine}|${rightLine}`;
 }
 
 function buildPairedOpsSignature(ops: readonly PairedOp[]): string {
@@ -4613,11 +4628,6 @@ function recalcDiff() {
     canIgnoreLeadingFileWhitespaceFromEditorText(leftText);
   const rightLeadingFileWhitespaceEligible =
     canIgnoreLeadingFileWhitespaceFromEditorText(rightText);
-  const decorationVariantKey = [
-    ignoreLeadingFileWhitespace ? "1" : "0",
-    leftLeadingFileWhitespaceEligible ? "1" : "0",
-    rightLeadingFileWhitespaceEligible ? "1" : "0",
-  ].join("|");
   const anchorValidationStartedAt = performance.now();
   const validation = validateAnchors(
     manualAnchors,
@@ -4631,7 +4641,9 @@ function recalcDiff() {
 
   let anchorsForDiff = validation.valid;
   autoAnchor = null;
-  const autoCandidate = getAutoDoctypeAnchor(leftText, rightText);
+  const autoCandidate = anchorOnlyDiffMode
+    ? null
+    : getAutoDoctypeAnchor(leftText, rightText);
   if (autoCandidate) {
     const candidateKey = autoAnchorKey(autoCandidate);
     if (suppressedAutoAnchorKey && suppressedAutoAnchorKey !== candidateKey) {
@@ -4662,10 +4674,23 @@ function recalcDiff() {
 
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
+  const manualAnchorKeys = buildManualAnchorHighlightKeys(validation.valid);
+  const manualAnchorHighlightSignature = Array.from(manualAnchorKeys)
+    .sort()
+    .join(",");
+  const decorationVariantKey = [
+    ignoreLeadingFileWhitespace ? "1" : "0",
+    leftLeadingFileWhitespaceEligible ? "1" : "0",
+    rightLeadingFileWhitespaceEligible ? "1" : "0",
+    diffHighlightMode,
+    manualAnchorHighlightSignature,
+  ].join("|");
   const anchorValidationMs = performance.now() - anchorValidationStartedAt;
 
   const diffComputeStartedAt = performance.now();
-  if (anchorsForDiff.length > 0) {
+  if (anchorOnlyDiffMode) {
+    pairedOps = buildAnchorOnlyPairedOps(leftText, rightText, validation.valid);
+  } else if (anchorsForDiff.length > 0) {
     pairedOps = diffEngine.diffWithAnchors(leftText, rightText, anchorsForDiff, {
       ignoreLeadingFileWhitespace,
     });
@@ -4682,6 +4707,7 @@ function recalcDiff() {
   const preparedReplaceOps = prepareReplaceOpsForDisplay(pairedOps, {
     ignoreLeadingFileWhitespace,
     leftLeadingFileWhitespaceEligible,
+    promoteEqualRows: !anchorOnlyDiffMode,
     rightLeadingFileWhitespaceEligible,
   });
   pairedOps = preparedReplaceOps.ops;
@@ -4703,9 +4729,11 @@ function recalcDiff() {
         decorationVariantKey,
         foldRanges: buildFoldRanges(pairedOps, foldOptions),
         decorations: buildDecorations(pairedOps, {
+          diffHighlightMode,
           displayDiffs: preparedReplaceOps.displayDiffs,
           ignoreLeadingFileWhitespace,
           leftLeadingFileWhitespaceEligible,
+          manualAnchorKeys,
           rightLeadingFileWhitespaceEligible,
         }),
         viewZones: buildViewZones(pairedOps),

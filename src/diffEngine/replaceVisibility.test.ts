@@ -86,6 +86,26 @@ describe("normalizeReplaceOpsForDisplay", () => {
     });
   });
 
+  it("keeps non-visible alignment rows equal even when text differs", () => {
+    const ops: PairedOp[] = [
+      {
+        type: "equal",
+        diffVisible: false,
+        leftLine: "left changed",
+        rightLine: "right changed",
+        leftLineNo: 1,
+        rightLineNo: 1,
+      },
+    ];
+
+    const prepared = prepareReplaceOpsForDisplay(ops, {
+      ignoreLeadingFileWhitespace: false,
+    });
+
+    expect(prepared.ops).toEqual(ops);
+    expect(prepared.displayDiffs).toEqual([null]);
+  });
+
   it("keeps aligned equal rows equal when only ignored leading whitespace differs", () => {
     const ops: PairedOp[] = [
       {

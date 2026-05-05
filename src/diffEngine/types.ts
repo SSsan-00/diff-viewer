@@ -10,6 +10,8 @@ export type LineOp = {
 // Line-level operation after pairing, including "replace".
 export type PairedOp = {
   type: "equal" | "insert" | "delete" | "replace";
+  // false means this row only preserves visual alignment and is not a content diff.
+  diffVisible?: boolean;
   leftLine?: string;
   rightLine?: string;
   leftLineNo?: number;

@@ -1,11 +1,15 @@
 import type { PairedOp } from "./types";
 
+function isVisibleDiffOp(op: PairedOp): boolean {
+  return op.type !== "equal" && op.diffVisible !== false;
+}
+
 export function getDiffBlockStarts(ops: PairedOp[]): number[] {
   const starts: number[] = [];
   let inBlock = false;
 
   for (let i = 0; i < ops.length; i += 1) {
-    if (ops[i].type !== "equal") {
+    if (isVisibleDiffOp(ops[i])) {
       if (!inBlock) {
         starts.push(i);
         inBlock = true;

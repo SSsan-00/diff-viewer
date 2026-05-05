@@ -1,9 +1,14 @@
 import { isDiffEngineMode, type DiffEngineMode } from "./diffEngine/engine";
 
 export type AppMode = {
+  diffCalculationMode: DiffCalculationMode;
   diffEngineMode: DiffEngineMode;
+  diffHighlightMode: DiffHighlightMode;
   writebackEnabled: boolean;
 };
+
+export type DiffCalculationMode = "normal" | "anchor-only";
+export type DiffHighlightMode = "normal" | "manual-anchor-only";
 
 type LocationLike = {
   search?: string;
@@ -35,15 +40,33 @@ function readDiffEngineMode(params: URLSearchParams): DiffEngineMode | null {
   return isDiffEngineMode(engine) ? engine : null;
 }
 
+function readDiffCalculationMode(params: URLSearchParams): DiffCalculationMode | null {
+  const diff = normalizeValue(params.get("diff"));
+  return diff === "off" ? "anchor-only" : null;
+}
+
+function readDiffHighlightMode(params: URLSearchParams): DiffHighlightMode | null {
+  const highlight = normalizeValue(params.get("highlight"));
+  return highlight === "off" ? "manual-anchor-only" : null;
+}
+
 export function resolveAppMode(location: LocationLike): AppMode {
   const searchParams = parseParams(location.search);
   const hashParams = parseParams(location.hash);
 
   return {
+    diffCalculationMode:
+      readDiffCalculationMode(searchParams) ??
+      readDiffCalculationMode(hashParams) ??
+      "normal",
     diffEngineMode:
       readDiffEngineMode(searchParams) ??
       readDiffEngineMode(hashParams) ??
       "auto",
+    diffHighlightMode:
+      readDiffHighlightMode(searchParams) ??
+      readDiffHighlightMode(hashParams) ??
+      "normal",
     writebackEnabled:
       readWritebackEnabled(searchParams) ?? false,
   };

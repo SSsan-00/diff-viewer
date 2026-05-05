@@ -5,6 +5,7 @@ import type { InlineDiff, PairedOp, Range } from "./types";
 type ReplaceVisibilityOptions = {
   ignoreLeadingFileWhitespace: boolean;
   leftLeadingFileWhitespaceEligible?: boolean;
+  promoteEqualRows?: boolean;
   rightLeadingFileWhitespaceEligible?: boolean;
 };
 
@@ -48,7 +49,11 @@ export function prepareReplaceOpsForDisplay(
   ops: readonly PairedOp[],
   options: ReplaceVisibilityOptions,
 ): PreparedReplaceOpsForDisplay {
+  const promoteEqualRows = options.promoteEqualRows !== false;
   const batchInputs = ops.flatMap((op) => {
+    if (op.diffVisible === false) {
+      return [];
+    }
     if (op.type !== "replace" && op.type !== "equal") {
       return [];
     }
@@ -64,6 +69,10 @@ export function prepareReplaceOpsForDisplay(
   const displayDiffs: Array<ReplaceDisplayDiff | null> = [];
   let inlineDiffIndex = 0;
   const normalizedOps = ops.map((op) => {
+    if (op.diffVisible === false) {
+      displayDiffs.push(null);
+      return op;
+    }
     if (op.type !== "replace" && op.type !== "equal") {
       displayDiffs.push(null);
       return op;
@@ -79,7 +88,7 @@ export function prepareReplaceOpsForDisplay(
     const displayDiff = buildReplaceDisplayDiff(leftLine, rightLine, inline);
     displayDiffs.push(displayDiff);
 
-    if (op.type === "equal" && displayDiff.hasVisibleDiff) {
+    if (op.type === "equal" && promoteEqualRows && displayDiff.hasVisibleDiff) {
       return {
         type: "replace",
         leftLine: op.leftLine,

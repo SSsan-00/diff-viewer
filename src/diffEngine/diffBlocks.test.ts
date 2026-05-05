@@ -24,6 +24,22 @@ describe("getDiffBlockStarts", () => {
 
     expect(getDiffBlockStarts(ops)).toEqual([1, 4]);
   });
+
+  it("does not treat anchor-only alignment gaps as diff blocks", () => {
+    const ops: PairedOp[] = [
+      { type: "equal", leftLine: "a", rightLine: "a", leftLineNo: 0, rightLineNo: 0 },
+      { type: "insert", rightLine: "right only", rightLineNo: 1, diffVisible: false },
+      {
+        type: "replace",
+        leftLine: "left anchor",
+        rightLine: "right anchor",
+        leftLineNo: 1,
+        rightLineNo: 2,
+      },
+    ];
+
+    expect(getDiffBlockStarts(ops)).toEqual([2]);
+  });
 });
 
 describe("mapRowToLineNumbers", () => {

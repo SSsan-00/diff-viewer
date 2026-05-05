@@ -85,6 +85,10 @@
 - `src/diffEngine/diffBlocks.test.ts` ブロック/行マッピングのテスト。
 - `src/diffEngine/anchors.ts` アンカー検証・分割差分のロジック。exports: `addAnchor`, `removeAnchorByLeft`, `removeAnchorByRight`, `validateAnchors`, `diffWithAnchors` ほか。
 - `src/diffEngine/anchors.test.ts` アンカー検証のテスト。
+- `src/diffEngine/anchorOnly.ts` `?diff=off` 用の手動アンカー行だけを差分扱いする表示行生成。export: `buildAnchorOnlyPairedOps`。
+- `src/diffEngine/anchorOnly.test.ts` 通常差分計算OFFモードの表示行生成テスト。
+- `src/diffEngine/highlightPolicy.ts` `?highlight=off` 用の差分装飾可否判定。exports: `buildManualAnchorHighlightKeys`, `shouldShowDiffHighlight`。
+- `src/diffEngine/highlightPolicy.test.ts` 通常差分ハイライトOFFモードの装飾判定テスト。
 - `src/diffEngine/folding.ts` 折りたたみ対象範囲の算出。exports: `buildFoldRanges`, `findFoldContainingRow`。
 - `src/diffEngine/folding.test.ts` 折りたたみ範囲のテスト。
 - `src/diffEngine/embeddedOutputCall.ts` 埋め込み WASM 呼び出し結果の decode/検証を共通化する補助。exports: `decodeEmbeddedDiffResponse` ほか。

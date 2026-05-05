@@ -45,6 +45,32 @@ describe("pane action layout", () => {
     expect(rightReload?.hasAttribute("aria-hidden")).toBe(false);
   });
 
+  it("hides normal diff controls in anchor-only diff mode while keeping save controls", () => {
+    const dom = new JSDOM(
+      createAppTemplate({
+        diffCalculationMode: "anchor-only",
+        writebackEnabled: true,
+      }),
+    );
+    const doc = dom.window.document;
+
+    expect(doc.querySelector(".app")?.getAttribute("data-diff")).toBe("anchor-only");
+    expect(doc.querySelector<HTMLButtonElement>("#left-save-file")?.hidden).toBe(false);
+    expect(doc.querySelector<HTMLButtonElement>("#right-save-file")?.hidden).toBe(false);
+    expect(doc.querySelector<HTMLButtonElement>("#diff-prev")?.hidden).toBe(true);
+    expect(doc.querySelector<HTMLButtonElement>("#diff-next")?.hidden).toBe(true);
+    expect(
+      doc.querySelector<HTMLInputElement>("#ignore-leading-whitespace-toggle")
+        ?.closest(".toggle")
+        ?.hasAttribute("hidden"),
+    ).toBe(true);
+    expect(
+      doc.querySelector<HTMLInputElement>("#fold-toggle")
+        ?.closest(".toggle")
+        ?.hasAttribute("hidden"),
+    ).toBe(true);
+  });
+
   it("removes recalc button and adds export report button in toolbar", () => {
     const dom = new JSDOM(APP_TEMPLATE);
     const doc = dom.window.document;
