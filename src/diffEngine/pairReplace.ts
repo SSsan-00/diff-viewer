@@ -1,4 +1,5 @@
 import type { LineOp, PairedOp } from "./types";
+import { extractAppendLiteral } from "./appendLiteral";
 import {
   buildLineFeatures,
   extractIndexTokens,
@@ -26,7 +27,13 @@ type PairCandidate = {
 };
 
 type PreparedPairLine = {
+  appendComparableKey: string | null;
+  commentBodyKey: string | null;
+  commentFeature: ReturnType<typeof buildLineFeatures> | null;
   feature: ReturnType<typeof buildLineFeatures>;
+  hasBracketedCommentPrefix: boolean;
+  hasAppendLiteral: boolean;
+  hasLineCommentBody: boolean;
   indent: number;
   text: string;
   tokens: string[];
@@ -44,6 +51,7 @@ type MatchState = {
 
 const WINDOW_SIZE = 40;
 const SCORE_THRESHOLD = 4;
+const APPEND_LITERAL_EXACT_SCORE = SCORE_THRESHOLD + 8;
 const EMPTY_MATCH_STATE: MatchState = {
   score: 0,
   pairCount: 0,
@@ -53,10 +61,97 @@ const EMPTY_MATCH_STATE: MatchState = {
   candidate: null,
 };
 
-function buildIndexMap(features: ReturnType<typeof buildLineFeatures>[]): Map<string, number[]> {
+function normalizeAppendComparableKey(value: string): string | null {
+  const normalized = value
+    .replace(/[¥￥]/g, "\\")
+    .replace(/\s+/g, " ")
+    .trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+function normalizeCommentBodyKey(value: string): string | null {
+  return normalizeAppendComparableKey(value);
+}
+
+function extractLineCommentBody(line: string): {
+  body: string | null;
+  hasBracketedPrefix: boolean;
+} {
+  const bracketedPrefix = line.match(/^\s*\/{2,}\s*\[[^\]\r\n]+\]\s*:\s*(.+)$/);
+  if (bracketedPrefix) {
+    const body = bracketedPrefix[1]?.trim();
+    return {
+      body: body && body.length > 0 ? body : null,
+      hasBracketedPrefix: true,
+    };
+  }
+  const comment = line.match(/^\s*\/{2,}\s*(.+)$/);
+  if (!comment) {
+    return { body: null, hasBracketedPrefix: false };
+  }
+  const body = comment[1]?.trim();
+  return {
+    body: body && body.length > 0 ? body : null,
+    hasBracketedPrefix: false,
+  };
+}
+
+function buildAppendComparableKey(line: string): {
+  key: string | null;
+  hasAppendLiteral: boolean;
+} {
+  const appendLiteral = extractAppendLiteral(line);
+  return {
+    key: normalizeAppendComparableKey(appendLiteral ?? line),
+    hasAppendLiteral: appendLiteral !== null,
+  };
+}
+
+function buildCommentComparable(line: string): {
+  bodyKey: string | null;
+  feature: ReturnType<typeof buildLineFeatures> | null;
+  hasBracketedPrefix: boolean;
+  hasLineCommentBody: boolean;
+} {
+  const comment = extractLineCommentBody(line);
+  if (!comment.body) {
+    return {
+      bodyKey: null,
+      feature: null,
+      hasBracketedPrefix: comment.hasBracketedPrefix,
+      hasLineCommentBody: false,
+    };
+  }
+  return {
+    bodyKey: normalizeCommentBodyKey(comment.body),
+    feature: buildLineFeatures(comment.body),
+    hasBracketedPrefix: comment.hasBracketedPrefix,
+    hasLineCommentBody: true,
+  };
+}
+
+function addAppendPayloadToken(line: PreparedPairLine): void {
+  if (line.appendComparableKey) {
+    line.tokens.push(`appendpayload:${line.appendComparableKey}`);
+  }
+}
+
+function addCommentBodyTokens(line: PreparedPairLine): void {
+  if (!line.hasLineCommentBody || !line.commentFeature) {
+    return;
+  }
+  extractIndexTokens(line.commentFeature).forEach((token) => {
+    line.tokens.push(`commentbody:${token}`);
+  });
+  if (line.commentBodyKey) {
+    line.tokens.push(`commentbody:${line.commentBodyKey}`);
+  }
+}
+
+function buildIndexMap(lines: PreparedPairLine[]): Map<string, number[]> {
   const map = new Map<string, number[]>();
-  features.forEach((feature, index) => {
-    extractIndexTokens(feature).forEach((token) => {
+  lines.forEach((line, index) => {
+    line.tokens.forEach((token) => {
       const bucket = map.get(token);
       if (bucket) {
         bucket.push(index);
@@ -90,31 +185,85 @@ function buildCandidateIndices(
   return [...indices];
 }
 
+function hasMatchingAppendPayload(
+  left: PreparedPairLine,
+  right: PreparedPairLine,
+): boolean {
+  return (
+    (left.hasAppendLiteral || right.hasAppendLiteral) &&
+    left.appendComparableKey !== null &&
+    left.appendComparableKey === right.appendComparableKey
+  );
+}
+
+function canCompareCommentBodies(
+  left: PreparedPairLine,
+  right: PreparedPairLine,
+): boolean {
+  return (
+    left.hasLineCommentBody &&
+    right.hasLineCommentBody &&
+    (left.hasBracketedCommentPrefix || right.hasBracketedCommentPrefix)
+  );
+}
+
 function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] {
   const candidates: PairCandidate[] = [];
   const deletePrepared: PreparedPairLine[] = deletes.map((op) => {
     const text = op.leftLine ?? "";
     const feature = buildLineFeatures(text);
+    const appendComparable = buildAppendComparableKey(text);
+    const commentComparable = buildCommentComparable(text);
+    const tokens = extractIndexTokens(feature);
     return {
+      appendComparableKey: appendComparable.key,
+      commentBodyKey: commentComparable.bodyKey,
+      commentFeature: commentComparable.feature,
       feature,
+      hasBracketedCommentPrefix: commentComparable.hasBracketedPrefix,
+      hasAppendLiteral: appendComparable.hasAppendLiteral,
+      hasLineCommentBody: commentComparable.hasLineCommentBody,
       indent: countIndent(text),
       text,
-      tokens: extractIndexTokens(feature),
+      tokens,
       trimmed: text.trimStart(),
     };
   });
   const insertPrepared: PreparedPairLine[] = inserts.map((op) => {
     const text = op.rightLine ?? "";
     const feature = buildLineFeatures(text);
+    const appendComparable = buildAppendComparableKey(text);
+    const commentComparable = buildCommentComparable(text);
+    const tokens = extractIndexTokens(feature);
     return {
+      appendComparableKey: appendComparable.key,
+      commentBodyKey: commentComparable.bodyKey,
+      commentFeature: commentComparable.feature,
       feature,
+      hasBracketedCommentPrefix: commentComparable.hasBracketedPrefix,
+      hasAppendLiteral: appendComparable.hasAppendLiteral,
+      hasLineCommentBody: commentComparable.hasLineCommentBody,
       indent: countIndent(text),
       text,
-      tokens: extractIndexTokens(feature),
+      tokens,
       trimmed: text.trimStart(),
     };
   });
-  const insertIndex = buildIndexMap(insertPrepared.map((entry) => entry.feature));
+  const hasAppendLiteralInBlock =
+    deletePrepared.some((entry) => entry.hasAppendLiteral) ||
+    insertPrepared.some((entry) => entry.hasAppendLiteral);
+  if (hasAppendLiteralInBlock) {
+    deletePrepared.forEach(addAppendPayloadToken);
+    insertPrepared.forEach(addAppendPayloadToken);
+  }
+  const hasBracketedCommentPrefixInBlock =
+    deletePrepared.some((entry) => entry.hasBracketedCommentPrefix) ||
+    insertPrepared.some((entry) => entry.hasBracketedCommentPrefix);
+  if (hasBracketedCommentPrefixInBlock) {
+    deletePrepared.forEach(addCommentBodyTokens);
+    insertPrepared.forEach(addCommentBodyTokens);
+  }
+  const insertIndex = buildIndexMap(insertPrepared);
 
   for (let d = 0; d < deletes.length; d += 1) {
     const left = deletePrepared[d];
@@ -128,6 +277,52 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
     for (const i of candidateIndices) {
       const right = insertPrepared[i];
       const distance = Math.abs(d - i);
+      if (
+        left.text !== right.text &&
+        hasMatchingAppendPayload(left, right)
+      ) {
+        candidates.push({
+          deleteIndex: d,
+          insertIndex: i,
+          indentDiff: Math.abs(left.indent - right.indent),
+          score: APPEND_LITERAL_EXACT_SCORE,
+          distance,
+        });
+        continue;
+      }
+      if (
+        left.text !== right.text &&
+        canCompareCommentBodies(left, right) &&
+        left.commentBodyKey !== null &&
+        left.commentBodyKey === right.commentBodyKey
+      ) {
+        candidates.push({
+          deleteIndex: d,
+          insertIndex: i,
+          indentDiff: Math.abs(left.indent - right.indent),
+          score: APPEND_LITERAL_EXACT_SCORE,
+          distance,
+        });
+        continue;
+      }
+      if (
+        left.text !== right.text &&
+        canCompareCommentBodies(left, right) &&
+        left.commentFeature &&
+        right.commentFeature
+      ) {
+        const commentScore = scoreLinePair(left.commentFeature, right.commentFeature);
+        if (commentScore !== null && commentScore >= SCORE_THRESHOLD) {
+          candidates.push({
+            deleteIndex: d,
+            insertIndex: i,
+            indentDiff: Math.abs(left.indent - right.indent),
+            score: commentScore,
+            distance,
+          });
+          continue;
+        }
+      }
       if (
         left.trimmed === right.trimmed &&
         left.trimmed !== "" &&

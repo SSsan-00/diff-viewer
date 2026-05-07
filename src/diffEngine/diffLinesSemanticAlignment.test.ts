@@ -1061,6 +1061,123 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "</script>", "AppendLine(\"  </script>\"")).toBe(true);
   });
 
+  it("aligns repeated HTML blocks against AppendLine outputs without manual anchors", () => {
+    const left = [
+      "<div>",
+      "  <span>A</span>",
+      "</div>",
+      "<div>",
+      "  <span>B</span>",
+      "</div>",
+    ];
+    const right = [
+      "sb.AppendLine(\"<div>\");",
+      "sb.AppendLine(\"  <span>A</span>\");",
+      "sb.AppendLine(\"</div>\");",
+      "sb.AppendLine(\"<div>\");",
+      "sb.AppendLine(\"  <span>B</span>\");",
+      "sb.AppendLine(\"</div>\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<div>", "AppendLine(\"<div>\"")).toBe(true);
+    expect(findReplace(ops, "<span>A", "AppendLine(\"  <span>A")).toBe(true);
+    expect(findReplace(ops, "</div>", "AppendLine(\"</div>\"")).toBe(true);
+    expect(findReplace(ops, "<span>B", "AppendLine(\"  <span>B")).toBe(true);
+  });
+
+  it("aligns plain multibyte text lines against AppendLine outputs without manual anchors", () => {
+    const left = [
+      "ようこそ",
+      "保存しました",
+      "エラーが発生しました",
+    ];
+    const right = [
+      "sb.AppendLine(\"ようこそ\");",
+      "sb.AppendLine(\"保存しました\");",
+      "sb.AppendLine(\"エラーが発生しました\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "ようこそ", "AppendLine(\"ようこそ\"")).toBe(true);
+    expect(findReplace(ops, "保存しました", "AppendLine(\"保存しました\"")).toBe(true);
+    expect(findReplace(ops, "エラーが発生しました", "AppendLine(\"エラーが発生しました\"")).toBe(true);
+  });
+
+  it("keeps far-shifted AppendLine payload text aligned after setup code inserts", () => {
+    const left = [
+      "ようこそ",
+      "保存しました",
+      "エラーが発生しました",
+    ];
+    const setup = Array.from(
+      { length: 48 },
+      (_, index) => `var setup${index} = ${index};`,
+    );
+    const right = setup.concat([
+      "sb.AppendLine(\"ようこそ\");",
+      "sb.AppendLine(\"保存しました\");",
+      "sb.AppendLine(\"エラーが発生しました\");",
+    ]);
+
+    const ops = toPairedOps(left, right);
+    const firstSetupIndex = ops.findIndex(
+      (op) => op.type === "insert" && (op.rightLine ?? "").includes("setup0"),
+    );
+    const welcomeIndex = ops.findIndex(
+      (op) =>
+        op.type === "replace" &&
+        (op.leftLine ?? "").includes("ようこそ") &&
+        (op.rightLine ?? "").includes("AppendLine(\"ようこそ\""),
+    );
+
+    expect(firstSetupIndex).toBeGreaterThanOrEqual(0);
+    expect(welcomeIndex).toBeGreaterThan(firstSetupIndex);
+    expect(findReplace(ops, "保存しました", "AppendLine(\"保存しました\"")).toBe(true);
+    expect(findReplace(ops, "エラーが発生しました", "AppendLine(\"エラーが発生しました\"")).toBe(true);
+  });
+
+  it("aligns bracketed prefix comments with plain line comments by their body", () => {
+    const left = [
+      "//// [未使用関数]   : public string FormatName(User user)",
+      "//// [unused]: return value;",
+      "//// [memo]: ようこそ",
+    ];
+    const right = [
+      "// private string FormatName(User user)",
+      "// return value;",
+      "// ようこそ",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "FormatName", "FormatName")).toBe(true);
+    expect(findReplace(ops, "return value", "return value")).toBe(true);
+    expect(findReplace(ops, "ようこそ", "ようこそ")).toBe(true);
+  });
+
+  it("aligns bracketed prefix comments that wrap AppendLine bodies", () => {
+    const left = [
+      "//// [未使用関数]: sb.AppendLine(\"ようこそ\");",
+      "//// [unused] : sb.AppendLine(\"保存しました\");",
+    ];
+    const right = [
+      "// sb.AppendLine(\"ようこそ\");",
+      "// sb.AppendLine(\"保存しました\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "AppendLine(\"ようこそ", "AppendLine(\"ようこそ")).toBe(true);
+    expect(findReplace(ops, "AppendLine(\"保存しました", "AppendLine(\"保存しました")).toBe(true);
+  });
+
+  it("does not strip malformed bracketed comment prefixes", () => {
+    const left = ["//// [未使用関数] ようこそ"];
+    const right = ["// ようこそ"];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "ようこそ", "ようこそ")).toBe(false);
+  });
+
   it("aligns additional HTML AppendLine variants (5+ cases)", () => {
     const left = [
       "<section>",

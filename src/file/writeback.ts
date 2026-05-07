@@ -533,6 +533,18 @@ export function supportsFileSystemAccess(
   return typeof win.showOpenFilePicker === "function";
 }
 
+function isSameDroppedFile(left: File, right: File): boolean {
+  return (
+    left === right ||
+    (
+      left.name === right.name &&
+      left.size === right.size &&
+      left.type === right.type &&
+      left.lastModified === right.lastModified
+    )
+  );
+}
+
 export async function requestFileHandlePermission(
   handle: PaneWriteHandle,
   mode: "read" | "readwrite",
@@ -551,6 +563,7 @@ export async function collectDroppedFiles(
   dataTransfer: DropDataTransfer | null | undefined,
 ): Promise<DroppedFileItem[]> {
   const items = Array.from(dataTransfer?.items ?? []);
+  const files = Array.from(dataTransfer?.files ?? []);
   if (items.length > 0) {
     const dropped: DroppedFileItem[] = [];
     for (const item of items) {
@@ -575,11 +588,24 @@ export async function collectDroppedFiles(
       dropped.push({ file, handle });
     }
     if (dropped.length > 0) {
-      return dropped;
+      if (files.length <= dropped.length) {
+        return dropped;
+      }
+      const remaining = [...dropped];
+      return files.map((file) => {
+        const matchIndex = remaining.findIndex((item) =>
+          isSameDroppedFile(item.file, file),
+        );
+        if (matchIndex === -1) {
+          return { file, handle: null };
+        }
+        const [matched] = remaining.splice(matchIndex, 1);
+        return { file, handle: matched.handle };
+      });
     }
   }
 
-  return Array.from(dataTransfer?.files ?? []).map((file) => ({
+  return files.map((file) => ({
     file,
     handle: null,
   }));

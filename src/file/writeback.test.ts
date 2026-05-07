@@ -336,6 +336,33 @@ describe("collectDroppedFiles", () => {
     expect(dropped[0]?.file).toBe(file);
     expect(dropped[0]?.handle).toBeNull();
   });
+
+  it("keeps all dropped files when items exposes only the first file", async () => {
+    const first = new File(["a"], "first.txt", { type: "text/plain" });
+    const second = new File(["b"], "second.txt", { type: "text/plain" });
+    const handle = {
+      kind: "file",
+      name: "first.txt",
+      async getFile() {
+        return first;
+      },
+    };
+
+    const dropped = await collectDroppedFiles({
+      items: [
+        {
+          kind: "file",
+          getAsFile: () => first,
+          getAsFileSystemHandle: async () => handle,
+        },
+      ],
+      files: [first, second],
+    });
+
+    expect(dropped).toHaveLength(2);
+    expect(dropped[0]).toEqual({ file: first, handle });
+    expect(dropped[1]).toEqual({ file: second, handle: null });
+  });
 });
 
 describe("pickFilesWithHandles", () => {

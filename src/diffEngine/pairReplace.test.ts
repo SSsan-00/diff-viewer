@@ -362,4 +362,103 @@ describe("pairReplace", () => {
       },
     ]);
   });
+
+  it("pairs far-shifted AppendLine payload text outside the local window", () => {
+    const setupInserts: LineOp[] = Array.from({ length: 48 }, (_, index) => ({
+      type: "insert" as const,
+      rightLine: `var setup${index} = ${index};`,
+      rightLineNo: index,
+    }));
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "ようこそ", leftLineNo: 1 },
+      ...setupInserts,
+      { type: "insert", rightLine: "sb.AppendLine(\"ようこそ\");", rightLineNo: 100 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toContainEqual({
+      type: "replace",
+      leftLine: "ようこそ",
+      rightLine: "sb.AppendLine(\"ようこそ\");",
+      leftLineNo: 1,
+      rightLineNo: 100,
+    });
+  });
+
+  it("pairs far-shifted bracketed prefix comments with plain line comments by body", () => {
+    const setupInserts: LineOp[] = Array.from({ length: 48 }, (_, index) => ({
+      type: "insert" as const,
+      rightLine: `// setup ${index}`,
+      rightLineNo: index,
+    }));
+    const input: LineOp[] = [
+      {
+        type: "delete",
+        leftLine: "//// [未使用関数]   : public string FormatName(User user)",
+        leftLineNo: 1,
+      },
+      ...setupInserts,
+      {
+        type: "insert",
+        rightLine: "// private string FormatName(User user)",
+        rightLineNo: 100,
+      },
+    ];
+
+    expect(compactOps(pairReplace(input))).toContainEqual({
+      type: "replace",
+      leftLine: "//// [未使用関数]   : public string FormatName(User user)",
+      rightLine: "// private string FormatName(User user)",
+      leftLineNo: 1,
+      rightLineNo: 100,
+    });
+  });
+
+  it("pairs far-shifted bracketed prefix comments when the body has no identifiers", () => {
+    const setupInserts: LineOp[] = Array.from({ length: 48 }, (_, index) => ({
+      type: "insert" as const,
+      rightLine: `// setup ${index}`,
+      rightLineNo: index,
+    }));
+    const input: LineOp[] = [
+      {
+        type: "delete",
+        leftLine: "//// [memo] : ようこそ",
+        leftLineNo: 1,
+      },
+      ...setupInserts,
+      {
+        type: "insert",
+        rightLine: "// ようこそ",
+        rightLineNo: 100,
+      },
+    ];
+
+    expect(compactOps(pairReplace(input))).toContainEqual({
+      type: "replace",
+      leftLine: "//// [memo] : ようこそ",
+      rightLine: "// ようこそ",
+      leftLineNo: 1,
+      rightLineNo: 100,
+    });
+  });
+
+  it("does not use plain comment bodies as a special pairing key without bracketed prefix comments", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "// TODO: later", leftLineNo: 1 },
+      { type: "insert", rightLine: "return later;", rightLineNo: 1 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "delete",
+        leftLine: "// TODO: later",
+        leftLineNo: 1,
+      },
+      {
+        type: "insert",
+        rightLine: "return later;",
+        rightLineNo: 1,
+      },
+    ]);
+  });
 });
