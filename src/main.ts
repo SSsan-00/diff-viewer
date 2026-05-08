@@ -2777,10 +2777,12 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
       toast.show("保存用の権限がないファイルがあります。", "error");
       return;
     }
+    const sourceFiles = await getPaneSourceFilesForSave(side, writableTargets);
     const writeItems = buildMultiFileWritePlan(
       paneBindings[side].editor.getValue(),
       paneBindings[side].segments,
       writableTargets,
+      { sourceFiles },
     );
     for (const { target } of writeItems) {
       const permitted = await requestFileHandlePermission(target.handle, "readwrite");
@@ -2792,6 +2794,14 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
     for (const { target, bytes } of writeItems) {
       await writeBytesToFileHandle(target.handle, bytes);
     }
+    paneBindings[side].rawFiles.length = 0;
+    paneBindings[side].rawFiles.push(
+      ...writeItems.map(({ target, bytes }) => ({
+        name: target.fileName,
+        bytes,
+        encoding: target.resolvedEncoding,
+      })),
+    );
     toast.show(
       targets.length === 1
         ? `${targets[0].fileName} を保存しました。`
@@ -2807,6 +2817,30 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
     paneSavePending[side] = false;
     updatePaneSaveButton(side);
   }
+}
+
+async function getPaneSourceFilesForSave(
+  side: "left" | "right",
+  targets: readonly PaneSaveTarget[],
+): Promise<FileBytes[]> {
+  const rawFiles = paneBindings[side].rawFiles;
+  if (
+    rawFiles.length === targets.length &&
+    rawFiles.every((file, index) => file.name === targets[index]?.fileName)
+  ) {
+    return rawFiles;
+  }
+  return Promise.all(
+    targets.map(async (target) => {
+      const file = await target.handle.getFile();
+      const buffer = await file.arrayBuffer();
+      return {
+        name: target.fileName,
+        bytes: new Uint8Array(buffer),
+        encoding: target.resolvedEncoding,
+      };
+    }),
+  );
 }
 
 async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {

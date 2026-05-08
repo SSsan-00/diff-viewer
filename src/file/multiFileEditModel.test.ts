@@ -148,10 +148,100 @@ describe("multi-file edit model", () => {
       },
     ];
 
-    const plan = buildMultiFileWritePlan("alpha\n™\n㈱", extendedSegments, targets);
+    const plan = buildMultiFileWritePlan("alpha\n￥\n㈱", extendedSegments, targets);
 
     expect(new TextDecoder().decode(plan[0].bytes)).toBe("alpha");
-    expect(new TextDecoder("shift_jis").decode(plan[1].bytes)).toBe("TM");
+    expect(new TextDecoder("shift_jis").decode(plan[1].bytes)).toBe("￥");
     expect(new TextDecoder("euc-jp").decode(plan[2].bytes)).toBe("㈱");
+  });
+
+  it("rejects mixed-encoding plans instead of converting unsupported legacy characters", () => {
+    const extendedSegments: LineSegment[] = [
+      { startLine: 1, lineCount: 1, fileIndex: 1, fileName: "a.txt" },
+      { startLine: 2, lineCount: 1, fileIndex: 2, fileName: "b.txt" },
+      { startLine: 3, lineCount: 1, fileIndex: 3, fileName: "c.txt" },
+    ];
+    const targets: PaneSaveTarget[] = [
+      {
+        handle: { name: "a.txt", async getFile() { return new File([""], "a.txt"); } },
+        fileName: "a.txt",
+        resolvedEncoding: "utf-8",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+      {
+        handle: { name: "b.txt", async getFile() { return new File([""], "b.txt"); } },
+        fileName: "b.txt",
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+      {
+        handle: { name: "c.txt", async getFile() { return new File([""], "c.txt"); } },
+        fileName: "c.txt",
+        resolvedEncoding: "euc-jp",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+    ];
+
+    expect(() => buildMultiFileWritePlan("alpha\n™\n㈱", extendedSegments, targets))
+      .toThrow("shift_jis");
+  });
+
+  it("uses source bytes to preserve unchanged lines in each file", () => {
+    const targets: PaneSaveTarget[] = [
+      {
+        handle: { name: "a.txt", async getFile() { return new File([""], "a.txt"); } },
+        fileName: "a.txt",
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\r\n",
+      },
+      {
+        handle: { name: "b.txt", async getFile() { return new File([""], "b.txt"); } },
+        fileName: "b.txt",
+        resolvedEncoding: "utf-8",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      },
+    ];
+    const sourceFiles = [
+      {
+        name: "a.txt",
+        bytes: Uint8Array.from([
+          0x87, 0x9c,
+          0x0d, 0x0a,
+          0x6f, 0x6c, 0x64,
+          0x0d, 0x0a,
+          0x87, 0x9b,
+        ]),
+        encoding: "shift_jis" as const,
+      },
+      {
+        name: "b.txt",
+        bytes: new TextEncoder().encode("tail"),
+        encoding: "utf-8" as const,
+      },
+    ];
+
+    const plan = buildMultiFileWritePlan(
+      "∪\nnew\n∩\ntail",
+      [
+        { startLine: 1, lineCount: 3, fileIndex: 1, fileName: "a.txt" },
+        { startLine: 4, lineCount: 1, fileIndex: 2, fileName: "b.txt" },
+      ],
+      targets,
+      { sourceFiles },
+    );
+
+    expect(Array.from(plan[0].bytes)).toEqual([
+      0x87, 0x9c,
+      0x0d, 0x0a,
+      0x6e, 0x65, 0x77,
+      0x0d, 0x0a,
+      0x87, 0x9b,
+    ]);
+    expect(new TextDecoder().decode(plan[1].bytes)).toBe("tail");
   });
 });

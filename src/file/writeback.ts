@@ -70,25 +70,6 @@ export type PaneWriteAvailability = {
 const UTF8_BOM = [0xef, 0xbb, 0xbf];
 const WRITE_CHUNK_BYTE_LIMIT = 16 * 1024;
 const legacyEncodeMaps: Partial<Record<"shift_jis" | "euc-jp", Map<string, Uint8Array>>> = {};
-const legacyEncodeAliasMaps: Partial<Record<"shift_jis" | "euc-jp", Map<string, Uint8Array>>> = {};
-const legacyExplicitEncodeAliases: Record<"shift_jis" | "euc-jp", Map<string, Uint8Array>> = {
-  shift_jis: new Map([
-    ["¥", Uint8Array.from([0x5c])],
-    ["‾", Uint8Array.from([0x7e])],
-    ["〜", Uint8Array.from([0x81, 0x60])],
-    ["−", Uint8Array.from([0x81, 0x7c])],
-    ["‖", Uint8Array.from([0x81, 0x61])],
-    ["—", Uint8Array.from([0x81, 0x5c])],
-  ]),
-  "euc-jp": new Map([
-    ["¥", Uint8Array.from([0x5c])],
-    ["‾", Uint8Array.from([0x7e])],
-    ["〜", Uint8Array.from([0xa1, 0xc1])],
-    ["−", Uint8Array.from([0xa1, 0xdd])],
-    ["‖", Uint8Array.from([0xa1, 0xc2])],
-    ["—", Uint8Array.from([0xa1, 0xbd])],
-  ]),
-};
 
 function hasUtf8Bom(bytes: Uint8Array): boolean {
   return (
@@ -224,6 +205,10 @@ function normalizeLineEndingsForWriteback(
   return lineEnding === "\n" ? text : text.replace(/\n/g, lineEnding);
 }
 
+function getLineEndingBytes(lineEnding: FileLineEnding): Uint8Array {
+  return Uint8Array.from(Array.from(lineEnding).map((char) => char.charCodeAt(0)));
+}
+
 function registerEncodedCharacter(
   map: Map<string, Uint8Array>,
   decoder: TextDecoder,
@@ -306,102 +291,18 @@ function getLegacyEncodeMap(encoding: "shift_jis" | "euc-jp"): Map<string, Uint8
   return map;
 }
 
-function getLegacyEncodeAliases(
-  encoding: "shift_jis" | "euc-jp",
-): Map<string, Uint8Array> {
-  const cached = legacyEncodeAliasMaps[encoding];
-  if (cached) {
-    return cached;
-  }
-
-  const directMap = getLegacyEncodeMap(encoding);
-  const aliases = new Map(legacyExplicitEncodeAliases[encoding]);
-  for (const [decoded, bytes] of directMap) {
-    const normalized = decoded.normalize("NFKC");
-    if (
-      normalized === decoded ||
-      Array.from(normalized).length !== 1 ||
-      directMap.has(normalized) ||
-      aliases.has(normalized)
-    ) {
-      continue;
-    }
-    aliases.set(normalized, bytes);
-  }
-
-  legacyEncodeAliasMaps[encoding] = aliases;
-  return aliases;
-}
-
-function isCombiningMark(char: string): boolean {
-  return /\p{M}/u.test(char);
-}
-
-function resolveLegacyEncodedBytes(
-  char: string,
-  map: Map<string, Uint8Array>,
-  aliases: Map<string, Uint8Array>,
-): Uint8Array | null {
-  return map.get(char) ?? aliases.get(char) ?? null;
-}
-
-function tryEncodeLegacyText(
+function encodeLegacyTextStrict(
   text: string,
   map: Map<string, Uint8Array>,
-  aliases: Map<string, Uint8Array>,
-  seen: Set<string>,
 ): Uint8Array | null {
-  if (seen.has(text)) {
-    return null;
-  }
-  seen.add(text);
-
-  const chars = Array.from(text);
   const bytes: number[] = [];
 
-  for (let index = 0; index < chars.length; index += 1) {
-    const char = chars[index] ?? "";
-    let clusterEnd = index + 1;
-    while (clusterEnd < chars.length && isCombiningMark(chars[clusterEnd] ?? "")) {
-      clusterEnd += 1;
-    }
-
-    if (clusterEnd > index + 1) {
-      const cluster = chars.slice(index, clusterEnd).join("");
-      const variants = [cluster.normalize("NFC"), cluster.normalize("NFKC")];
-      let clusterEncoded = false;
-      for (const variant of variants) {
-        if (variant === cluster) {
-          continue;
-        }
-        const encoded = tryEncodeLegacyText(variant, map, aliases, new Set(seen));
-        if (encoded) {
-          bytes.push(...encoded);
-          index = clusterEnd - 1;
-          clusterEncoded = true;
-          break;
-        }
-      }
-      if (clusterEncoded) {
-        continue;
-      }
-    }
-
-    const direct = resolveLegacyEncodedBytes(char, map, aliases);
+  for (const char of Array.from(text)) {
+    const direct = map.get(char);
     if (direct) {
       bytes.push(...direct);
       continue;
     }
-
-    const compatibility = char.normalize("NFKC");
-    if (compatibility !== char) {
-      const encoded = tryEncodeLegacyText(compatibility, map, aliases, new Set(seen));
-      if (encoded) {
-        bytes.push(...encoded);
-        continue;
-      }
-    }
-
     return null;
   }
 
@@ -411,15 +312,114 @@ function tryEncodeLegacyText(
 function findFirstLegacyUnencodableChar(
   text: string,
   map: Map<string, Uint8Array>,
-  aliases: Map<string, Uint8Array>,
 ): string {
   for (const char of Array.from(text)) {
-    if (resolveLegacyEncodedBytes(char, map, aliases)) {
+    if (map.has(char)) {
       continue;
     }
     return char;
   }
   return "";
+}
+
+type WriteEncodingOptions = {
+  resolvedEncoding: ResolvedFileEncoding;
+  includeUtf8Bom: boolean;
+  lineEnding: FileLineEnding;
+};
+
+type EncodedSourceLine = {
+  text: string;
+  bytes: Uint8Array;
+};
+
+function decodeLineBodyForWriteback(
+  bytes: Uint8Array,
+  options: WriteEncodingOptions,
+  lineIndex: number,
+): string {
+  const body =
+    options.resolvedEncoding === "utf-8" &&
+    lineIndex === 0 &&
+    hasUtf8Bom(bytes)
+      ? bytes.slice(UTF8_BOM.length)
+      : bytes;
+  if (options.resolvedEncoding === "utf-8") {
+    return decodeUtf8(body, true);
+  }
+  return new TextDecoder(options.resolvedEncoding).decode(body);
+}
+
+function splitEncodedSourceLines(
+  bytes: Uint8Array,
+  options: WriteEncodingOptions,
+): EncodedSourceLine[] {
+  const lines: EncodedSourceLine[] = [];
+  let bodyStart = 0;
+  let lineIndex = 0;
+
+  const pushLine = (bodyEnd: number, lineEnd: number) => {
+    const lineBytes = bytes.slice(bodyStart, lineEnd);
+    const bodyBytes = bytes.slice(bodyStart, bodyEnd);
+    lines.push({
+      text: decodeLineBodyForWriteback(bodyBytes, options, lineIndex),
+      bytes: lineBytes,
+    });
+    lineIndex += 1;
+    bodyStart = lineEnd;
+  };
+
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = bytes[index];
+    if (byte === 0x0d) {
+      const lineEnd = bytes[index + 1] === 0x0a ? index + 2 : index + 1;
+      pushLine(index, lineEnd);
+      index = lineEnd - 1;
+      continue;
+    }
+    if (byte === 0x0a) {
+      pushLine(index, index + 1);
+    }
+  }
+
+  pushLine(bytes.length, bytes.length);
+  return lines;
+}
+
+function encodeLineBodyForWriteback(
+  text: string,
+  options: WriteEncodingOptions,
+  includeUtf8Bom: boolean,
+): Uint8Array {
+  if (options.resolvedEncoding === "utf-8") {
+    const body = new TextEncoder().encode(text);
+    if (!includeUtf8Bom) {
+      return body;
+    }
+    const result = new Uint8Array(UTF8_BOM.length + body.length);
+    result.set(UTF8_BOM, 0);
+    result.set(body, UTF8_BOM.length);
+    return result;
+  }
+
+  const map = getLegacyEncodeMap(options.resolvedEncoding);
+  const encoded = encodeLegacyTextStrict(text, map);
+  if (!encoded) {
+    const failedChar = findFirstLegacyUnencodableChar(text, map);
+    throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${failedChar}`);
+  }
+  return encoded;
+}
+
+function concatBytes(chunks: readonly Uint8Array[]): Uint8Array {
+  const length = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const result = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return result;
 }
 
 export function describeDecodedFileForWriteback(
@@ -565,7 +565,10 @@ export async function collectDroppedFiles(
   const items = Array.from(dataTransfer?.items ?? []);
   const files = Array.from(dataTransfer?.files ?? []);
   if (items.length > 0) {
-    const dropped: DroppedFileItem[] = [];
+    const droppedRequests: Array<{
+      file: File;
+      handle: Promise<ReadableFileHandle | null>;
+    }> = [];
     for (const item of items) {
       if (item.kind !== "file") {
         continue;
@@ -574,19 +577,24 @@ export async function collectDroppedFiles(
       if (!file) {
         continue;
       }
-      let handle: ReadableFileHandle | null = null;
+      let handle = Promise.resolve<ReadableFileHandle | null>(null);
       if (typeof item.getAsFileSystemHandle === "function") {
         try {
-          const candidate = await item.getAsFileSystemHandle();
-          if (isReadableFileHandle(candidate)) {
-            handle = candidate;
-          }
+          handle = Promise.resolve(item.getAsFileSystemHandle())
+            .then((candidate) => isReadableFileHandle(candidate) ? candidate : null)
+            .catch(() => null);
         } catch (_error) {
-          handle = null;
+          handle = Promise.resolve(null);
         }
       }
-      dropped.push({ file, handle });
+      droppedRequests.push({ file, handle });
     }
+    const dropped = await Promise.all(
+      droppedRequests.map(async (item) => ({
+        file: item.file,
+        handle: await item.handle,
+      })),
+    );
     if (dropped.length > 0) {
       if (files.length <= dropped.length) {
         return dropped;
@@ -633,11 +641,7 @@ export async function pickFilesWithHandles(
 
 export function buildPaneWriteBytes(
   text: string,
-  options: {
-    resolvedEncoding: ResolvedFileEncoding;
-    includeUtf8Bom: boolean;
-    lineEnding: FileLineEnding;
-  },
+  options: WriteEncodingOptions,
 ): Uint8Array {
   if (options.resolvedEncoding === "utf-8") {
     return encodeUtf8TextForWriteback(text, {
@@ -648,23 +652,77 @@ export function buildPaneWriteBytes(
 
   const normalized = normalizeLineEndingsForWriteback(text, options.lineEnding);
   const map = getLegacyEncodeMap(options.resolvedEncoding);
-  const aliases = getLegacyEncodeAliases(options.resolvedEncoding);
-  const encoded = tryEncodeLegacyText(normalized, map, aliases, new Set<string>());
+  const encoded = encodeLegacyTextStrict(normalized, map);
   if (!encoded) {
-    const failedChar = findFirstLegacyUnencodableChar(normalized, map, aliases);
+    const failedChar = findFirstLegacyUnencodableChar(normalized, map);
     throw new Error(`Cannot encode character for ${options.resolvedEncoding}: ${failedChar}`);
   }
   return encoded;
 }
 
+export function buildPaneWriteBytesPreservingSource(
+  text: string,
+  options: WriteEncodingOptions,
+  sourceBytes: Uint8Array | null | undefined,
+): Uint8Array {
+  if (!sourceBytes) {
+    return buildPaneWriteBytes(text, options);
+  }
+
+  const sourceLines = splitEncodedSourceLines(sourceBytes, options);
+  const currentLines = text.split("\n");
+  let prefixLength = 0;
+  while (
+    prefixLength < sourceLines.length &&
+    prefixLength < currentLines.length &&
+    sourceLines[prefixLength]?.text === currentLines[prefixLength]
+  ) {
+    prefixLength += 1;
+  }
+
+  let sourceSuffixStart = sourceLines.length;
+  let currentSuffixStart = currentLines.length;
+  while (
+    sourceSuffixStart > prefixLength &&
+    currentSuffixStart > prefixLength &&
+    sourceLines[sourceSuffixStart - 1]?.text === currentLines[currentSuffixStart - 1]
+  ) {
+    sourceSuffixStart -= 1;
+    currentSuffixStart -= 1;
+  }
+
+  const lineEndingBytes = getLineEndingBytes(options.lineEnding);
+  const chunks: Uint8Array[] = [];
+  for (let index = 0; index < currentLines.length; index += 1) {
+    if (index < prefixLength) {
+      chunks.push(sourceLines[index]?.bytes ?? new Uint8Array());
+      continue;
+    }
+    if (index >= currentSuffixStart) {
+      const sourceIndex = sourceSuffixStart + index - currentSuffixStart;
+      chunks.push(sourceLines[sourceIndex]?.bytes ?? new Uint8Array());
+      continue;
+    }
+
+    chunks.push(
+      encodeLineBodyForWriteback(
+        currentLines[index] ?? "",
+        options,
+        index === 0 && options.includeUtf8Bom,
+      ),
+    );
+    if (index < currentLines.length - 1) {
+      chunks.push(lineEndingBytes);
+    }
+  }
+
+  return concatBytes(chunks);
+}
+
 export async function writeTextToFileHandle(
   handle: WritableFileHandle,
   text: string,
-  options: {
-    resolvedEncoding: ResolvedFileEncoding;
-    includeUtf8Bom: boolean;
-    lineEnding: FileLineEnding;
-  },
+  options: WriteEncodingOptions,
 ): Promise<void> {
   const bytes = buildPaneWriteBytes(text, options);
   await writeBytesToFileHandle(handle, bytes);

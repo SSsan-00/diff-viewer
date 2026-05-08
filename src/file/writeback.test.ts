@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildPaneWriteBytes,
+  buildPaneWriteBytesPreservingSource,
   collectDroppedFiles,
   describeDecodedFileForWriteback,
   encodeUtf8TextForWriteback,
@@ -363,6 +364,61 @@ describe("collectDroppedFiles", () => {
     expect(dropped[0]).toEqual({ file: first, handle });
     expect(dropped[1]).toEqual({ file: second, handle: null });
   });
+
+  it("requests every dropped file handle before awaiting handle resolution", async () => {
+    const first = new File(["a"], "first.txt", { type: "text/plain" });
+    const second = new File(["b"], "second.txt", { type: "text/plain" });
+    const firstHandle = {
+      kind: "file",
+      name: "first.txt",
+      async getFile() {
+        return first;
+      },
+    };
+    const secondHandle = {
+      kind: "file",
+      name: "second.txt",
+      async getFile() {
+        return second;
+      },
+    };
+    const calls: string[] = [];
+    let resolveFirst:
+      | ((value: typeof firstHandle) => void)
+      | null = null;
+
+    const droppedPromise = collectDroppedFiles({
+      items: [
+        {
+          kind: "file",
+          getAsFile: () => first,
+          getAsFileSystemHandle: () => {
+            calls.push("first");
+            return new Promise((resolve) => {
+              resolveFirst = resolve;
+            });
+          },
+        },
+        {
+          kind: "file",
+          getAsFile: () => second,
+          getAsFileSystemHandle: async () => {
+            calls.push("second");
+            return secondHandle;
+          },
+        },
+      ],
+      files: [first, second],
+    });
+
+    expect(calls).toEqual(["first", "second"]);
+    resolveFirst?.(firstHandle);
+
+    await expect(droppedPromise).resolves.toEqual([
+      { file: first, handle: firstHandle },
+      { file: second, handle: secondHandle },
+    ]);
+  });
 });
 
 describe("pickFilesWithHandles", () => {
@@ -495,84 +551,126 @@ describe("writeTextToFileHandle", () => {
     expect(written).toEqual([0xa4, 0xa2, 0x0a, 0xa4, 0xa4]);
   });
 
-  it("encodes common Unicode compatibility characters to Shift_JIS bytes", () => {
-    const bytes = buildPaneWriteBytes("¥‾¢£¬〜−‖—", {
-      resolvedEncoding: "shift_jis",
-      includeUtf8Bom: false,
-      lineEnding: "\n",
-    });
-
-    expect(Array.from(bytes)).toEqual([
+  it("keeps ASCII spaces, tabs, backslashes, and direct Shift_JIS characters byte-exact", () => {
+    const original = [
+      0x20,
+      0x20,
+      0x09,
       0x5c,
-      0x7e,
-      0x81, 0x91,
-      0x81, 0x92,
-      0x81, 0xca,
+      0x81, 0x40,
+      0x81, 0x8f,
+      0x81, 0x5f,
       0x81, 0x60,
       0x81, 0x7c,
-      0x81, 0x61,
-      0x81, 0x5c,
-    ]);
-  });
-
-  it("encodes common Unicode compatibility characters to EUC-JP bytes", () => {
-    const bytes = buildPaneWriteBytes("¥‾¢£¬〜−‖—", {
-      resolvedEncoding: "euc-jp",
+      0x0d,
+      0x0a,
+      0x82, 0xa0,
+    ];
+    const text = new TextDecoder("shift_jis")
+      .decode(Uint8Array.from(original))
+      .replace(/\r\n/g, "\n");
+    const bytes = buildPaneWriteBytes(text, {
+      resolvedEncoding: "shift_jis",
       includeUtf8Bom: false,
-      lineEnding: "\n",
+      lineEnding: "\r\n",
     });
 
-    expect(Array.from(bytes)).toEqual([
+    expect(Array.from(bytes)).toEqual(original);
+  });
+
+  it("keeps ASCII spaces, tabs, backslashes, and direct EUC-JP characters byte-exact", () => {
+    const original = [
+      0x20,
+      0x20,
+      0x09,
       0x5c,
-      0x7e,
-      0xa1, 0xf1,
-      0xa1, 0xf2,
-      0xa2, 0xcc,
+      0xa1, 0xa1,
+      0xa1, 0xef,
+      0xa1, 0xc0,
       0xa1, 0xc1,
       0xa1, 0xdd,
-      0xa1, 0xc2,
-      0xa1, 0xbd,
-    ]);
-  });
-
-  it("encodes canonically equivalent decomposed kana to Shift_JIS bytes", () => {
-    const composed = buildPaneWriteBytes("がぱ", {
-      resolvedEncoding: "shift_jis",
-      includeUtf8Bom: false,
-      lineEnding: "\n",
-    });
-    const decomposed = buildPaneWriteBytes("か\u3099は\u309A", {
-      resolvedEncoding: "shift_jis",
-      includeUtf8Bom: false,
-      lineEnding: "\n",
-    });
-
-    expect(Array.from(decomposed)).toEqual(Array.from(composed));
-  });
-
-  it("encodes canonically equivalent decomposed kana to EUC-JP bytes", () => {
-    const composed = buildPaneWriteBytes("がぱ", {
-      resolvedEncoding: "euc-jp",
-      includeUtf8Bom: false,
-      lineEnding: "\n",
-    });
-    const decomposed = buildPaneWriteBytes("か\u3099は\u309A", {
+      0x0a,
+      0xa4, 0xa2,
+    ];
+    const text = new TextDecoder("euc-jp").decode(Uint8Array.from(original));
+    const bytes = buildPaneWriteBytes(text, {
       resolvedEncoding: "euc-jp",
       includeUtf8Bom: false,
       lineEnding: "\n",
     });
 
-    expect(Array.from(decomposed)).toEqual(Array.from(composed));
+    expect(Array.from(bytes)).toEqual(original);
   });
 
-  it("falls back to compatibility decomposition for otherwise unencodable Shift_JIS characters", () => {
+  it("rejects legacy compatibility aliases instead of converting them", () => {
+    const chars = ["¥", "‾", "〜", "−", "‖", "—", "\u00a0", "\u2003"];
+
+    for (const char of chars) {
+      expect(() =>
+        buildPaneWriteBytes(char, {
+          resolvedEncoding: "shift_jis",
+          includeUtf8Bom: false,
+          lineEnding: "\n",
+        }),
+      ).toThrow("shift_jis");
+      expect(() =>
+        buildPaneWriteBytes(char, {
+          resolvedEncoding: "euc-jp",
+          includeUtf8Bom: false,
+          lineEnding: "\n",
+        }),
+      ).toThrow("euc-jp");
+    }
+  });
+
+  it("rejects Shift_JIS compatibility decomposition while allowing direct EUC-JP characters", () => {
+    expect(() =>
+      buildPaneWriteBytes("™", {
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      }),
+    ).toThrow("shift_jis");
+
     const bytes = buildPaneWriteBytes("™", {
+      resolvedEncoding: "euc-jp",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
+    expect(new TextDecoder("euc-jp").decode(bytes)).toBe("™");
+  });
+
+  it("rejects decomposed kana instead of composing them silently", () => {
+    expect(() =>
+      buildPaneWriteBytes("か\u3099は\u309A", {
+        resolvedEncoding: "shift_jis",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      }),
+    ).toThrow("shift_jis");
+    expect(() =>
+      buildPaneWriteBytes("か\u3099は\u309A", {
+        resolvedEncoding: "euc-jp",
+        includeUtf8Bom: false,
+        lineEnding: "\n",
+      }),
+    ).toThrow("euc-jp");
+  });
+
+  it("keeps composed kana when they are directly representable", () => {
+    const shiftJis = buildPaneWriteBytes("がぱ", {
       resolvedEncoding: "shift_jis",
       includeUtf8Bom: false,
       lineEnding: "\n",
     });
+    const eucJp = buildPaneWriteBytes("がぱ", {
+      resolvedEncoding: "euc-jp",
+      includeUtf8Bom: false,
+      lineEnding: "\n",
+    });
 
-    expect(new TextDecoder("shift_jis").decode(bytes)).toBe("TM");
+    expect(new TextDecoder("shift_jis").decode(shiftJis)).toBe("がぱ");
+    expect(new TextDecoder("euc-jp").decode(eucJp)).toBe("がぱ");
   });
 
   it("keeps directly representable compatibility characters unchanged in Shift_JIS", () => {
@@ -601,6 +699,49 @@ describe("writeTextToFileHandle", () => {
         lineEnding: "\n",
       })),
     ).toEqual([0x5c, 0x7e, 0x2d]);
+  });
+
+  it("returns original bytes when text did not change", () => {
+    const original = Uint8Array.from([
+      0x87, 0x9c,
+      0x0d, 0x0a,
+      0x87, 0x9b,
+    ]);
+    const text = new TextDecoder("shift_jis")
+      .decode(original)
+      .replace(/\r\n/g, "\n");
+
+    const bytes = buildPaneWriteBytesPreservingSource(text, {
+      resolvedEncoding: "shift_jis",
+      includeUtf8Bom: false,
+      lineEnding: "\r\n",
+    }, original);
+
+    expect(Array.from(bytes)).toEqual(Array.from(original));
+  });
+
+  it("preserves unchanged lines while encoding only edited lines", () => {
+    const original = Uint8Array.from([
+      0x87, 0x9c,
+      0x0d, 0x0a,
+      0x6f, 0x6c, 0x64,
+      0x0d, 0x0a,
+      0x87, 0x9b,
+    ]);
+
+    const bytes = buildPaneWriteBytesPreservingSource("∪\nnew\n∩", {
+      resolvedEncoding: "shift_jis",
+      includeUtf8Bom: false,
+      lineEnding: "\r\n",
+    }, original);
+
+    expect(Array.from(bytes)).toEqual([
+      0x87, 0x9c,
+      0x0d, 0x0a,
+      0x6e, 0x65, 0x77,
+      0x0d, 0x0a,
+      0x87, 0x9b,
+    ]);
   });
 
   it("throws when the text cannot be represented in the target encoding", async () => {

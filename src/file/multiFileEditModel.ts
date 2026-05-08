@@ -1,6 +1,7 @@
 import type { LineChange, LineSegment } from "./lineNumbering";
+import type { FileBytes } from "./decodedFiles";
 import {
-  buildPaneWriteBytes,
+  buildPaneWriteBytesPreservingSource,
   type PaneSaveTarget,
 } from "./writeback";
 
@@ -67,6 +68,7 @@ export function buildMultiFileWritePlan<TTarget extends PaneSaveTarget>(
   text: string,
   segments: readonly LineSegment[],
   targets: readonly TTarget[],
+  options?: { sourceFiles?: readonly FileBytes[] },
 ): MultiFileWriteItem<TTarget>[] {
   const segmentTexts = extractSegmentTexts(text, segments);
   if (segmentTexts.length !== targets.length) {
@@ -75,14 +77,17 @@ export function buildMultiFileWritePlan<TTarget extends PaneSaveTarget>(
 
   return targets.map((target, index) => {
     const segmentText = segmentTexts[index]?.text ?? "";
+    const sourceFile = options?.sourceFiles?.[index];
+    const sourceBytes =
+      sourceFile?.name === target.fileName ? sourceFile.bytes : null;
     return {
       target,
       text: segmentText,
-      bytes: buildPaneWriteBytes(segmentText, {
+      bytes: buildPaneWriteBytesPreservingSource(segmentText, {
         resolvedEncoding: target.resolvedEncoding,
         includeUtf8Bom: target.includeUtf8Bom,
         lineEnding: target.lineEnding,
-      }),
+      }, sourceBytes),
     };
   });
 }
