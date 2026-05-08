@@ -192,6 +192,8 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/editorOptions.test.ts` エディタ生成オプションのテスト。
 - `src/ui/themeToggle.ts` ☀️/🌙 テーマ切替と保存。exports: `setupThemeToggle`, `ThemeMode`。
 - `src/ui/themeToggle.test.ts` テーマ切替のテスト。
+- `src/ui/terminalPlugTheme.ts` 非公開Vimモード専用の Monaco テーマ定義とテーマ切替ロック。exports: `defineTerminalPlugTheme`, `applyTerminalPlugThemeLock`, `TERMINAL_PLUG_THEME`。
+- `src/ui/terminalPlugTheme.test.ts` Terminal Plug テーマとテーマ切替ロックのテスト。
 - `src/ui/toast.ts` トースト通知（成功/失敗メッセージ）の管理。export: `createToastManager`。
 - `src/ui/toast.test.ts` トースト通知のテスト。
 - `src/ui/diffJumpButtons.ts` 差分ジャンプボタンの有効/無効制御。export: `updateDiffJumpButtons`。

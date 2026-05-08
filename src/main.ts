@@ -90,6 +90,11 @@ import {
 } from "./ui/paneFocusShortcut";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
+import {
+  applyTerminalPlugThemeLock,
+  defineTerminalPlugTheme,
+  TERMINAL_PLUG_THEME,
+} from "./ui/terminalPlugTheme";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
 import { bindSyntaxHighlightToggle } from "./ui/syntaxHighlightToggle";
 import { bindIgnoreLeadingWhitespaceToggle } from "./ui/ignoreLeadingWhitespaceToggle";
@@ -243,6 +248,7 @@ if (!app) {
 }
 
 const appMode = resolveAppMode(window.location);
+const terminalPlugActive = appMode.vimMode === "plug";
 bindSaveModeShortcut({
   keyTarget: window,
   getHref: () => window.location.href,
@@ -1377,6 +1383,9 @@ const refreshSyntaxHighlight = () => {
 };
 
 function toggleTheme(): void {
+  if (terminalPlugActive) {
+    return;
+  }
   if (!themeToggle) {
     return;
   }
@@ -2226,7 +2235,7 @@ function focusPaneFromVim(targetSide: "left" | "right"): void {
   focusEditorAtAlignedLine(sourceEditor, targetEditor);
 }
 
-if (appMode.vimMode === "plug") {
+if (terminalPlugActive) {
   vimPlugController = setupVimPlugMode({
     appRoot: app,
     editors: {
@@ -2245,12 +2254,18 @@ if (appMode.vimMode === "plug") {
   });
 }
 
-setupThemeToggle(document, {
-  storage,
-  onThemeChange: (mode) => {
-    monaco.editor.setTheme(mode === "dark" ? "vs-dark" : "vs");
-  },
-});
+if (terminalPlugActive) {
+  defineTerminalPlugTheme(monaco.editor);
+  monaco.editor.setTheme(TERMINAL_PLUG_THEME);
+  applyTerminalPlugThemeLock(document);
+} else {
+  setupThemeToggle(document, {
+    storage,
+    onThemeChange: (mode) => {
+      monaco.editor.setTheme(mode === "dark" ? "vs-dark" : "vs");
+    },
+  });
+}
 
 leftEditor.onDidChangeModelContent((event) => {
   if (suppressLeftFileBytesClear) {
