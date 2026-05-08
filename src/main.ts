@@ -151,6 +151,7 @@ import {
 import { handleFavoritePanelShortcut } from "./ui/favoritePanelShortcut";
 import { handleFileOpenShortcut } from "./ui/fileOpenShortcut";
 import { handlePaneClearShortcut } from "./ui/paneClearShortcut";
+import { bindSaveModeShortcut } from "./ui/saveModeShortcut";
 import { handleThemeShortcut } from "./ui/themeShortcut";
 import { handleHighlightShortcut } from "./ui/highlightShortcut";
 import {
@@ -232,6 +233,13 @@ if (!app) {
 }
 
 const appMode = resolveAppMode(window.location);
+bindSaveModeShortcut({
+  keyTarget: window,
+  getHref: () => window.location.href,
+  open: (href) => {
+    window.location.assign(href);
+  },
+});
 if (appMode.manualMode === "manual") {
   renderManualViewer(app, {
     document,
