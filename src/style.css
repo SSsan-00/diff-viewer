@@ -1762,6 +1762,26 @@ body {
   margin-top: 8px;
 }
 
+.vim-plug-status {
+  min-height: 22px;
+  padding: 3px 10px;
+  border-top: 1px solid #e1d6c2;
+  background: #f9f3e9;
+  color: #4c4133;
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.75rem;
+  line-height: 1.35;
+}
+
+.vim-plug-status input {
+  width: min(360px, 80%);
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
 .monaco-editor .line-insert {
   background-color: rgba(80, 170, 90, 0.18);
 }
@@ -2583,6 +2603,12 @@ body {
 
 [data-theme="dark"] .pane-title {
   background-color: #231f1b;
+}
+
+[data-theme="dark"] .vim-plug-status {
+  background: #231f1b;
+  border-top-color: #3b342d;
+  color: #e6e2d8;
 }
 
 [data-theme="dark"] .pane-select select {

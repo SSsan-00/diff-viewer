@@ -33,7 +33,6 @@
 ├── index.html
 ├── package.json
 ├── pnpm-lock.yaml
-├── pnpm-workspace.yaml
 ├── tsconfig.json
 └── vite.config.ts
 ```
@@ -211,6 +210,11 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/fileOpenShortcut.test.ts` ファイル選択ショートカットのテスト。
 - `src/ui/paneClearShortcut.ts` Ctrl+I / Ctrl+Shift+I のクリアショートカット判定。export: `handlePaneClearShortcut`。
 - `src/ui/paneClearShortcut.test.ts` クリアショートカットのテスト。
+- `src/ui/vimPlugShortcut.ts` 非公開VimモードのURL切替ショートカット判定。export: `bindVimPlugShortcut`, `handleVimPlugShortcut`。
+- `src/ui/vimPaneNavigation.ts` 非公開Vimモード中の `Ctrl+w h/l` ペイン移動と既存ショートカット抑止判定。exports: `handleVimPaneNavigation`, `shouldLetVimHandleEditorKey`。
+- `src/ui/vimPlugMode.ts` 非公開Vimモードの Monaco 接続、`:w`/`:wa`/`gd` コマンド接続、status bar ノード生成。
+- `src/ui/vimCommands.ts` monaco-vim へのアプリ固有コマンド登録。export: `registerVimPlugCommands`。
+- `src/ui/vimDefinition.ts` `gd` 用の軽量な定義候補探索とジャンプ補助。exports: `findDefinitionLine`, `goToLikelyDefinition`。
 - `src/ui/workspaceNavigation.ts` ワークスペース一覧の↑/↓移動ロジック。exports: `handleWorkspaceNavigation`, `getNextWorkspaceId`。
 - `src/ui/workspaceNavigation.test.ts` ワークスペースナビゲーションのテスト。
 - `src/ui/workspaceContent.ts` ワークスペース切替時のエディタ内容保存/復元を補助する。exports: `applyWorkspaceSwitch`, `applyWorkspaceSwitchWithHooks`。

@@ -5,12 +5,14 @@ export type AppMode = {
   diffEngineMode: DiffEngineMode;
   diffHighlightMode: DiffHighlightMode;
   manualMode: ManualMode;
+  vimMode: VimMode;
   writebackEnabled: boolean;
 };
 
 export type DiffCalculationMode = "normal" | "anchor-only";
 export type DiffHighlightMode = "normal" | "manual-anchor-only";
 export type ManualMode = "app" | "manual";
+export type VimMode = "off" | "plug";
 
 type LocationLike = {
   search?: string;
@@ -57,6 +59,11 @@ function readManualMode(params: URLSearchParams): ManualMode | null {
   return manual === "on" ? "manual" : null;
 }
 
+function readVimMode(params: URLSearchParams): VimMode | null {
+  const entry = normalizeValue(params.get("entry"));
+  return entry === "plug" ? "plug" : null;
+}
+
 export function resolveAppMode(location: LocationLike): AppMode {
   const searchParams = parseParams(location.search);
   const hashParams = parseParams(location.hash);
@@ -78,6 +85,10 @@ export function resolveAppMode(location: LocationLike): AppMode {
       readManualMode(searchParams) ??
       readManualMode(hashParams) ??
       "app",
+    vimMode:
+      readVimMode(searchParams) ??
+      readVimMode(hashParams) ??
+      "off",
     writebackEnabled:
       readWritebackEnabled(searchParams) ?? false,
   };

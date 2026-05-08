@@ -32,7 +32,8 @@
     "vitest": "^4.0.16"
   },
   "dependencies": {
-    "monaco-editor": "^0.55.1"
+    "monaco-editor": "^0.55.1",
+    "monaco-vim": "0.4.4"
   },
   "packageManager": "pnpm@10.22.0"
 }

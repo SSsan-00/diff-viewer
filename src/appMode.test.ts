@@ -8,6 +8,7 @@ describe("resolveAppMode", () => {
       diffEngineMode: "auto",
       diffHighlightMode: "normal",
       manualMode: "app",
+      vimMode: "off",
       writebackEnabled: false,
     });
   });
@@ -66,6 +67,7 @@ describe("resolveAppMode", () => {
       diffEngineMode: "auto",
       diffHighlightMode: "normal",
       manualMode: "app",
+      vimMode: "off",
       writebackEnabled: true,
     });
   });
@@ -86,6 +88,7 @@ describe("resolveAppMode", () => {
       diffEngineMode: "auto",
       diffHighlightMode: "manual-anchor-only",
       manualMode: "app",
+      vimMode: "off",
       writebackEnabled: true,
     });
   });
@@ -108,6 +111,34 @@ describe("resolveAppMode", () => {
       diffEngineMode: "auto",
       diffHighlightMode: "manual-anchor-only",
       manualMode: "manual",
+      vimMode: "off",
+      writebackEnabled: true,
+    });
+  });
+
+  it("keeps hidden Vim plug mode disabled by default", () => {
+    expect(resolveAppMode({ search: "" }).vimMode).toBe("off");
+  });
+
+  it("enables hidden Vim plug mode from entry=plug", () => {
+    expect(resolveAppMode({ search: "?entry=plug" }).vimMode).toBe("plug");
+  });
+
+  it("can read hidden Vim plug mode from hash parameters", () => {
+    expect(resolveAppMode({ hash: "#entry=plug" }).vimMode).toBe("plug");
+  });
+
+  it("keeps hidden Vim plug mode when combined with startup parameters", () => {
+    expect(
+      resolveAppMode({
+        search: "?entry=plug&save=on&diff=off&highlight=off&manual=on",
+      }),
+    ).toEqual({
+      diffCalculationMode: "anchor-only",
+      diffEngineMode: "auto",
+      diffHighlightMode: "manual-anchor-only",
+      manualMode: "manual",
+      vimMode: "plug",
       writebackEnabled: true,
     });
   });

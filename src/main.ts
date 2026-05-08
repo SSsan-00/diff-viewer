@@ -84,7 +84,10 @@ import { getNextAnchorKey, resolveAnchorMoveDelta } from "./ui/anchorNavigation"
 import { handleFindShortcut } from "./ui/editorFind";
 import { handleGoToLineShortcut } from "./ui/goToLine";
 import { handleGoToLineFileMoveShortcut, moveSelectedIndex } from "./ui/goToLineNavigation";
-import { handlePaneFocusShortcut } from "./ui/paneFocusShortcut";
+import {
+  focusEditorAtAlignedLine,
+  handlePaneFocusShortcut,
+} from "./ui/paneFocusShortcut";
 import { updateDiffJumpButtons } from "./ui/diffJumpButtons";
 import { setupThemeToggle } from "./ui/themeToggle";
 import { bindWordWrapShortcut } from "./ui/wordWrapShortcut";
@@ -154,6 +157,13 @@ import { handlePaneClearShortcut } from "./ui/paneClearShortcut";
 import { bindSaveModeShortcut } from "./ui/saveModeShortcut";
 import { handleThemeShortcut } from "./ui/themeShortcut";
 import { handleHighlightShortcut } from "./ui/highlightShortcut";
+import { bindVimPlugShortcut } from "./ui/vimPlugShortcut";
+import { setupVimPlugMode, type VimPlugModeController } from "./ui/vimPlugMode";
+import {
+  createVimPaneNavigationState,
+  handleVimPaneNavigation,
+  shouldLetVimHandleEditorKey,
+} from "./ui/vimPaneNavigation";
 import {
   clampFavoriteFocusIndex,
   handleFavoriteListKeydown,
@@ -234,6 +244,13 @@ if (!app) {
 
 const appMode = resolveAppMode(window.location);
 bindSaveModeShortcut({
+  keyTarget: window,
+  getHref: () => window.location.href,
+  open: (href) => {
+    window.location.assign(href);
+  },
+});
+bindVimPlugShortcut({
   keyTarget: window,
   getHref: () => window.location.href,
   open: (href) => {
@@ -2177,6 +2194,57 @@ rightEditor.onDidFocusEditorText(() => {
   lastFocusedSide = "right";
 });
 
+const vimPaneNavigationState = createVimPaneNavigationState();
+let vimPlugController: VimPlugModeController | null = null;
+
+function getSideForEditor(
+  editor: monaco.editor.IStandaloneCodeEditor,
+): "left" | "right" | null {
+  if (editor === leftEditor) {
+    return "left";
+  }
+  if (editor === rightEditor) {
+    return "right";
+  }
+  return null;
+}
+
+function getFocusedEditorSide(): "left" | "right" | null {
+  if (leftEditor.hasTextFocus()) {
+    return "left";
+  }
+  if (rightEditor.hasTextFocus()) {
+    return "right";
+  }
+  return null;
+}
+
+function focusPaneFromVim(targetSide: "left" | "right"): void {
+  const sourceSide = getFocusedEditorSide() ?? lastFocusedSide;
+  const sourceEditor = sourceSide === "left" ? leftEditor : rightEditor;
+  const targetEditor = targetSide === "left" ? leftEditor : rightEditor;
+  focusEditorAtAlignedLine(sourceEditor, targetEditor);
+}
+
+if (appMode.vimMode === "plug") {
+  vimPlugController = setupVimPlugMode({
+    appRoot: app,
+    editors: {
+      left: leftEditor,
+      right: rightEditor,
+    },
+    getSideForEditor,
+    panes: {
+      left: leftPane,
+      right: rightPane,
+    },
+    savePane: savePaneToFile,
+    showMessage: (message, type) => {
+      toast.show(message, type);
+    },
+  });
+}
+
 setupThemeToggle(document, {
   storage,
   onThemeChange: (mode) => {
@@ -3538,6 +3606,26 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener(
   "keydown",
   (event) => {
+    const vimPaneHandled = handleVimPaneNavigation(event, vimPaneNavigationState, {
+      enabled: !!vimPlugController,
+      focusPane: focusPaneFromVim,
+      getFocusedSide: getFocusedEditorSide,
+      getMode: (side) => vimPlugController?.getMode(side) ?? "unknown",
+    });
+    if (vimPaneHandled) {
+      event.stopPropagation();
+      return;
+    }
+
+    if (
+      shouldLetVimHandleEditorKey(event, {
+        enabled: !!vimPlugController,
+        editorFocused: getFocusedEditorSide() !== null,
+      })
+    ) {
+      return;
+    }
+
     const openSide = getOpenGoToLineSide();
     if (openSide) {
       const moveHandled = handleGoToLineFileMoveShortcut(event, {
