@@ -124,6 +124,17 @@ describe("resolveAppMode", () => {
     expect(resolveAppMode({ search: "?entry=plug" }).vimMode).toBe("plug");
   });
 
+  it("keeps normal diff calculation and highlighting when only Vim plug mode is enabled", () => {
+    expect(resolveAppMode({ search: "?entry=plug" })).toEqual({
+      diffCalculationMode: "normal",
+      diffEngineMode: "auto",
+      diffHighlightMode: "normal",
+      manualMode: "app",
+      vimMode: "plug",
+      writebackEnabled: false,
+    });
+  });
+
   it("can read hidden Vim plug mode from hash parameters", () => {
     expect(resolveAppMode({ hash: "#entry=plug" }).vimMode).toBe("plug");
   });

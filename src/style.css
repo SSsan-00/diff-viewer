@@ -1788,6 +1788,10 @@ body {
   --anchor-item-selected-fg: #ffffff;
   --anchor-item-hover-bg: rgba(89, 255, 168, 0.12);
   --anchor-item-selected-bg: rgba(89, 255, 168, 0.18);
+  --inline-insert-bg: rgba(89, 255, 168, 0.34);
+  --inline-delete-bg: rgba(255, 111, 102, 0.34);
+  --inline-insert-outline: rgba(89, 255, 168, 0.78);
+  --inline-delete-outline: rgba(255, 111, 102, 0.78);
   --file-boundary-fg: #8bfac0;
   --file-boundary-border: rgba(89, 255, 168, 0.38);
   --file-card-bg: rgba(7, 16, 13, 0.82);
@@ -2135,15 +2139,15 @@ body {
 }
 
 .app[data-vim="plug"] .monaco-editor .line-insert {
-  background-color: rgba(89, 255, 168, 0.12);
+  background-color: rgba(89, 255, 168, 0.26);
 }
 
 .app[data-vim="plug"] .monaco-editor .line-delete {
-  background-color: rgba(255, 111, 102, 0.14);
+  background-color: rgba(255, 111, 102, 0.28);
 }
 
 .app[data-vim="plug"] .monaco-editor .line-replace {
-  background-color: rgba(255, 204, 102, 0.14);
+  background-color: rgba(255, 204, 102, 0.3);
 }
 
 .app[data-vim="plug"] .monaco-editor .diff-anchor-line {
@@ -2224,6 +2228,16 @@ body {
 .monaco-editor .inline-delete {
   background-color: var(--inline-delete-bg);
   border-radius: 3px;
+}
+
+.app[data-vim="plug"] .monaco-editor .inline-insert,
+.app[data-vim="plug"] .monaco-editor .inline-delete {
+  box-shadow: inset 0 0 0 1px var(--inline-insert-outline);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.app[data-vim="plug"] .monaco-editor .inline-delete {
+  box-shadow: inset 0 0 0 1px var(--inline-delete-outline);
 }
 
 [data-theme="dark"][data-highlight="on"] .monaco-editor .inline-insert,
