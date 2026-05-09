@@ -12,6 +12,7 @@ describe("Vim plug commands", () => {
     registerVimPlugCommands(vim, {
       goToDefinition: vi.fn(),
       jumpToMatchingBracket: vi.fn(),
+      moveToViewportLine: vi.fn(),
       writeAll: vi.fn(),
       writeFocused: vi.fn(),
     });
@@ -34,6 +35,27 @@ describe("Vim plug commands", () => {
       {},
       { context: "normal" },
     );
+    expect(vim.mapCommand).toHaveBeenCalledWith(
+      "H",
+      "action",
+      "diffViewerViewportTop",
+      {},
+      { context: "normal" },
+    );
+    expect(vim.mapCommand).toHaveBeenCalledWith(
+      "M",
+      "action",
+      "diffViewerViewportMiddle",
+      {},
+      { context: "normal" },
+    );
+    expect(vim.mapCommand).toHaveBeenCalledWith(
+      "L",
+      "action",
+      "diffViewerViewportBottom",
+      {},
+      { context: "normal" },
+    );
   });
 
   it("registers :w and :wa write commands", () => {
@@ -46,6 +68,7 @@ describe("Vim plug commands", () => {
     registerVimPlugCommands(vim, {
       goToDefinition: vi.fn(),
       jumpToMatchingBracket: vi.fn(),
+      moveToViewportLine: vi.fn(),
       writeAll: vi.fn(),
       writeFocused: vi.fn(),
     });
@@ -60,6 +83,7 @@ describe("Vim plug commands", () => {
     const editor = {};
     const goToDefinition = vi.fn();
     const jumpToMatchingBracket = vi.fn();
+    const moveToViewportLine = vi.fn();
     const writeFocused = vi.fn();
     const writeAll = vi.fn();
 
@@ -69,16 +93,28 @@ describe("Vim plug commands", () => {
         defineEx: (name, _prefix, callback) => ex.set(name, callback),
         mapCommand: vi.fn(),
       },
-      { goToDefinition, jumpToMatchingBracket, writeAll, writeFocused },
+      {
+        goToDefinition,
+        jumpToMatchingBracket,
+        moveToViewportLine,
+        writeAll,
+        writeFocused,
+      },
     );
 
     actions.get("diffViewerGoToDefinition")?.({ editor });
     actions.get("diffViewerJumpToMatchingBracket")?.({ editor });
+    actions.get("diffViewerViewportTop")?.({ editor });
+    actions.get("diffViewerViewportMiddle")?.({ editor });
+    actions.get("diffViewerViewportBottom")?.({ editor });
     ex.get("write")?.({ editor });
     ex.get("wall")?.({});
 
     expect(goToDefinition).toHaveBeenCalledWith(editor);
     expect(jumpToMatchingBracket).toHaveBeenCalledWith(editor);
+    expect(moveToViewportLine).toHaveBeenCalledWith(editor, "top");
+    expect(moveToViewportLine).toHaveBeenCalledWith(editor, "middle");
+    expect(moveToViewportLine).toHaveBeenCalledWith(editor, "bottom");
     expect(writeFocused).toHaveBeenCalledWith(editor);
     expect(writeAll).toHaveBeenCalled();
   });

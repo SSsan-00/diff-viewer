@@ -3,6 +3,7 @@ import type * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import { goToLikelyDefinition } from "./vimDefinition";
 import { jumpToMatchingBracket } from "./vimBracketMatch";
 import { registerVimPlugCommands } from "./vimCommands";
+import { moveToViewportLine, type VimViewportPlacement } from "./vimViewportMotion";
 import type { VimEditorMode, VimPaneSide } from "./vimPaneNavigation";
 
 type VimAdapter = ReturnType<typeof initVimMode>;
@@ -81,6 +82,12 @@ export function setupVimPlugMode(
         const target = editor as monaco.editor.IStandaloneCodeEditor | undefined;
         if (!target || !jumpToMatchingBracket(target)) {
           options.showMessage("対応する括弧が見つかりませんでした。", "error");
+        }
+      },
+      moveToViewportLine: (editor, placement: VimViewportPlacement) => {
+        const target = editor as monaco.editor.IStandaloneCodeEditor | undefined;
+        if (!target || !moveToViewportLine(target, placement)) {
+          options.showMessage("表示範囲の移動先を特定できませんでした。", "error");
         }
       },
       writeAll: () => {
