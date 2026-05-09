@@ -28,6 +28,7 @@ type PairCandidate = {
 
 type PreparedPairLine = {
   appendComparableKey: string | null;
+  appendCoreComparableKey: string | null;
   commentBodyKey: string | null;
   commentFeature: ReturnType<typeof buildLineFeatures> | null;
   feature: ReturnType<typeof buildLineFeatures>;
@@ -69,6 +70,57 @@ function normalizeAppendComparableKey(value: string): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+function stripTrailingComparableComment(value: string): string {
+  let stripped = value.trimEnd();
+  const blockComment = stripped.match(/^(.*\S)\s+\/\*[\s\S]*\*\/\s*$/);
+  if (blockComment?.[1]?.trim()) {
+    stripped = blockComment[1].trimEnd();
+  }
+
+  const lineCommentStart = findTrailingLineCommentStart(stripped);
+  if (lineCommentStart === null) {
+    return stripped;
+  }
+  const beforeComment = stripped.slice(0, lineCommentStart).trimEnd();
+  return beforeComment.trim().length > 0 ? beforeComment : stripped;
+}
+
+function findTrailingLineCommentStart(value: string): number | null {
+  let quote: '"' | "'" | "`" | null = null;
+  let escaped = false;
+
+  for (let index = 0; index < value.length - 1; index += 1) {
+    const char = value[index];
+    const next = value[index + 1];
+
+    if (quote) {
+      if (escaped) {
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        escaped = true;
+        continue;
+      }
+      if (char === quote) {
+        quote = null;
+      }
+      continue;
+    }
+
+    if (char === "\"" || char === "'" || char === "`") {
+      quote = char;
+      continue;
+    }
+
+    if (char === "/" && next === "/" && index > 0 && /\s/.test(value[index - 1])) {
+      return index;
+    }
+  }
+
+  return null;
+}
+
 function normalizeCommentBodyKey(value: string): string | null {
   return normalizeAppendComparableKey(value);
 }
@@ -98,11 +150,14 @@ function extractLineCommentBody(line: string): {
 
 function buildAppendComparableKey(line: string): {
   key: string | null;
+  coreKey: string | null;
   hasAppendLiteral: boolean;
 } {
   const appendLiteral = extractAppendLiteral(line);
+  const comparableText = appendLiteral ?? line;
   return {
-    key: normalizeAppendComparableKey(appendLiteral ?? line),
+    key: normalizeAppendComparableKey(comparableText),
+    coreKey: normalizeAppendComparableKey(stripTrailingComparableComment(comparableText)),
     hasAppendLiteral: appendLiteral !== null,
   };
 }
@@ -133,6 +188,9 @@ function buildCommentComparable(line: string): {
 function addAppendPayloadToken(line: PreparedPairLine): void {
   if (line.appendComparableKey) {
     line.tokens.push(`appendpayload:${line.appendComparableKey}`);
+  }
+  if (line.appendCoreComparableKey) {
+    line.tokens.push(`appendpayloadcore:${line.appendCoreComparableKey}`);
   }
 }
 
@@ -196,6 +254,21 @@ function hasMatchingAppendPayload(
   );
 }
 
+function hasMatchingAppendCorePayload(
+  left: PreparedPairLine,
+  right: PreparedPairLine,
+): boolean {
+  return (
+    (left.hasAppendLiteral || right.hasAppendLiteral) &&
+    left.appendCoreComparableKey !== null &&
+    left.appendCoreComparableKey === right.appendCoreComparableKey &&
+    (
+      left.appendCoreComparableKey !== left.appendComparableKey ||
+      right.appendCoreComparableKey !== right.appendComparableKey
+    )
+  );
+}
+
 function canCompareCommentBodies(
   left: PreparedPairLine,
   right: PreparedPairLine,
@@ -217,6 +290,7 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
     const tokens = extractIndexTokens(feature);
     return {
       appendComparableKey: appendComparable.key,
+      appendCoreComparableKey: appendComparable.coreKey,
       commentBodyKey: commentComparable.bodyKey,
       commentFeature: commentComparable.feature,
       feature,
@@ -237,6 +311,7 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
     const tokens = extractIndexTokens(feature);
     return {
       appendComparableKey: appendComparable.key,
+      appendCoreComparableKey: appendComparable.coreKey,
       commentBodyKey: commentComparable.bodyKey,
       commentFeature: commentComparable.feature,
       feature,
@@ -286,6 +361,19 @@ function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] 
           insertIndex: i,
           indentDiff: Math.abs(left.indent - right.indent),
           score: APPEND_LITERAL_EXACT_SCORE,
+          distance,
+        });
+        continue;
+      }
+      if (
+        left.text !== right.text &&
+        hasMatchingAppendCorePayload(left, right)
+      ) {
+        candidates.push({
+          deleteIndex: d,
+          insertIndex: i,
+          indentDiff: Math.abs(left.indent - right.indent),
+          score: APPEND_LITERAL_EXACT_SCORE - 1,
           distance,
         });
         continue;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { diffLinesFromLines } from "./diffLines";
-import { diffInline } from "./diffInline";
+import { diffInline, diffInlineWithAppendLiteral } from "./diffInline";
 import { toAppendLiteralOrLine } from "./appendLiteral";
 import { pairReplace } from "./pairReplace";
 import { diffWithAnchors, type Anchor } from "./anchors";
@@ -1168,6 +1168,64 @@ describe("semantic alignment across languages", () => {
     const ops = toPairedOps(left, right);
     expect(findReplace(ops, "AppendLine(\"ようこそ", "AppendLine(\"ようこそ")).toBe(true);
     expect(findReplace(ops, "AppendLine(\"保存しました", "AppendLine(\"保存しました")).toBe(true);
+  });
+
+  it("aligns reference CSS source against AppendLine when the payload has a small edit", () => {
+    const left = [
+      "    input, select, textarea {",
+      "      width: 100%;",
+      "      padding: 10px 12px;",
+      "      border-radius: 12px;",
+      "      border: 1px solid var(--border);",
+      "      background: rgba(15, 23, 42, 0.65);",
+      "      color: var(--text);",
+    ];
+    const right = [
+      "        sb.AppendLine(\"    input, select, textarea {\");",
+      "        sb.AppendLine(\"      width: 100%;\");",
+      "        sb.AppendLine(\"      padding: 10px 12px;\");",
+      "        sb.AppendLine(\"      border-radius: 12px;\");",
+      "        sb.AppendLine(\"      border: 1px solid v100ar(--border);\");",
+      "        sb.AppendLine(\"      background: rgba(15, 23, 42, 0.65);\");",
+      "        sb.AppendLine(\"      color: var(--text);\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    const replace = findReplaceOp(ops, "border: 1px solid var", "border: 1px solid v100ar");
+
+    expect(replace).toBeDefined();
+    const inline = diffInlineWithAppendLiteral(replace!.leftLine ?? "", replace!.rightLine ?? "");
+    const inserted = (replace!.rightLine ?? "").indexOf("100");
+    expect(inserted).toBeGreaterThan(-1);
+    expect(inline.rightRanges).toContainEqual({ start: inserted, end: inserted + 3 });
+  });
+
+  it("aligns reference CSS source against AppendLine when comments move outside the payload", () => {
+    const left = [
+      "    thead th {",
+      "      position: sticky;",
+      "      top: 64px; /* headerの高さに合わせて \"なんとなく\" */",
+      "      background: #0f172a;",
+    ];
+    const right = [
+      "        sb.AppendLine(\"    thead th {\");",
+      "        sb.AppendLine(\"      position: sticky;\");",
+      "        sb.AppendLine(\"      top: 64px;\"); // headerの高さ（概算）",
+      "        sb.AppendLine(\"      background: #0f172a;\");",
+    ];
+
+    const ops = toPairedOps(left, right);
+    const replace = findReplaceOp(ops, "top: 64px", "top: 64px");
+
+    expect(replace).toBeDefined();
+    const inline = diffInlineWithAppendLiteral(replace!.leftLine ?? "", replace!.rightLine ?? "");
+    expect(inline.leftRanges.length).toBeGreaterThan(0);
+    expect(inline.rightRanges.length).toBeGreaterThan(0);
+    const payloadStart = (replace!.rightLine ?? "").indexOf("\"") + 1;
+    const payloadEnd = (replace!.rightLine ?? "").lastIndexOf("\"");
+    expect(inline.rightRanges.some((range) => range.start <= payloadStart && range.end >= payloadEnd)).toBe(
+      false,
+    );
   });
 
   it("does not strip malformed bracketed comment prefixes", () => {
