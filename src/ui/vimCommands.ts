@@ -19,6 +19,7 @@ type VimCommandApi = {
 
 export type VimPlugCommandContext = {
   goToDefinition: (editor: unknown) => void;
+  jumpToMatchingBracket: (editor: unknown) => void;
   writeAll: () => void;
   writeFocused: (editor: unknown) => void;
 };
@@ -31,6 +32,12 @@ export function registerVimPlugCommands(
     context.goToDefinition(cm.editor);
   });
   vim.mapCommand("gd", "action", "diffViewerGoToDefinition", {}, {
+    context: "normal",
+  });
+  vim.defineAction("diffViewerJumpToMatchingBracket", (cm) => {
+    context.jumpToMatchingBracket(cm.editor);
+  });
+  vim.mapCommand("%", "action", "diffViewerJumpToMatchingBracket", {}, {
     context: "normal",
   });
   vim.defineEx("write", "w", (cm) => {

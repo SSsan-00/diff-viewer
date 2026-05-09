@@ -11,6 +11,7 @@ describe("Vim plug commands", () => {
 
     registerVimPlugCommands(vim, {
       goToDefinition: vi.fn(),
+      jumpToMatchingBracket: vi.fn(),
       writeAll: vi.fn(),
       writeFocused: vi.fn(),
     });
@@ -26,6 +27,13 @@ describe("Vim plug commands", () => {
       {},
       { context: "normal" },
     );
+    expect(vim.mapCommand).toHaveBeenCalledWith(
+      "%",
+      "action",
+      "diffViewerJumpToMatchingBracket",
+      {},
+      { context: "normal" },
+    );
   });
 
   it("registers :w and :wa write commands", () => {
@@ -37,6 +45,7 @@ describe("Vim plug commands", () => {
 
     registerVimPlugCommands(vim, {
       goToDefinition: vi.fn(),
+      jumpToMatchingBracket: vi.fn(),
       writeAll: vi.fn(),
       writeFocused: vi.fn(),
     });
@@ -50,6 +59,7 @@ describe("Vim plug commands", () => {
     const ex = new Map<string, (cm: { editor?: unknown }) => void>();
     const editor = {};
     const goToDefinition = vi.fn();
+    const jumpToMatchingBracket = vi.fn();
     const writeFocused = vi.fn();
     const writeAll = vi.fn();
 
@@ -59,14 +69,16 @@ describe("Vim plug commands", () => {
         defineEx: (name, _prefix, callback) => ex.set(name, callback),
         mapCommand: vi.fn(),
       },
-      { goToDefinition, writeAll, writeFocused },
+      { goToDefinition, jumpToMatchingBracket, writeAll, writeFocused },
     );
 
     actions.get("diffViewerGoToDefinition")?.({ editor });
+    actions.get("diffViewerJumpToMatchingBracket")?.({ editor });
     ex.get("write")?.({ editor });
     ex.get("wall")?.({});
 
     expect(goToDefinition).toHaveBeenCalledWith(editor);
+    expect(jumpToMatchingBracket).toHaveBeenCalledWith(editor);
     expect(writeFocused).toHaveBeenCalledWith(editor);
     expect(writeAll).toHaveBeenCalled();
   });

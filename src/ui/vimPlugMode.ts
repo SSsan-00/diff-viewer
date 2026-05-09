@@ -1,6 +1,7 @@
 import { initVimMode, VimMode } from "monaco-vim";
 import type * as monaco from "monaco-editor/esm/vs/editor/editor.api.js";
 import { goToLikelyDefinition } from "./vimDefinition";
+import { jumpToMatchingBracket } from "./vimBracketMatch";
 import { registerVimPlugCommands } from "./vimCommands";
 import type { VimEditorMode, VimPaneSide } from "./vimPaneNavigation";
 
@@ -74,6 +75,12 @@ export function setupVimPlugMode(
         const target = editor as monaco.editor.IStandaloneCodeEditor | undefined;
         if (!target || !goToLikelyDefinition(target)) {
           options.showMessage("定義候補が見つかりませんでした。", "error");
+        }
+      },
+      jumpToMatchingBracket: (editor) => {
+        const target = editor as monaco.editor.IStandaloneCodeEditor | undefined;
+        if (!target || !jumpToMatchingBracket(target)) {
+          options.showMessage("対応する括弧が見つかりませんでした。", "error");
         }
       },
       writeAll: () => {

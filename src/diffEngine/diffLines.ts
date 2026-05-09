@@ -52,11 +52,11 @@ function normalizeForMatch(line: string): string {
   }
   const appendLiteral = isAppendLike(trimmed) ? extractAppendLiteral(trimmed) : null;
   if (appendLiteral) {
-    return `append:${appendLiteral.toLowerCase()}`;
+    return stripLeadingTabsAndSpaces(appendLiteral);
   }
   const literal = extractFirstLiteral(trimmed);
   if (literal && isAppendLike(trimmed)) {
-    return `append:${literal}`;
+    return stripLeadingTabsAndSpaces(literal);
   }
   return trimmed;
 }

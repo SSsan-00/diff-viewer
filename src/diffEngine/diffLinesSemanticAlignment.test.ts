@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { diffLinesFromLines } from "./diffLines";
+import { diffLinesFromLines, prepareDiffLinesInputFromLines } from "./diffLines";
 import { diffInline, diffInlineWithAppendLiteral } from "./diffInline";
 import { toAppendLiteralOrLine } from "./appendLiteral";
 import { pairReplace } from "./pairReplace";
@@ -1198,6 +1198,23 @@ describe("semantic alignment across languages", () => {
     const inserted = (replace!.rightLine ?? "").indexOf("100");
     expect(inserted).toBeGreaterThan(-1);
     expect(inline.rightRanges).toContainEqual({ start: inserted, end: inserted + 3 });
+  });
+
+  it("uses raw source text as the compare key for AppendLine payloads", () => {
+    const left = [
+      "    input, select, textarea {",
+      "      width: 100%;",
+      "      color: var(--text);",
+    ];
+    const right = [
+      "        sb.AppendLine(\"    input, select, textarea {\");",
+      "        sb.AppendLine(\"      width: 100%;\");",
+      "        sb.AppendLine(\"      color: var(--text);\");",
+    ];
+
+    const prepared = prepareDiffLinesInputFromLines(left, right);
+
+    expect(prepared.rightCompare).toEqual(prepared.leftCompare);
   });
 
   it("aligns reference CSS source against AppendLine when comments move outside the payload", () => {
