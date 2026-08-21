@@ -13,6 +13,7 @@ import {
   saveWorkspaces,
   setWorkspacePaneState,
   setWorkspaceAnchors,
+  setWorkspaceSnapshot,
   setWorkspaceTexts,
   selectWorkspace,
   WORKSPACE_LIMIT,
@@ -240,6 +241,84 @@ describe("workspaces storage", () => {
       expect(beta?.anchors.selectedAnchorKey).toBe("manual:1:2");
       expect(alpha?.anchors.manualAnchors).toHaveLength(0);
     }
+  });
+
+  it("updates both panes and anchors with one persistence snapshot", () => {
+    let writes = 0;
+    const storage = {
+      getItem: () => null,
+      setItem: () => {
+        writes += 1;
+      },
+      removeItem: () => undefined,
+    } as Storage;
+    const state = createState(["Alpha"]);
+    const result = setWorkspaceSnapshot(storage, state, "ws-0", {
+      left: {
+        text: "left snapshot",
+        segments: [],
+        activeFile: "left.txt",
+        cursor: { lineNumber: 1, column: 2 },
+        scrollTop: 20,
+      },
+      right: {
+        text: "right snapshot",
+        segments: [],
+        activeFile: "right.txt",
+        cursor: { lineNumber: 2, column: 3 },
+        scrollTop: 40,
+      },
+      anchors: {
+        manualAnchors: [{ leftLineNo: 0, rightLineNo: 1 }],
+        autoAnchor: null,
+        suppressedAutoAnchorKey: null,
+        pendingLeftLineNo: null,
+        pendingRightLineNo: null,
+        selectedAnchorKey: "manual:0:1",
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    expect(writes).toBe(1);
+    if (result.ok) {
+      const workspace = result.state.workspaces[0];
+      expect(workspace?.leftText).toBe("left snapshot");
+      expect(workspace?.rightText).toBe("right snapshot");
+      expect(workspace?.anchors.selectedAnchorKey).toBe("manual:0:1");
+    }
+  });
+
+  it("writes only dirty workspace texts in one text-store batch", async () => {
+    const storage = createStorage();
+    const mutations: Array<{ key: string; value: string | null }> = [];
+    let individualWrites = 0;
+    const textStore = {
+      isAvailable: true,
+      get: async () => null,
+      set: async () => {
+        individualWrites += 1;
+      },
+      delete: async () => {
+        individualWrites += 1;
+      },
+      writeBatch: async (next: Array<{ key: string; value: string | null }>) => {
+        mutations.push(...next);
+      },
+    };
+    const state = createState(["Alpha", "Beta"]);
+    state.workspaces[0].leftText = "left-a";
+    state.workspaces[0].rightText = "right-a";
+    state.workspaces[1].leftText = "left-b";
+    state.workspaces[1].rightText = "right-b";
+
+    await saveWorkspaces(storage, state, {
+      textStore,
+      dirtyWorkspaceIds: ["ws-0"],
+    });
+
+    expect(individualWrites).toBe(0);
+    expect(mutations).toHaveLength(2);
+    expect(mutations.every((mutation) => mutation.key.includes("ws-0"))).toBe(true);
   });
 
   it("does not throw when workspace persistence fails", () => {

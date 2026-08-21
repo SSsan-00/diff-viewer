@@ -30,6 +30,12 @@ export type WorkspacePaneState = {
   scrollTop: number | null;
 };
 
+export type WorkspaceSnapshot = {
+  anchors: WorkspaceAnchorState;
+  left: WorkspacePaneState;
+  right: WorkspacePaneState;
+};
+
 export type Workspace = {
   id: string;
   name: string;
@@ -70,6 +76,7 @@ const INLINE_TEXT_FALLBACK_CHAR_LIMIT = 200_000;
 type WorkspaceStorageOptions = {
   textStore?: TextStore;
   deletedWorkspaceIds?: string[];
+  dirtyWorkspaceIds?: string[];
 };
 type TextStorageMode = "inline" | "indexeddb";
 type SerializedWorkspacesState = {
@@ -362,9 +369,29 @@ async function hydrateWorkspaceTexts(
 async function writeWorkspaceTexts(
   state: WorkspacesState,
   textStore: TextStore,
+  dirtyWorkspaceIds?: readonly string[],
 ): Promise<void> {
+  const dirtyIds = dirtyWorkspaceIds ? new Set(dirtyWorkspaceIds) : null;
+  const workspaces = dirtyIds
+    ? state.workspaces.filter((workspace) => dirtyIds.has(workspace.id))
+    : state.workspaces;
+  if (textStore.writeBatch) {
+    await textStore.writeBatch(
+      workspaces.flatMap((workspace) => [
+        {
+          key: getWorkspaceTextKey(workspace.id, "left"),
+          value: workspace.leftText.length > 0 ? workspace.leftText : null,
+        },
+        {
+          key: getWorkspaceTextKey(workspace.id, "right"),
+          value: workspace.rightText.length > 0 ? workspace.rightText : null,
+        },
+      ]),
+    );
+    return;
+  }
   await Promise.all(
-    state.workspaces.flatMap((workspace) => [
+    workspaces.flatMap((workspace) => [
       workspace.leftText.length > 0
         ? textStore.set(getWorkspaceTextKey(workspace.id, "left"), workspace.leftText)
         : textStore.delete(getWorkspaceTextKey(workspace.id, "left")),
@@ -379,6 +406,15 @@ async function deleteWorkspaceTexts(
   workspaceIds: string[],
   textStore: TextStore,
 ): Promise<void> {
+  if (textStore.writeBatch) {
+    await textStore.writeBatch(
+      workspaceIds.flatMap((workspaceId) => [
+        { key: getWorkspaceTextKey(workspaceId, "left"), value: null },
+        { key: getWorkspaceTextKey(workspaceId, "right"), value: null },
+      ]),
+    );
+    return;
+  }
   await Promise.all(
     workspaceIds.flatMap((workspaceId) => [
       textStore.delete(getWorkspaceTextKey(workspaceId, "left")),
@@ -406,7 +442,7 @@ async function persistSnapshot(
   }
   try {
     await Promise.all([
-      writeWorkspaceTexts(state, textStore),
+      writeWorkspaceTexts(state, textStore, options?.dirtyWorkspaceIds),
       deleteWorkspaceTexts(options?.deletedWorkspaceIds ?? [], textStore),
     ]);
     storage.setItem(
@@ -540,7 +576,10 @@ export function createWorkspace(
     workspaces: [...state.workspaces, nextWorkspace],
     selectedId: nextWorkspace.id,
   };
-  void saveWorkspaces(storage, nextState, options);
+  void saveWorkspaces(storage, nextState, {
+    ...options,
+    dirtyWorkspaceIds: [nextWorkspace.id],
+  });
   return { ok: true, state: nextState };
 }
 
@@ -579,7 +618,10 @@ export function importWorkspace(
     workspaces: [...state.workspaces, workspace],
     selectedId: workspace.id,
   };
-  void saveWorkspaces(storage, nextState, options);
+  void saveWorkspaces(storage, nextState, {
+    ...options,
+    dirtyWorkspaceIds: [workspace.id],
+  });
   return { ok: true, state: nextState };
 }
 
@@ -606,7 +648,7 @@ export function renameWorkspace(
     workspaces: nextWorkspaces,
     selectedId: state.selectedId,
   };
-  void saveWorkspaces(storage, nextState, options);
+  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [] });
   return { ok: true, state: nextState };
 }
 
@@ -629,6 +671,7 @@ export function deleteWorkspace(
   void saveWorkspaces(storage, nextState, {
     ...options,
     deletedWorkspaceIds: [id],
+    dirtyWorkspaceIds: [],
   });
   return { ok: true, state: nextState };
 }
@@ -643,7 +686,7 @@ export function selectWorkspace(
     return { ok: false, reason: "not-found", state };
   }
   const nextState: WorkspacesState = { ...state, selectedId: id };
-  void saveWorkspaces(storage, nextState, options);
+  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [] });
   return { ok: true, state: nextState };
 }
 
@@ -670,7 +713,7 @@ export function reorderWorkspaces(
     workspaces: nextWorkspaces,
     selectedId: state.selectedId,
   };
-  void saveWorkspaces(storage, nextState, options);
+  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [] });
   return { ok: true, state: nextState };
 }
 
@@ -690,7 +733,7 @@ export function setWorkspaceTexts(
     workspace.id === id ? { ...workspace, leftText, rightText } : workspace,
   );
   const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
-  void saveWorkspaces(storage, nextState, options);
+  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [id] });
   return { ok: true, state: nextState };
 }
 
@@ -730,7 +773,7 @@ export function setWorkspacePaneState(
     };
   });
   const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
-  void saveWorkspaces(storage, nextState, options);
+  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [id] });
   return { ok: true, state: nextState };
 }
 
@@ -749,6 +792,45 @@ export function setWorkspaceAnchors(
     workspace.id === id ? { ...workspace, anchors } : workspace,
   );
   const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
-  void saveWorkspaces(storage, nextState, options);
+  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [] });
+  return { ok: true, state: nextState };
+}
+
+export function setWorkspaceSnapshot(
+  storage: Storage | null,
+  state: WorkspacesState,
+  id: string,
+  snapshot: WorkspaceSnapshot,
+  options?: WorkspaceStorageOptions,
+): WorkspaceResult {
+  if (!state.workspaces.some((workspace) => workspace.id === id)) {
+    return { ok: false, reason: "not-found", state };
+  }
+  const nextWorkspaces = state.workspaces.map((workspace) =>
+    workspace.id === id
+      ? {
+          ...workspace,
+          leftText: snapshot.left.text,
+          rightText: snapshot.right.text,
+          leftSegments: snapshot.left.segments.map((segment) => ({ ...segment })),
+          rightSegments: snapshot.right.segments.map((segment) => ({ ...segment })),
+          leftActiveFile: snapshot.left.activeFile,
+          rightActiveFile: snapshot.right.activeFile,
+          leftCursor: snapshot.left.cursor ? { ...snapshot.left.cursor } : null,
+          rightCursor: snapshot.right.cursor ? { ...snapshot.right.cursor } : null,
+          leftScrollTop: snapshot.left.scrollTop,
+          rightScrollTop: snapshot.right.scrollTop,
+          anchors: {
+            ...snapshot.anchors,
+            manualAnchors: snapshot.anchors.manualAnchors.map((anchor) => ({ ...anchor })),
+            autoAnchor: snapshot.anchors.autoAnchor
+              ? { ...snapshot.anchors.autoAnchor }
+              : null,
+          },
+        }
+      : workspace,
+  );
+  const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
+  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [id] });
   return { ok: true, state: nextState };
 }

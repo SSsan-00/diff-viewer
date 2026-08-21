@@ -3,6 +3,12 @@ export type TextStore = {
   get: (key: string) => Promise<string | null>;
   set: (key: string, value: string) => Promise<void>;
   delete: (key: string) => Promise<void>;
+  writeBatch?: (mutations: TextStoreMutation[]) => Promise<void>;
+};
+
+export type TextStoreMutation = {
+  key: string;
+  value: string | null;
 };
 
 const DB_NAME = "diff-viewer";
@@ -79,6 +85,22 @@ export function createIndexedDbTextStore(
       const database = await getDb();
       const transaction = database.transaction(STORE_NAME, "readwrite");
       transaction.objectStore(STORE_NAME).delete(key);
+      await transactionDone(transaction);
+    },
+    async writeBatch(mutations: TextStoreMutation[]): Promise<void> {
+      if (mutations.length === 0) {
+        return;
+      }
+      const database = await getDb();
+      const transaction = database.transaction(STORE_NAME, "readwrite");
+      const store = transaction.objectStore(STORE_NAME);
+      mutations.forEach((mutation) => {
+        if (mutation.value === null) {
+          store.delete(mutation.key);
+        } else {
+          store.put(mutation.value, mutation.key);
+        }
+      });
       await transactionDone(transaction);
     },
   };

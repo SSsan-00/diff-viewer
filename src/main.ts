@@ -145,6 +145,7 @@ import {
   saveWorkspaces,
   setWorkspaceAnchors,
   setWorkspacePaneState,
+  setWorkspaceSnapshot,
   setWorkspaceTexts,
   WORKSPACE_LIMIT,
   WORKSPACE_NAME_LIMIT,
@@ -335,18 +336,7 @@ function scheduleWorkspacePersist() {
   }
   workspacePersistTimer = setTimeout(() => {
     workspacePersistTimer = null;
-    persistWorkspacePaneState("left");
-    persistWorkspacePaneState("right");
-    const result = setWorkspaceAnchors(
-      storage,
-      workspaceState,
-      workspaceState.selectedId,
-      getCurrentAnchorState(),
-      { textStore },
-    );
-    if (result.ok) {
-      workspaceState = result.state;
-    }
+    persistCurrentWorkspaceState();
   }, 220);
 }
 
@@ -808,27 +798,15 @@ function loadFavoriteListsForWorkspace(workspaceId: string) {
 }
 
 function persistCurrentWorkspaceState() {
-  persistWorkspacePaneState("left");
-  persistWorkspacePaneState("right");
-  const result = setWorkspaceAnchors(
+  const result = setWorkspaceSnapshot(
     storage,
     workspaceState,
     workspaceState.selectedId,
-    getCurrentAnchorState(),
-    { textStore },
-  );
-  if (result.ok) {
-    workspaceState = result.state;
-  }
-}
-
-function persistWorkspacePaneState(side: "left" | "right") {
-  const result = setWorkspacePaneState(
-    storage,
-    workspaceState,
-    workspaceState.selectedId,
-    side,
-    collectWorkspacePaneSnapshot(side),
+    {
+      anchors: getCurrentAnchorState(),
+      left: collectWorkspacePaneSnapshot("left"),
+      right: collectWorkspacePaneSnapshot("right"),
+    },
     { textStore },
   );
   if (result.ok) {
@@ -3524,18 +3502,7 @@ persistScheduler = createPersistScheduler({
 
 function flushStateForLifecycle(): void {
   cancelWorkspacePersist();
-  persistWorkspacePaneState("left");
-  persistWorkspacePaneState("right");
-  const anchorResult = setWorkspaceAnchors(
-    storage,
-    workspaceState,
-    workspaceState.selectedId,
-    getCurrentAnchorState(),
-    { textStore },
-  );
-  if (anchorResult.ok) {
-    workspaceState = anchorResult.state;
-  }
+  persistCurrentWorkspaceState();
   persistScheduler?.flush();
   saveInlinePersistedStateSnapshot(storage, getPersistedStateSnapshot());
 }
