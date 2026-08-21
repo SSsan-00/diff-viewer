@@ -14,6 +14,9 @@ type ScheduleNextFrame = (callback: () => void) => void;
 export class ScrollSyncController {
   private enabled = true;
   private isSyncing = false;
+  private syncSource: "left" | "right" | null = null;
+  private pendingSourceScroll: { source: "left" | "right"; event: ScrollChangeEvent } | null =
+    null;
   private scheduleNextFrame: ScheduleNextFrame;
 
   constructor(
@@ -31,11 +34,19 @@ export class ScrollSyncController {
   }
 
   private handleScroll(source: "left" | "right", event: ScrollChangeEvent): void {
-    if (!this.enabled || this.isSyncing) {
+    if (!this.enabled) {
+      return;
+    }
+
+    if (this.isSyncing) {
+      if (source === this.syncSource) {
+        this.pendingSourceScroll = { source, event };
+      }
       return;
     }
 
     this.isSyncing = true;
+    this.syncSource = source;
     const target = source === "left" ? this.right : this.left;
 
     // Reflect both axes so the other editor follows precisely.
@@ -45,6 +56,12 @@ export class ScrollSyncController {
     // Release the lock on the next frame to avoid feedback loops.
     this.scheduleNextFrame(() => {
       this.isSyncing = false;
+      this.syncSource = null;
+      const pending = this.pendingSourceScroll;
+      this.pendingSourceScroll = null;
+      if (pending) {
+        this.handleScroll(pending.source, pending.event);
+      }
     });
   }
 }

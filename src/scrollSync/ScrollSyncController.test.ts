@@ -101,4 +101,26 @@ describe("ScrollSyncController", () => {
 
     scheduler.flush();
   });
+
+  it("applies the latest source position when multiple user scrolls arrive in one frame", () => {
+    const left = new FakeAdapter();
+    const right = new FakeAdapter();
+    const scheduler = createScheduler();
+
+    new ScrollSyncController(left, right, scheduler.schedule);
+
+    left.userScroll(40, 4);
+    left.userScroll(80, 8);
+    left.userScroll(120, 12);
+
+    expect(right.scrollTop).toBe(40);
+    expect(right.scrollLeft).toBe(4);
+
+    scheduler.flush();
+
+    expect(right.scrollTop).toBe(120);
+    expect(right.scrollLeft).toBe(12);
+    expect(right.setTopCalls).toBe(2);
+    expect(right.setLeftCalls).toBe(2);
+  });
 });
