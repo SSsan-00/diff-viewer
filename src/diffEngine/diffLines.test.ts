@@ -139,6 +139,75 @@ describe("diffLines", () => {
     ]);
   });
 
+  it("keeps source line numbers after trimming a repeated common prefix", () => {
+    const result = diffLines("A\nX\nA\nB", "A\nY\nA\nC");
+
+    for (const op of result) {
+      if (op.leftLineNo !== undefined) {
+        expect(op.leftLine).toBe(["A", "X", "A", "B"][op.leftLineNo]);
+      }
+      if (op.rightLineNo !== undefined) {
+        expect(op.rightLine).toBe(["A", "Y", "A", "C"][op.rightLineNo]);
+      }
+    }
+  });
+
+  it("uses exact compare lines rather than semantic names as patience anchors", () => {
+    const result = compactOps(
+      diffLines(
+        "function test() {}\nvalue = old;\nclose();",
+        "string test() {}\nvalue = new;\nclose();",
+      ),
+    );
+
+    expect(result).toEqual([
+      {
+        type: "delete",
+        leftLine: "function test() {}",
+        leftLineNo: 0,
+      },
+      {
+        type: "delete",
+        leftLine: "value = old;",
+        leftLineNo: 1,
+      },
+      {
+        type: "insert",
+        rightLine: "string test() {}",
+        rightLineNo: 0,
+      },
+      {
+        type: "insert",
+        rightLine: "value = new;",
+        rightLineNo: 1,
+      },
+      {
+        type: "equal",
+        leftLine: "close();",
+        rightLine: "close();",
+        leftLineNo: 2,
+        rightLineNo: 2,
+      },
+    ]);
+  });
+
+  it("preserves all exact repeated lines around a changed semantic line", () => {
+    const result = diffLines(
+      "close();\nvalue = oldSource;\nclose();\nclose();",
+      "close();\nclose();\nclose();\nvalue = newSource;",
+    );
+
+    expect(
+      result
+        .filter((op) => op.type === "equal")
+        .map((op) => [op.leftLineNo, op.rightLineNo]),
+    ).toEqual([
+      [0, 0],
+      [2, 1],
+      [3, 2],
+    ]);
+  });
+
   it("treats whitespace-only lines as equal", () => {
     const result = compactOps(diffLines("a\n \nb", "a\n\t\nb"));
 

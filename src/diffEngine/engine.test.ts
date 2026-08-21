@@ -58,6 +58,14 @@ describe("createDiffEngine", () => {
         left: Array.from({ length: 60 }, (_, index) => `left-${index % 7}`).join("\n"),
         right: Array.from({ length: 65 }, (_, index) => `left-${(index + 2) % 7}`).join("\n"),
       },
+      {
+        left: "function test() {}\nvalue = old;\nclose();",
+        right: "string test() {}\nvalue = new;\nclose();",
+      },
+      {
+        left: "close();\nvalue = oldSource;\nclose();\nclose();",
+        right: "close();\nclose();\nclose();\nvalue = newSource;",
+      },
     ];
 
     for (const testCase of cases) {

@@ -1,7 +1,5 @@
 import { normalizeText } from "./normalize";
 import type { LineOp } from "./types";
-import { extractLineKey } from "./lineSignature";
-import { toAppendLiteralOrLine } from "./appendLiteral";
 import { extractAppendLiteral } from "./appendLiteral";
 import { extractAppendLiteralInlineMap } from "./appendLiteral";
 import { extractEmbeddedOutputCall } from "./embeddedOutputCall";
@@ -446,26 +444,7 @@ function backtrackOps(
         options,
       );
       for (let index = matchedOps.length - 1; index >= 0; index -= 1) {
-        const op = matchedOps[index];
-        if (op.type === "equal") {
-          ops.push({
-            ...op,
-            leftLineNo: x - 1,
-            rightLineNo: y - 1,
-          });
-          continue;
-        }
-        if (op.type === "delete") {
-          ops.push({
-            ...op,
-            leftLineNo: x - 1,
-          });
-          continue;
-        }
-        ops.push({
-          ...op,
-          rightLineNo: y - 1,
-        });
+        ops.push(matchedOps[index]);
       }
       x -= 1;
       y -= 1;
@@ -480,14 +459,14 @@ function backtrackOps(
       ops.push({
         type: "insert",
         rightLine: right[y - 1],
-        rightLineNo: y - 1,
+        rightLineNo: rightOffset + y - 1,
       });
       y -= 1;
     } else {
       ops.push({
         type: "delete",
         leftLine: left[x - 1],
-        leftLineNo: x - 1,
+        leftLineNo: leftOffset + x - 1,
       });
       x -= 1;
     }
@@ -657,13 +636,10 @@ type LineKey = {
   index: number;
 };
 
-function buildKeyMap(lines: string[]): Map<string, LineKey & { count: number }> {
+function buildKeyMap(keys: string[]): Map<string, LineKey & { count: number }> {
   const map = new Map<string, LineKey & { count: number }>();
 
-  lines.forEach((line, index) => {
-    const compareLine = toAppendLiteralOrLine(line);
-    const rawKey = extractLineKey(compareLine);
-    const key = rawKey ?? compareLine.trimStart();
+  keys.forEach((key, index) => {
     const entry = map.get(key);
     if (entry) {
       entry.count += 1;
@@ -675,9 +651,9 @@ function buildKeyMap(lines: string[]): Map<string, LineKey & { count: number }> 
   return map;
 }
 
-function buildUniquePairs(left: string[], right: string[]): UniquePair[] {
-  const leftMap = buildKeyMap(left);
-  const rightMap = buildKeyMap(right);
+function buildUniquePairs(leftKeys: string[], rightKeys: string[]): UniquePair[] {
+  const leftMap = buildKeyMap(leftKeys);
+  const rightMap = buildKeyMap(rightKeys);
 
   const pairs: UniquePair[] = [];
   leftMap.forEach((leftEntry, line) => {
@@ -943,7 +919,7 @@ function diffLinesPatience(
     return [];
   }
 
-  const anchors = longestIncreasingPairs(buildUniquePairs(leftLines, rightLines));
+  const anchors = longestIncreasingPairs(buildUniquePairs(leftCompare, rightCompare));
   if (anchors.length === 0) {
     return diffLinesMyers(
       leftLines,
