@@ -4,7 +4,8 @@ import type { LineSegment } from "../file/lineNumbering";
 
 export type ViewZoneSpec = {
   afterLineNumber: number;
-  heightInLines: number;
+  heightInLines?: number;
+  heightInPx?: number;
   className: string;
   label?: string;
 };

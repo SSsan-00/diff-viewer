@@ -2,7 +2,7 @@ import type { ViewZoneSpec } from "./fileBoundaryZones";
 
 export type FindWidgetHost = {
   getDomNode: () => HTMLElement | null;
-  getLayoutInfo?: () => { contentTop?: number };
+  getLayoutInfo?: () => unknown;
 };
 
 function getFindWidgetElement(root: HTMLElement | null): HTMLElement | null {
@@ -32,7 +32,7 @@ export function isFindWidgetVisible(root: HTMLElement | null): boolean {
 
 export function getFindWidgetHeight(root: HTMLElement | null): number {
   const widget = getFindWidgetElement(root);
-  if (!widget || !isFindWidgetVisible(root)) {
+  if (!root || !widget || !isFindWidgetVisible(root)) {
     return 0;
   }
   const rect = widget.getBoundingClientRect();
@@ -58,7 +58,7 @@ function getContentTop(editor: FindWidgetHost): number {
   if (!editor.getLayoutInfo) {
     return 0;
   }
-  const info = editor.getLayoutInfo();
+  const info = editor.getLayoutInfo() as { contentTop?: unknown };
   const top = info.contentTop;
   return typeof top === "number" && top > 0 ? top : 0;
 }

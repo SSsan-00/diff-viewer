@@ -4827,25 +4827,26 @@ function recalcDiff() {
       engineStatus.wasmBuildId,
     ],
     ignoreLeadingWhitespace: ignoreLeadingFileWhitespace,
-    leftLeadingWhitespaceEligible,
+    leftLeadingWhitespaceEligible: leftLeadingFileWhitespaceEligible,
     leftModelVersionId: leftModel?.getVersionId() ?? -1,
-    rightLeadingWhitespaceEligible,
+    rightLeadingWhitespaceEligible: rightLeadingFileWhitespaceEligible,
     rightModelVersionId: rightModel?.getVersionId() ?? -1,
   });
+  const cachedContent = contentDiffCache;
   const useCachedContent =
-    contentDiffCache !== null &&
-    contentDiffCache.key === contentCacheKey &&
-    contentDiffCache.leftModel === leftModel &&
-    contentDiffCache.rightModel === rightModel;
+    cachedContent !== null &&
+    cachedContent.key === contentCacheKey &&
+    cachedContent.leftModel === leftModel &&
+    cachedContent.rightModel === rightModel;
   let diffComputeMs = 0;
   let normalizeMs = 0;
   let preparedReplaceOps: PreparedReplaceOpsForDisplay;
   let opsSignature: string;
 
-  if (useCachedContent) {
-    preparedReplaceOps = contentDiffCache.prepared;
+  if (useCachedContent && cachedContent) {
+    preparedReplaceOps = cachedContent.prepared;
     pairedOps = preparedReplaceOps.ops;
-    opsSignature = contentDiffCache.opsSignature;
+    opsSignature = cachedContent.opsSignature;
   } else {
     const diffComputeStartedAt = performance.now();
     if (anchorOnlyDiffMode) {
@@ -4889,14 +4890,15 @@ function recalcDiff() {
     rightEditor.getLayoutInfo().width,
     wordWrapEnabled,
   ]);
+  const cachedDerived = derivedDiffCache;
   const useCachedDerived =
-    derivedDiffCache !== null &&
-    derivedDiffCache.opsSignature === opsSignature &&
-    derivedDiffCache.segmentSignature === segmentSignature &&
-    derivedDiffCache.layoutSignature === layoutSignature &&
-    derivedDiffCache.decorationVariantKey === decorationVariantKey;
-  const nextDerived = useCachedDerived
-    ? derivedDiffCache
+    cachedDerived !== null &&
+    cachedDerived.opsSignature === opsSignature &&
+    cachedDerived.segmentSignature === segmentSignature &&
+    cachedDerived.layoutSignature === layoutSignature &&
+    cachedDerived.decorationVariantKey === decorationVariantKey;
+  const nextDerived: DerivedDiffCache = useCachedDerived && cachedDerived
+    ? cachedDerived
     : {
         opsSignature,
         segmentSignature,
