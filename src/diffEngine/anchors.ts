@@ -75,6 +75,7 @@ export function validateAnchors(
   rightLineCount: number,
 ): AnchorValidationResult {
   const issues = new Map<Anchor, Set<string>>();
+  const inRangeAnchors: Anchor[] = [];
 
   for (const anchor of anchors) {
     const outOfRange =
@@ -84,6 +85,8 @@ export function validateAnchors(
       anchor.rightLineNo >= rightLineCount;
     if (outOfRange) {
       addReason(issues, anchor, "範囲外");
+    } else {
+      inRangeAnchors.push(anchor);
     }
   }
 
@@ -103,9 +106,11 @@ export function validateAnchors(
     }
   }
 
-  const sorted = [...anchors].sort((a, b) => a.leftLineNo - b.leftLineNo);
+  const sortedInRange = [...inRangeAnchors].sort(
+    (a, b) => a.leftLineNo - b.leftLineNo,
+  );
   let prevRight = -1;
-  for (const anchor of sorted) {
+  for (const anchor of sortedInRange) {
     if (anchor.rightLineNo <= prevRight) {
       addReason(issues, anchor, "順序逆転");
     }
@@ -119,7 +124,9 @@ export function validateAnchors(
     invalid.push({ anchor, reasons: Array.from(reasons) });
   });
 
-  const valid = sorted.filter((anchor) => !issues.has(anchor));
+  const valid = [...anchors]
+    .sort((a, b) => a.leftLineNo - b.leftLineNo)
+    .filter((anchor) => !issues.has(anchor));
 
   return { valid, invalid };
 }

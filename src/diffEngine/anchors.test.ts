@@ -22,6 +22,27 @@ describe("validateAnchors", () => {
     expect(result.invalid).toHaveLength(1);
   });
 
+  it("does not let an out-of-range anchor invalidate later ordered anchors", () => {
+    const anchors: Anchor[] = [
+      { leftLineNo: 0, rightLineNo: 100 },
+      { leftLineNo: 1, rightLineNo: 1 },
+      { leftLineNo: 2, rightLineNo: 2 },
+    ];
+
+    const result = validateAnchors(anchors, 10, 10);
+
+    expect(result.valid).toEqual([
+      { leftLineNo: 1, rightLineNo: 1 },
+      { leftLineNo: 2, rightLineNo: 2 },
+    ]);
+    expect(result.invalid).toEqual([
+      {
+        anchor: { leftLineNo: 0, rightLineNo: 100 },
+        reasons: ["範囲外"],
+      },
+    ]);
+  });
+
   it("filters duplicates and reversed order", () => {
     const anchors: Anchor[] = [
       { leftLineNo: 1, rightLineNo: 2 },
