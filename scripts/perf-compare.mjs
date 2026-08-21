@@ -6,6 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { setTimeout as delay } from "node:timers/promises";
+import {
+  getDevServerSpawnOptions,
+  signalDevServerProcessTree,
+} from "./perf-process.mjs";
 
 const DEFAULT_APP_PORT = 4173;
 const DEFAULT_LINES = 6500;
@@ -254,7 +258,7 @@ function startDevServer(port) {
   const proc = spawn(
     "pnpm",
     ["run", "dev", "--host", "127.0.0.1", "--port", String(port)],
-    { stdio: ["ignore", "pipe", "pipe"] },
+    getDevServerSpawnOptions(),
   );
   const logs = [];
   proc.stdout.on("data", (chunk) => {
@@ -604,7 +608,7 @@ async function main() {
     try {
       await waitForHttp(`http://127.0.0.1:${captureOptions.port}/`);
     } catch (error) {
-      dev.proc.kill("SIGKILL");
+      signalDevServerProcessTree(dev.proc, "SIGKILL");
       const logs = dev.getRecentLogs();
       throw new Error(`Failed to start dev server: ${String(error)}\n${logs}`);
     }
@@ -618,7 +622,7 @@ async function main() {
     console.log(`Saved: ${outFile}`);
   } finally {
     if (dev) {
-      dev.proc.kill("SIGKILL");
+      signalDevServerProcessTree(dev.proc, "SIGKILL");
     }
   }
 }
