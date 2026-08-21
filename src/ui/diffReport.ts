@@ -1,7 +1,10 @@
 import type { CopyVisualRow } from "./paneSourceCopy";
 import type { ToastVariant } from "./toast";
 import type { Range } from "../diffEngine/types";
-import { diffInlineWithAppendLiteral } from "../diffEngine/diffInline";
+import {
+  diffInlineWithAppendLiteral,
+  snapInlineRangesToGraphemeBoundaries,
+} from "../diffEngine/diffInline";
 import { extractHtmlAttributeSpaceDiffRangesPair } from "../diffEngine/htmlAttributeSpaceDiff";
 
 type ToastLike = {
@@ -22,8 +25,11 @@ export type DiffReportHighlight = "on" | "off";
 export type DiffReportSyntaxRange = Range & { className: string };
 
 export type DiffReportRow = {
+  diffVisible?: boolean;
   leftText: string;
+  leftVirtual?: boolean;
   rightText: string;
+  rightVirtual?: boolean;
   kind?: DiffReportRowKind;
   leftInlineRanges?: Range[];
   rightInlineRanges?: Range[];
@@ -74,12 +80,9 @@ export function buildReportRowsFromVisualRows(
   const leftLanguage = options.leftLanguage;
   const rightLanguage = options.rightLanguage;
   const tokenizeLine = options.tokenizeLine;
-  const mappedRows = rows.map((row) => ({
-    leftText: row.leftText,
-    rightText: row.rightText,
-  }));
+  const mappedRows = rows.map((row) => ({ ...row }));
 
-  const mappedWithDiff = mappedRows.map((row) => {
+  const mappedWithDiff: DiffReportRow[] = mappedRows.map((row): DiffReportRow => {
     const leftSyntaxRanges = buildSyntaxRanges(
       row.leftText,
       leftLanguage,
@@ -92,19 +95,24 @@ export function buildReportRowsFromVisualRows(
       syntaxHighlightEnabled,
       tokenizeLine,
     );
-    let kind: DiffReportRowKind =
+    let kind: DiffReportRowKind = row.kind ?? (
       row.leftText.length === 0 && row.rightText.length > 0
         ? "insert"
         : row.rightText.length === 0 && row.leftText.length > 0
           ? "delete"
           : row.leftText === row.rightText
             ? "equal"
-            : "replace";
+            : "replace"
+    );
     if (
+      row.kind === undefined &&
       ignoreLeadingFileWhitespace &&
       stripLeadingSpacesAndTabs(row.leftText) === stripLeadingSpacesAndTabs(row.rightText)
     ) {
       kind = "equal";
+    }
+    if (row.diffVisible === false) {
+      return { ...row, kind, leftSyntaxRanges, rightSyntaxRanges };
     }
     if (kind !== "replace") {
       return { ...row, kind, leftSyntaxRanges, rightSyntaxRanges };
@@ -213,28 +221,36 @@ function escapeHtml(value: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function escapeHtmlWithPreservedWhitespace(text: string): string {
+function escapeHtmlWithPreservedWhitespace(
+  text: string,
+  startColumn = 0,
+): { endColumn: number; html: string } {
   let escaped = "";
+  let column = startColumn;
   for (let index = 0; index < text.length; index += 1) {
     const char = text[index];
     if (char === " ") {
       escaped += "&nbsp;";
+      column += 1;
       continue;
     }
     if (char === "\t") {
-      escaped += "&nbsp;&nbsp;&nbsp;&nbsp;";
+      const width = 4 - (column % 4);
+      escaped += "&nbsp;".repeat(width);
+      column += width;
       continue;
     }
     escaped += escapeHtml(char);
+    column += 1;
   }
-  return escaped;
+  return { endColumn: column, html: escaped };
 }
 
-function buildRowClass(kind?: DiffReportRowKind): string {
-  if (!kind || kind === "equal") {
+function buildRowClass(row: DiffReportRow): string {
+  if (row.diffVisible === false || !row.kind || row.kind === "equal") {
     return "";
   }
-  return ` class="row-${kind}"`;
+  return ` class="row-${row.kind}"`;
 }
 
 function isValidRange(range: Range, length: number): boolean {
@@ -252,8 +268,12 @@ function renderCellTextWithRanges(
   if (!text) {
     return "";
   }
+  const safeLayers = layers.map((layer) => ({
+    ...layer,
+    ranges: snapInlineRangesToGraphemeBoundaries(text, layer.ranges ?? []),
+  }));
   const boundaries = new Set<number>([0, text.length]);
-  for (const layer of layers) {
+  for (const layer of safeLayers) {
     for (const range of layer.ranges ?? []) {
       if (!isValidRange(range, text.length)) {
         continue;
@@ -264,15 +284,18 @@ function renderCellTextWithRanges(
   }
   const points = Array.from(boundaries).sort((a, b) => a - b);
   const chunks: string[] = [];
+  let column = 0;
   for (let index = 0; index < points.length - 1; index += 1) {
     const start = points[index];
     const end = points[index + 1];
     if (end <= start) {
       continue;
     }
-    const part = escapeHtmlWithPreservedWhitespace(text.slice(start, end));
+    const escapedPart = escapeHtmlWithPreservedWhitespace(text.slice(start, end), column);
+    const part = escapedPart.html;
+    column = escapedPart.endColumn;
     const classNames: string[] = [];
-    for (const layer of layers) {
+    for (const layer of safeLayers) {
       const active = (layer.ranges ?? []).some(
         (range) =>
           isValidRange(range, text.length) &&
@@ -314,10 +337,12 @@ function buildSyntaxLayers(
 }
 
 function renderRowCells(row: DiffReportRow, mode: DiffReportMode): string {
+  const leftClass = row.leftVirtual === true ? ' class="cell-virtual"' : "";
+  const rightClass = row.rightVirtual === true ? ' class="cell-virtual"' : "";
   if (mode !== "rich") {
-    const left = escapeHtmlWithPreservedWhitespace(row.leftText);
-    const right = escapeHtmlWithPreservedWhitespace(row.rightText);
-    return `<td>${left}</td><td>${right}</td>`;
+    const left = escapeHtmlWithPreservedWhitespace(row.leftText).html;
+    const right = escapeHtmlWithPreservedWhitespace(row.rightText).html;
+    return `<td${leftClass}>${left}</td><td${rightClass}>${right}</td>`;
   }
   const left = renderCellTextWithRanges(row.leftText, [
     ...buildSyntaxLayers(row.leftSyntaxRanges),
@@ -329,7 +354,7 @@ function renderRowCells(row: DiffReportRow, mode: DiffReportMode): string {
     { ranges: row.rightInlineRanges, className: "inline-insert" },
     { ranges: row.rightSpaceRanges, className: "inline-space-diff" },
   ]);
-  return `<td>${left}</td><td>${right}</td>`;
+  return `<td${leftClass}>${left}</td><td${rightClass}>${right}</td>`;
 }
 
 function buildSimpleModeStyles(): string {
@@ -396,6 +421,7 @@ function buildRichModeStyles(): string {
       font-family: inherit;
       font-size: inherit;
       line-height: inherit;
+      height: 22px;
     }
     td:first-child {
       border-right: 1px solid var(--pane-divider-color);
@@ -574,7 +600,7 @@ export function buildDiffReportHtml(
       : rows
           .map(
             (row) =>
-              `<tr${buildRowClass(row.kind)}>${renderRowCells(row, mode)}</tr>`,
+              `<tr${buildRowClass(row)}>${renderRowCells(row, mode)}</tr>`,
           )
           .join("\n");
 

@@ -24,6 +24,35 @@ describe("buildReportRowsFromVisualRows", () => {
     expect(rows[2]).toMatchObject({ leftText: "only-left", rightText: "", kind: "delete" });
   });
 
+  it("uses preserved op metadata for empty lines and non-visible alignment rows", () => {
+    const rows = buildReportRowsFromVisualRows([
+      {
+        kind: "insert",
+        leftText: "",
+        leftVirtual: true,
+        rightText: "",
+      },
+      {
+        diffVisible: false,
+        kind: "replace",
+        leftText: "left",
+        rightText: "right",
+      },
+    ]);
+
+    expect(rows[0]).toMatchObject({
+      kind: "insert",
+      leftVirtual: true,
+      rightText: "",
+    });
+    expect(rows[1]).toMatchObject({
+      diffVisible: false,
+      kind: "replace",
+    });
+    expect(rows[1]?.leftInlineRanges).toBeUndefined();
+    expect(rows[1]?.rightInlineRanges).toBeUndefined();
+  });
+
   it("prepends first loaded file names as header row", () => {
     const rows = buildReportRowsFromVisualRows(
       [{ leftText: "line1", rightText: "line1" }],
@@ -163,6 +192,68 @@ describe("buildDiffReportHtml", () => {
     expect(html).toContain("border-right: 1px solid var(--pane-divider-color)");
     expect(html).not.toContain("tr:nth-child(");
     expect(html).not.toContain("white-space: nowrap");
+    expect(html).toContain("height: 22px");
+  });
+
+  it("keeps empty inserted rows full-height and marks only their virtual cell", () => {
+    const reportRows = buildReportRowsFromVisualRows([
+      {
+        kind: "insert",
+        leftText: "",
+        leftVirtual: true,
+        rightText: "",
+      },
+    ]);
+    const html = buildDiffReportHtml(reportRows, { mode: "rich" });
+    const dom = new JSDOM(html);
+    const row = dom.window.document.querySelector("tbody tr");
+    const cells = row?.querySelectorAll("td");
+
+    expect(row?.classList.contains("row-insert")).toBe(true);
+    expect(cells?.[0]?.classList.contains("cell-virtual")).toBe(true);
+    expect(cells?.[1]?.classList.contains("cell-virtual")).toBe(false);
+  });
+
+  it("renders non-visible alignment rows without diff row styling", () => {
+    const html = buildDiffReportHtml([
+      {
+        diffVisible: false,
+        kind: "replace",
+        leftText: "left",
+        rightText: "right",
+      },
+    ], { mode: "rich" });
+    const dom = new JSDOM(html);
+
+    expect(dom.window.document.querySelector("tbody tr")?.className).toBe("");
+  });
+
+  it("expands tabs to the next four-column tab stop", () => {
+    const html = buildDiffReportHtml([
+      { leftText: "a\tb", rightText: "abcd\tb" },
+    ], { mode: "rich" });
+
+    expect(html).toContain("a&nbsp;&nbsp;&nbsp;b");
+    expect(html).toContain("abcd&nbsp;&nbsp;&nbsp;&nbsp;b");
+  });
+
+  it("never splits an emoji into replacement characters in rich HTML", () => {
+    const source = "a🙂c";
+    const html = buildDiffReportHtml([
+      {
+        kind: "replace",
+        leftText: source,
+        rightText: source,
+        leftInlineRanges: [{ start: 2, end: 3 }],
+        rightInlineRanges: [{ start: 2, end: 3 }],
+      },
+    ], { mode: "rich" });
+    const dom = new JSDOM(html);
+    const cells = dom.window.document.querySelectorAll("tbody td");
+
+    expect(cells[0]?.textContent).toBe(source);
+    expect(cells[1]?.textContent).toBe(source);
+    expect(cells[0]?.textContent).not.toContain("�");
   });
 
   it("keeps leading spaces in rich mode output", () => {

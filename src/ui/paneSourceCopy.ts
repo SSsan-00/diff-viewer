@@ -1,4 +1,3 @@
-import { mapRowToLineNumbers } from "../diffEngine/diffBlocks";
 import type { PairedOp } from "../diffEngine/types";
 import type { ToastVariant } from "./toast";
 
@@ -9,12 +8,17 @@ type ToastLike = {
 type CopySide = "left" | "right";
 
 export type CopyVisualRow = {
+  diffVisible?: boolean;
+  kind?: PairedOp["type"];
   leftText: string;
+  leftVirtual?: boolean;
   rightText: string;
+  rightVirtual?: boolean;
 };
 
 type CopyViewZoneSpec = {
   afterLineNumber: number;
+  className?: string;
   heightInLines?: number;
   label?: string;
 };
@@ -25,13 +29,28 @@ type CopyFileZones = {
 };
 
 function opToCopyVisualRow(op: PairedOp): CopyVisualRow {
+  const metadata = {
+    ...(op.diffVisible === undefined ? {} : { diffVisible: op.diffVisible }),
+    kind: op.type,
+  };
   if (op.type === "insert") {
-    return { leftText: "", rightText: op.rightLine ?? "" };
+    return {
+      ...metadata,
+      leftText: "",
+      leftVirtual: true,
+      rightText: op.rightLine ?? "",
+    };
   }
   if (op.type === "delete") {
-    return { leftText: op.leftLine ?? "", rightText: "" };
+    return {
+      ...metadata,
+      leftText: op.leftLine ?? "",
+      rightText: "",
+      rightVirtual: true,
+    };
   }
   return {
+    ...metadata,
     leftText: op.leftLine ?? "",
     rightText: op.rightLine ?? "",
   };
@@ -40,7 +59,21 @@ function opToCopyVisualRow(op: PairedOp): CopyVisualRow {
 function buildRowLineNumberPairs(
   ops: PairedOp[],
 ): Array<{ leftLineNo: number; rightLineNo: number }> {
-  return ops.map((_op, rowIndex) => mapRowToLineNumbers(ops, rowIndex));
+  const pairs: Array<{ leftLineNo: number; rightLineNo: number }> = [];
+  let leftLineNo = 0;
+  let rightLineNo = 0;
+  for (const op of ops) {
+    pairs.push({ leftLineNo, rightLineNo });
+    if (op.type === "equal" || op.type === "replace") {
+      leftLineNo += 1;
+      rightLineNo += 1;
+    } else if (op.type === "insert") {
+      rightLineNo += 1;
+    } else {
+      leftLineNo += 1;
+    }
+  }
+  return pairs;
 }
 
 function findBoundaryRowIndex(
@@ -94,8 +127,12 @@ function buildBoundaryRowsByIndex(
     const rows: CopyVisualRow[] = [];
     for (let line = 0; line < heightInLines; line += 1) {
       rows.push({
+        diffVisible: false,
+        kind: "equal",
         leftText: line === 0 ? leftZone?.label ?? "" : "",
+        leftVirtual: true,
         rightText: line === 0 ? rightZone?.label ?? "" : "",
+        rightVirtual: true,
       });
     }
 

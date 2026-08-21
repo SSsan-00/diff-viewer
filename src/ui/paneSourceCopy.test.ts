@@ -20,10 +20,10 @@ describe("buildCopyVisualRowsFromAlignedDiff", () => {
     const rows = buildCopyVisualRowsFromAlignedDiff(ops);
 
     expect(rows).toEqual([
-      { leftText: "a", rightText: "a" },
-      { leftText: "", rightText: "x" },
-      { leftText: "y", rightText: "" },
-      { leftText: "b", rightText: "b" },
+      { kind: "equal", leftText: "a", rightText: "a" },
+      { kind: "insert", leftText: "", leftVirtual: true, rightText: "x" },
+      { kind: "delete", leftText: "y", rightText: "", rightVirtual: true },
+      { kind: "equal", leftText: "b", rightText: "b" },
     ]);
     expect(buildCopyTextFromVisualRows(rows, "left")).toBe("a\n\ny\nb\n");
     expect(buildCopyTextFromVisualRows(rows, "right")).toBe("a\nx\n\nb\n");
@@ -37,7 +37,12 @@ describe("buildCopyVisualRowsFromAlignedDiff", () => {
     const rows = buildCopyVisualRowsFromAlignedDiff(ops);
 
     expect(rows).toHaveLength(ops.length);
-    expect(rows[1]).toEqual({ leftText: "", rightText: "X" });
+    expect(rows[1]).toEqual({
+      kind: "insert",
+      leftText: "",
+      leftVirtual: true,
+      rightText: "X",
+    });
   });
 
   it("includes file boundary zone labels and gap lines in the copied rows", () => {
@@ -65,11 +70,75 @@ describe("buildCopyVisualRowsFromAlignedDiff", () => {
     });
 
     expect(rows).toEqual([
-      { leftText: "file1-a", rightText: "file1-a" },
-      { leftText: "File 2: left.cs", rightText: "File 2: right.php" },
-      { leftText: "", rightText: "" },
-      { leftText: "file2-a", rightText: "file2-a" },
+      { kind: "equal", leftText: "file1-a", rightText: "file1-a" },
+      {
+        diffVisible: false,
+        kind: "equal",
+        leftText: "File 2: left.cs",
+        leftVirtual: true,
+        rightText: "File 2: right.php",
+        rightVirtual: true,
+      },
+      {
+        diffVisible: false,
+        kind: "equal",
+        leftText: "",
+        leftVirtual: true,
+        rightText: "",
+        rightVirtual: true,
+      },
+      { kind: "equal", leftText: "file2-a", rightText: "file2-a" },
     ]);
+  });
+
+  it("preserves empty source lines separately from virtual gap cells", () => {
+    const rows = buildCopyVisualRowsFromAlignedDiff([
+      { type: "insert", rightLine: "", rightLineNo: 0 },
+      { type: "delete", leftLine: "", leftLineNo: 0 },
+      {
+        type: "replace",
+        diffVisible: false,
+        leftLine: "left",
+        rightLine: "right",
+        leftLineNo: 1,
+        rightLineNo: 1,
+      },
+    ]);
+
+    expect(rows).toEqual([
+      { kind: "insert", leftText: "", leftVirtual: true, rightText: "" },
+      { kind: "delete", leftText: "", rightText: "", rightVirtual: true },
+      {
+        diffVisible: false,
+        kind: "replace",
+        leftText: "left",
+        rightText: "right",
+      },
+    ]);
+  });
+
+  it("builds boundary line numbers with linear indexed reads", () => {
+    const source: PairedOp[] = Array.from({ length: 400 }, (_, index) => ({
+      type: index % 3 === 0 ? "insert" : index % 3 === 1 ? "delete" : "equal",
+      leftLine: `left-${index}`,
+      rightLine: `right-${index}`,
+    }));
+    let indexedReads = 0;
+    const ops = new Proxy(source, {
+      get(target, property, receiver) {
+        if (typeof property === "string" && /^\d+$/.test(property)) {
+          indexedReads += 1;
+        }
+        return Reflect.get(target, property, receiver);
+      },
+    });
+
+    buildCopyVisualRowsFromAlignedDiff(ops, {
+      left: [{ afterLineNumber: 100, label: "left-boundary" }],
+      right: [{ afterLineNumber: 100, label: "right-boundary" }],
+    });
+
+    expect(indexedReads).toBeLessThan(source.length * 10);
   });
 });
 
