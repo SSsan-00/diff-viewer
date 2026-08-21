@@ -16,6 +16,7 @@ describe("createDiffViewerPerfMonitor", () => {
 
     expect(monitor.getSnapshot()).toEqual({
       engine: engineStatus,
+      generation: 0,
       lastRecalc: null,
     });
 
@@ -35,6 +36,7 @@ describe("createDiffViewerPerfMonitor", () => {
 
     expect(monitor.getSnapshot()).toEqual({
       engine: engineStatus,
+      generation: 1,
       lastRecalc: {
         diffBlockCount: 4,
         pairedOpCount: 12,
@@ -77,5 +79,26 @@ describe("createDiffViewerPerfMonitor", () => {
     monitor.clearLastRecalc();
 
     expect(monitor.getSnapshot().lastRecalc).toBeNull();
+    expect(monitor.getSnapshot().generation).toBe(1);
+  });
+
+  it("exposes an explicit recalc trigger without pretending a missing UI control succeeded", () => {
+    let triggerCount = 0;
+    const monitor = createDiffViewerPerfMonitor(
+      () => ({
+        activeMode: "ts",
+        attemptedWasm: false,
+        fallbackReason: null,
+        initializationMs: 0,
+        requestedMode: "ts",
+        wasmBuildId: null,
+      }),
+      () => {
+        triggerCount += 1;
+      },
+    );
+
+    expect(monitor.requestRecalc()).toBe(0);
+    expect(triggerCount).toBe(1);
   });
 });

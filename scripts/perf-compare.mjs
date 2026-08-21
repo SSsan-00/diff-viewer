@@ -84,11 +84,7 @@ function summary(values) {
 }
 
 function selectLastRecalcSnapshot(run) {
-  const snapshots = [
-    run?.recalc?.perfSnapshot?.lastRecalc ?? null,
-    run?.workspaceSwitch?.perfSnapshot?.lastRecalc ?? null,
-  ];
-  return snapshots.find((snapshot) => snapshot !== null) ?? null;
+  return run?.recalc?.perfSnapshot?.lastRecalc ?? null;
 }
 
 function sleep(ms) {
@@ -311,13 +307,13 @@ async function runProfile(cdp, label, expression, settleMs) {
     awaitPromise: true,
     returnByValue: true,
   });
+  const end = performance.now();
+  const stopped = await cdp.send("Profiler.stop");
   await sleep(settleMs);
   const snapshot = await cdp.send("Runtime.evaluate", {
     expression: `window.__diffViewerPerf?.getSnapshot?.() ?? null`,
     returnByValue: true,
   });
-  const stopped = await cdp.send("Profiler.stop");
-  const end = performance.now();
   return {
     label,
     wallMs: round(end - start),
@@ -385,10 +381,24 @@ async function runCaptureOnce(options) {
     const recalc = await runProfile(
       cdp,
       "recalc-large",
-      `(() => {
-        window.__diffViewerPerf?.clearLastRecalc?.();
-        document.querySelector('#recalc')?.click();
-        return true;
+      `(async () => {
+        const monitor = window.__diffViewerPerf;
+        if (!monitor?.requestRecalc || !monitor?.getSnapshot) {
+          throw new Error('Explicit recalc perf hook is unavailable.');
+        }
+        monitor.clearLastRecalc();
+        const previousGeneration = monitor.requestRecalc();
+        const deadline = performance.now() + 10000;
+        while (monitor.getSnapshot().generation <= previousGeneration) {
+          if (performance.now() >= deadline) {
+            throw new Error('Recalc generation did not advance.');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        return {
+          previousGeneration,
+          generation: monitor.getSnapshot().generation,
+        };
       })()`,
       options.settleMs,
     );
@@ -407,15 +417,34 @@ async function runCaptureOnce(options) {
     const workspaceSwitch = await runProfile(
       cdp,
       "workspace-switch",
-      `(() => {
-        window.__diffViewerPerf?.clearLastRecalc?.();
+      `(async () => {
+        const monitor = window.__diffViewerPerf;
+        if (!monitor?.getSnapshot) {
+          throw new Error('Perf monitor is unavailable.');
+        }
+        const previousGeneration = monitor.getSnapshot().generation;
+        monitor.clearLastRecalc();
         const toggle = document.querySelector('#workspace-toggle');
         toggle?.click();
         const buttons = [...document.querySelectorAll('.workspace-item .workspace-item__name')];
         const target = buttons[0];
+        if (!target) {
+          throw new Error('Workspace switch target is unavailable.');
+        }
         target?.click();
         toggle?.click();
-        return { count: buttons.length, switched: Boolean(target) };
+        const deadline = performance.now() + 10000;
+        while (monitor.getSnapshot().generation <= previousGeneration) {
+          if (performance.now() >= deadline) {
+            throw new Error('Workspace switch did not trigger a recalc.');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        }
+        return {
+          count: buttons.length,
+          switched: true,
+          generation: monitor.getSnapshot().generation,
+        };
       })()`,
       options.settleMs,
     );

@@ -375,7 +375,10 @@ const diffHighlightMode: DiffHighlightMode = appMode.diffHighlightMode;
 const diffEngine = await createDiffEngine({
   mode: appMode.diffEngineMode,
 });
-const diffViewerPerf = createDiffViewerPerfMonitor(() => diffEngine.getStatus());
+const diffViewerPerf = createDiffViewerPerfMonitor(
+  () => diffEngine.getStatus(),
+  () => recalcDiff(),
+);
 window.__diffViewerPerf = diffViewerPerf;
 app.innerHTML = createAppTemplate({
   diffCalculationMode: appMode.diffCalculationMode,
