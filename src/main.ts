@@ -73,6 +73,7 @@ import { bindPanelVisibilityToggle } from "./ui/panelVisibilityToggle";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import { shouldApplyBySignature } from "./ui/renderSignatures";
+import { canIgnoreLeadingWhitespaceInEditorText } from "./ui/leadingWhitespacePolicy";
 import {
   buildPairedOpsSignature,
   buildSegmentsSignature,
@@ -4551,11 +4552,6 @@ function buildZoneSignatures(
   );
 }
 
-function canIgnoreLeadingFileWhitespaceFromEditorText(text: string): boolean {
-  const normalized = normalizeText(text);
-  return normalized.length === 0 || normalized[0] !== "\n";
-}
-
 function buildDecorations(
   ops: PairedOp[],
   options: {
@@ -4841,9 +4837,9 @@ function recalcDiff() {
   const leftText = leftEditor.getValue();
   const rightText = rightEditor.getValue();
   const leftLeadingFileWhitespaceEligible =
-    canIgnoreLeadingFileWhitespaceFromEditorText(leftText);
+    canIgnoreLeadingWhitespaceInEditorText(leftText);
   const rightLeadingFileWhitespaceEligible =
-    canIgnoreLeadingFileWhitespaceFromEditorText(rightText);
+    canIgnoreLeadingWhitespaceInEditorText(rightText);
   const anchorValidationStartedAt = performance.now();
   const validation = validateAnchors(
     manualAnchors,
