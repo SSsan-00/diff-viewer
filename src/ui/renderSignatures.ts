@@ -14,9 +14,20 @@ export function shouldApplyBySignature(
   currentSignatures: readonly string[],
   nextSignatures: readonly string[],
   currentIds: readonly string[],
-  options?: { force?: boolean },
+  options?: {
+    force?: boolean;
+    currentModelVersionId?: number;
+    nextModelVersionId?: number;
+  },
 ): boolean {
   if (options?.force) {
+    return true;
+  }
+  if (
+    options?.currentModelVersionId !== undefined &&
+    options.nextModelVersionId !== undefined &&
+    options.currentModelVersionId !== options.nextModelVersionId
+  ) {
     return true;
   }
   if (!signatureArraysEqual(currentSignatures, nextSignatures)) {

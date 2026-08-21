@@ -3883,6 +3883,8 @@ let leftAnchorDecorationSignatures: string[] = [];
 let rightAnchorDecorationSignatures: string[] = [];
 let leftZoneSignatures: string[] = [];
 let rightZoneSignatures: string[] = [];
+let leftRenderedModelVersionId = -1;
+let rightRenderedModelVersionId = -1;
 let pairedOps: PairedOp[] = [];
 let diffBlockStarts: number[] = [];
 let currentBlockIndex = 0;
@@ -4998,13 +5000,23 @@ function recalcDiff() {
 
   const renderStartedAt = performance.now();
   const forceRenderRefresh = diffRenderingInvalidated;
+  const leftModelVersionId = leftEditor.getModel()?.getVersionId() ?? -1;
+  const rightModelVersionId = rightEditor.getModel()?.getVersionId() ?? -1;
+  const modelVersionOptions = (
+    currentModelVersionId: number,
+    nextModelVersionId: number,
+  ) => ({
+    force: forceRenderRefresh,
+    currentModelVersionId,
+    nextModelVersionId,
+  });
   const nextLeftDecorationSignatures = buildDecorationSignatures(left);
   if (
     shouldApplyBySignature(
       leftDecorationSignatures,
       nextLeftDecorationSignatures,
       leftDecorationIds,
-      { force: forceRenderRefresh },
+      modelVersionOptions(leftRenderedModelVersionId, leftModelVersionId),
     )
   ) {
     leftDecorationIds = leftEditor.deltaDecorations(leftDecorationIds, left);
@@ -5016,7 +5028,7 @@ function recalcDiff() {
       rightDecorationSignatures,
       nextRightDecorationSignatures,
       rightDecorationIds,
-      { force: forceRenderRefresh },
+      modelVersionOptions(rightRenderedModelVersionId, rightModelVersionId),
     )
   ) {
     rightDecorationIds = rightEditor.deltaDecorations(rightDecorationIds, right);
@@ -5028,7 +5040,7 @@ function recalcDiff() {
       leftAnchorDecorationSignatures,
       nextLeftAnchorSignatures,
       leftAnchorDecorationIds,
-      { force: forceRenderRefresh },
+      modelVersionOptions(leftRenderedModelVersionId, leftModelVersionId),
     )
   ) {
     leftAnchorDecorationIds = leftEditor.deltaDecorations(
@@ -5043,7 +5055,7 @@ function recalcDiff() {
       rightAnchorDecorationSignatures,
       nextRightAnchorSignatures,
       rightAnchorDecorationIds,
-      { force: forceRenderRefresh },
+      modelVersionOptions(rightRenderedModelVersionId, rightModelVersionId),
     )
   ) {
     rightAnchorDecorationIds = rightEditor.deltaDecorations(
@@ -5059,7 +5071,12 @@ function recalcDiff() {
       leftZoneSignatures,
       nextLeftZoneSignatures,
       leftZoneIds,
-      { force: forceRenderRefresh },
+      {
+        force:
+          forceRenderRefresh ||
+          leftRenderedModelVersionId !== leftModelVersionId ||
+          rightRenderedModelVersionId !== rightModelVersionId,
+      },
     )
   ) {
     leftZoneIds = applyViewZones(leftEditor, leftZoneIds, leftZones);
@@ -5071,12 +5088,19 @@ function recalcDiff() {
       rightZoneSignatures,
       nextRightZoneSignatures,
       rightZoneIds,
-      { force: forceRenderRefresh },
+      {
+        force:
+          forceRenderRefresh ||
+          leftRenderedModelVersionId !== leftModelVersionId ||
+          rightRenderedModelVersionId !== rightModelVersionId,
+      },
     )
   ) {
     rightZoneIds = applyViewZones(rightEditor, rightZoneIds, rightZones);
     rightZoneSignatures = nextRightZoneSignatures;
   }
+  leftRenderedModelVersionId = leftModelVersionId;
+  rightRenderedModelVersionId = rightModelVersionId;
   diffRenderingInvalidated = false;
   updateDiffJumpButtons(prevButton, nextButton, diffBlockStarts.length > 0);
   applyFolding();

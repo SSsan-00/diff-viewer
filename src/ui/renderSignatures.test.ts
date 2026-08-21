@@ -25,4 +25,22 @@ describe("shouldApplyBySignature", () => {
   it("reapplies rendering when Monaco lost decoration ids during a reload", () => {
     expect(shouldApplyBySignature(["range:a"], ["range:a"], [])).toBe(true);
   });
+
+  it("reapplies unchanged signatures after the editor model version advances", () => {
+    expect(
+      shouldApplyBySignature(["range:a"], ["range:a"], ["decoration-id"], {
+        currentModelVersionId: 7,
+        nextModelVersionId: 8,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps unchanged signatures when the editor model version is unchanged", () => {
+    expect(
+      shouldApplyBySignature(["range:a"], ["range:a"], ["decoration-id"], {
+        currentModelVersionId: 8,
+        nextModelVersionId: 8,
+      }),
+    ).toBe(false);
+  });
 });
