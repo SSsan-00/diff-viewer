@@ -13,6 +13,7 @@ export type RecalcPerfSnapshot = {
   pairedOpCount: number;
   phases: RecalcPerfPhases;
   totalMs: number;
+  usedCachedContent: boolean;
   usedCachedDerived: boolean;
 };
 

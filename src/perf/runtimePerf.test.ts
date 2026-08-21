@@ -31,6 +31,7 @@ describe("createDiffViewerPerfMonitor", () => {
         renderMs: 5.75,
       },
       totalMs: 20.5,
+      usedCachedContent: false,
       usedCachedDerived: false,
     });
 
@@ -48,6 +49,7 @@ describe("createDiffViewerPerfMonitor", () => {
           renderMs: 5.75,
         },
         totalMs: 20.5,
+        usedCachedContent: false,
         usedCachedDerived: false,
       },
     });
@@ -74,6 +76,7 @@ describe("createDiffViewerPerfMonitor", () => {
         renderMs: 0.4,
       },
       totalMs: 1.5,
+      usedCachedContent: true,
       usedCachedDerived: true,
     });
     monitor.clearLastRecalc();

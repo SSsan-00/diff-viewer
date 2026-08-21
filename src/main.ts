@@ -16,6 +16,7 @@ import { diffInlineWithAppendLiteral } from "./diffEngine/diffInline";
 import type { PairedOp } from "./diffEngine/types";
 import {
   prepareReplaceOpsForDisplay,
+  type PreparedReplaceOpsForDisplay,
   type ReplaceDisplayDiff,
 } from "./diffEngine/replaceVisibility";
 import { ScrollSyncController } from "./scrollSync/ScrollSyncController";
@@ -74,6 +75,7 @@ import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import { shouldApplyBySignature } from "./ui/renderSignatures";
 import { canIgnoreLeadingWhitespaceInEditorText } from "./ui/leadingWhitespacePolicy";
+import { buildDiffContentCacheKey } from "./ui/diffContentCacheKey";
 import {
   buildPairedOpsSignature,
   buildSegmentsSignature,
@@ -4147,12 +4149,21 @@ type DerivedDiffCache = {
   };
 };
 
+type ContentDiffCache = {
+  key: string;
+  leftModel: monaco.editor.ITextModel | null;
+  opsSignature: string;
+  prepared: PreparedReplaceOpsForDisplay;
+  rightModel: monaco.editor.ITextModel | null;
+};
+
 const foldOptions = {
   threshold: 8,
   keepHead: 3,
   keepTail: 3,
 };
 let derivedDiffCache: DerivedDiffCache | null = null;
+let contentDiffCache: ContentDiffCache | null = null;
 
 function setAnchorMessage(message: string) {
   anchorMessage.textContent = message;
@@ -4902,34 +4913,74 @@ function recalcDiff() {
   ].join("|");
   const anchorValidationMs = performance.now() - anchorValidationStartedAt;
 
-  const diffComputeStartedAt = performance.now();
-  if (anchorOnlyDiffMode) {
-    pairedOps = buildAnchorOnlyPairedOps(leftText, rightText, validation.valid);
-  } else if (anchorsForDiff.length > 0) {
-    pairedOps = diffEngine.diffWithAnchors(leftText, rightText, anchorsForDiff, {
-      ignoreLeadingFileWhitespace,
-    });
-  } else {
-    pairedOps = pairReplace(
-      diffEngine.diffLines(leftText, rightText, {
-        ignoreLeadingFileWhitespace,
-      }),
-    );
-  }
-  const diffComputeMs = performance.now() - diffComputeStartedAt;
-
-  const normalizeStartedAt = performance.now();
-  const preparedReplaceOps = prepareReplaceOpsForDisplay(pairedOps, {
-    ignoreLeadingFileWhitespace,
-    leftLeadingFileWhitespaceEligible,
-    promoteEqualRows: !anchorOnlyDiffMode,
-    rightLeadingFileWhitespaceEligible,
+  const leftModel = leftEditor.getModel();
+  const rightModel = rightEditor.getModel();
+  const engineStatus = diffEngine.getStatus();
+  const contentCacheKey = buildDiffContentCacheKey({
+    anchorOnlyDiffMode,
+    anchors: anchorsForDiff,
+    engine: [
+      engineStatus.requestedMode,
+      engineStatus.activeMode,
+      engineStatus.wasmBuildId,
+    ],
+    ignoreLeadingWhitespace: ignoreLeadingFileWhitespace,
+    leftLeadingWhitespaceEligible,
+    leftModelVersionId: leftModel?.getVersionId() ?? -1,
+    rightLeadingWhitespaceEligible,
+    rightModelVersionId: rightModel?.getVersionId() ?? -1,
   });
-  pairedOps = preparedReplaceOps.ops;
-  const normalizeMs = performance.now() - normalizeStartedAt;
+  const useCachedContent =
+    contentDiffCache !== null &&
+    contentDiffCache.key === contentCacheKey &&
+    contentDiffCache.leftModel === leftModel &&
+    contentDiffCache.rightModel === rightModel;
+  let diffComputeMs = 0;
+  let normalizeMs = 0;
+  let preparedReplaceOps: PreparedReplaceOpsForDisplay;
+  let opsSignature: string;
+
+  if (useCachedContent) {
+    preparedReplaceOps = contentDiffCache.prepared;
+    pairedOps = preparedReplaceOps.ops;
+    opsSignature = contentDiffCache.opsSignature;
+  } else {
+    const diffComputeStartedAt = performance.now();
+    if (anchorOnlyDiffMode) {
+      pairedOps = buildAnchorOnlyPairedOps(leftText, rightText, validation.valid);
+    } else if (anchorsForDiff.length > 0) {
+      pairedOps = diffEngine.diffWithAnchors(leftText, rightText, anchorsForDiff, {
+        ignoreLeadingFileWhitespace,
+      });
+    } else {
+      pairedOps = pairReplace(
+        diffEngine.diffLines(leftText, rightText, {
+          ignoreLeadingFileWhitespace,
+        }),
+      );
+    }
+    diffComputeMs = performance.now() - diffComputeStartedAt;
+
+    const normalizeStartedAt = performance.now();
+    preparedReplaceOps = prepareReplaceOpsForDisplay(pairedOps, {
+      ignoreLeadingFileWhitespace,
+      leftLeadingFileWhitespaceEligible,
+      promoteEqualRows: !anchorOnlyDiffMode,
+      rightLeadingFileWhitespaceEligible,
+    });
+    pairedOps = preparedReplaceOps.ops;
+    normalizeMs = performance.now() - normalizeStartedAt;
+    opsSignature = buildPairedOpsSignature(pairedOps);
+    contentDiffCache = {
+      key: contentCacheKey,
+      leftModel,
+      opsSignature,
+      prepared: preparedReplaceOps,
+      rightModel,
+    };
+  }
 
   const deriveStartedAt = performance.now();
-  const opsSignature = buildPairedOpsSignature(pairedOps);
   const segmentSignature = `${buildSegmentsSignature(leftSegments)}\n---\n${buildSegmentsSignature(rightSegments)}`;
   const useCachedDerived =
     derivedDiffCache !== null &&
@@ -5095,6 +5146,7 @@ function recalcDiff() {
       renderMs,
     },
     totalMs: performance.now() - recalcStartedAt,
+    usedCachedContent: useCachedContent,
     usedCachedDerived: useCachedDerived,
   });
 }
