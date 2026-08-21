@@ -1,7 +1,7 @@
 import { extractAppendLiteral } from "./appendLiteral";
 import { extractEmbeddedOutputCall } from "./embeddedOutputCall";
 
-type LineCategory = "decl" | "call" | "other";
+type LineCategory = "decl" | "assign" | "call" | "other";
 
 const MODIFIER_KEYWORDS = new Set([
   "var",
@@ -64,7 +64,10 @@ const DECLARATION_MODIFIER_PATTERN =
 const CALL_LIKE_PATTERN = /\b[A-Za-z_][A-Za-z0-9_]*\s*\(/;
 const FUNCTION_NAME_PATTERN = /\b(?:function|fn|def)\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/i;
 const TYPED_FUNCTION_NAME_PATTERN =
-  /\b[A-Za-z_][A-Za-z0-9_<>,\[\]]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/;
+  /^(?!(?:await|return|throw|new)\b)(?:(?:public|private|protected|internal|static|readonly|final|abstract|async|override|virtual)\s+)*[A-Za-z_][A-Za-z0-9_<>,.\[\]?]*\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/i;
+const ASSIGNMENT_OPERATOR_PATTERN = /(?:\+=|-=|\*=|\/=|%=|\.=|=)/g;
+const CALL_NAME_PATTERN =
+  /(?:[A-Za-z_$][A-Za-z0-9_$]*\s*(?:\.|->)\s*)*([A-Za-z_][A-Za-z0-9_]*)\s*\(/g;
 
 function stripStringLiterals(source: string): string {
   return source.replace(/'([^'\\]|\\.)*'|\"([^\"\\]|\\.)*\"/g, "");
@@ -498,6 +501,75 @@ function extractFunctionNameFromNormalized(normalized: string): string | null {
   return null;
 }
 
+function extractDefineTarget(line: string): string | null {
+  const match = line.match(/\bdefine\s*\(\s*(['"])([A-Za-z_][A-Za-z0-9_]*)\1\s*,/i);
+  return match?.[2]?.toLowerCase() ?? null;
+}
+
+function findAssignmentOperatorIndex(source: string): number | null {
+  ASSIGNMENT_OPERATOR_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = ASSIGNMENT_OPERATOR_PATTERN.exec(source)) !== null) {
+    if (match[0] !== "=") {
+      return match.index;
+    }
+    const previous = source[match.index - 1] ?? "";
+    const next = source[match.index + 1] ?? "";
+    if (!/[=!<>]/.test(previous) && !/[=>]/.test(next)) {
+      return match.index;
+    }
+  }
+  return null;
+}
+
+function extractAssignmentTarget(line: string): string | null {
+  const defineTarget = extractDefineTarget(line);
+  if (defineTarget) {
+    return defineTarget;
+  }
+
+  const source = stripStringLiterals(line).trim();
+  if (source.startsWith("<")) {
+    return null;
+  }
+  const operatorIndex = findAssignmentOperatorIndex(source);
+  if (operatorIndex === null || operatorIndex === 0) {
+    return null;
+  }
+
+  const leftHandSide = source.slice(0, operatorIndex).trim();
+  if (
+    leftHandSide.length === 0 ||
+    /[(),{}]/.test(leftHandSide) ||
+    /\b(?:if|while|for|return)\b/i.test(leftHandSide)
+  ) {
+    return null;
+  }
+
+  const withoutIndexes = leftHandSide.replace(/\[[^\]]*\]/g, "");
+  const identifiers = withoutIndexes.match(/[A-Za-z_][A-Za-z0-9_]*/g) ?? [];
+  for (let index = identifiers.length - 1; index >= 0; index -= 1) {
+    const identifier = identifiers[index].toLowerCase();
+    if (!MODIFIER_KEYWORDS.has(identifier)) {
+      return identifier;
+    }
+  }
+  return null;
+}
+
+function extractCallName(line: string): string | null {
+  const source = stripStringLiterals(line).replace(/\$/g, "");
+  CALL_NAME_PATTERN.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = CALL_NAME_PATTERN.exec(source)) !== null) {
+    const name = match[1].toLowerCase();
+    if (!MODIFIER_KEYWORDS.has(name)) {
+      return name;
+    }
+  }
+  return null;
+}
+
 function extractMemberAccessName(line: string): string | null {
   const normalized = line
     .trimStart()
@@ -512,14 +584,22 @@ function extractMemberAccessName(line: string): string | null {
   return match[1].toLowerCase();
 }
 
-function detectCategoryFromNormalized(normalized: string): LineCategory {
-  if (DECLARATION_KEYWORD_PATTERN.test(normalized)) {
+function detectCategoryFromNormalized(
+  normalized: string,
+  functionName: string | null,
+  assignmentTarget: string | null,
+  callName: string | null,
+): LineCategory {
+  if (functionName || DECLARATION_KEYWORD_PATTERN.test(normalized)) {
     return "decl";
   }
   if (DECLARATION_MODIFIER_PATTERN.test(normalized) && CALL_LIKE_PATTERN.test(normalized)) {
     return "decl";
   }
-  if (CALL_LIKE_PATTERN.test(normalized)) {
+  if (assignmentTarget) {
+    return "assign";
+  }
+  if (callName || CALL_LIKE_PATTERN.test(normalized)) {
     return "call";
   }
   return "other";
@@ -527,18 +607,10 @@ function detectCategoryFromNormalized(normalized: string): LineCategory {
 
 function pickPrimaryId(
   identifiers: string[],
-  literals: string[],
-  line: string,
-  normalizedLine: string,
+  strongId: string | null,
 ): string | null {
-  const funcName = extractFunctionNameFromNormalized(normalizedLine);
-  if (funcName && !MODIFIER_KEYWORDS.has(funcName)) {
-    return funcName;
-  }
-
-  const memberAccessName = extractMemberAccessName(line);
-  if (memberAccessName && !MODIFIER_KEYWORDS.has(memberAccessName)) {
-    return memberAccessName;
+  if (strongId && !MODIFIER_KEYWORDS.has(strongId)) {
+    return strongId;
   }
 
   const primaryCandidates = identifiers.filter(
@@ -546,12 +618,6 @@ function pickPrimaryId(
   );
   if (primaryCandidates.length > 0) {
     return primaryCandidates.reduce((best, current) =>
-      current.length > best.length ? current : best,
-    );
-  }
-
-  if (literals.length > 0) {
-    return literals.reduce((best, current) =>
       current.length > best.length ? current : best,
     );
   }
@@ -565,9 +631,11 @@ export function buildLineFeatures(line: string): LineFeatures {
   const appendLiteral = appendLike ? extractAppendLiteral(normalizedLine) : null;
   const featureLine = appendLiteral ?? normalizedLine;
   const normalizedFeatureLine = normalizeLine(featureLine);
-  const identifiers = extractIdentifiersFromNormalized(normalizedFeatureLine);
+  const identifiers = extractIdentifiersFromNormalized(
+    normalizeLine(stripStringLiterals(featureLine)),
+  );
   const literals = extractLiterals(featureLine);
-  const numbers = extractNumbers(featureLine);
+  const numbers = extractNumbers(stripStringLiterals(featureLine));
   const embeddedOutputCall = extractEmbeddedOutputCall(normalizedLine);
   if (embeddedOutputCall) {
     identifiers.push(`embeddedcall:${embeddedOutputCall}`);
@@ -606,10 +674,25 @@ export function buildLineFeatures(line: string): LineFeatures {
   if (braceToken) {
     identifiers.push(braceToken);
   }
-  const category = detectCategoryFromNormalized(normalizedFeatureLine);
+  const functionName = extractFunctionNameFromNormalized(
+    normalizeLine(stripStringLiterals(normalizedLine)),
+  );
+  const assignmentTarget = functionName ? null : extractAssignmentTarget(normalizedLine);
+  const callName =
+    functionName || assignmentTarget || appendLike
+      ? null
+      : extractCallName(normalizedLine);
+  const category = detectCategoryFromNormalized(
+    normalizedFeatureLine,
+    functionName,
+    assignmentTarget,
+    callName,
+  );
+  const memberAccessName = extractMemberAccessName(featureLine);
+  const strongId = functionName ?? assignmentTarget ?? callName ?? memberAccessName;
   const primaryId = embeddedOutputCall
     ? `embeddedcall:${embeddedOutputCall}`
-    : pickPrimaryId(identifiers, literals, featureLine, normalizedFeatureLine);
+    : pickPrimaryId(identifiers, strongId);
   extractEmbeddedHintTokens(featureLine).forEach((token) => identifiers.push(token));
   if (appendLike) {
     literals.forEach((literal) => {
@@ -653,9 +736,10 @@ function intersectCount(left: string[], right: string[]): number {
   if (left.length === 0 || right.length === 0) {
     return 0;
   }
+  const leftSet = new Set(left);
   const rightSet = new Set(right);
   let count = 0;
-  left.forEach((token) => {
+  leftSet.forEach((token) => {
     if (rightSet.has(token)) {
       count += 1;
     }
@@ -728,6 +812,16 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
     dateFormatArgOverlap ||
     commentOverlap;
 
+  if (
+    left.category === right.category &&
+    left.category !== "other" &&
+    left.primaryId &&
+    right.primaryId &&
+    left.primaryId !== right.primaryId
+  ) {
+    return null;
+  }
+
   if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
     if (!hasBaseOverlap) {
       return null;
@@ -774,7 +868,11 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
   }
 
   if (left.category === right.category) {
-    score += left.category === "decl" ? 1.5 : left.category === "call" ? 1 : 0.5;
+    score += left.category === "decl"
+      ? 1.5
+      : left.category === "call" || left.category === "assign"
+        ? 1
+        : 0.5;
   } else if (
     (left.category === "decl" && right.category === "call") ||
     (left.category === "call" && right.category === "decl")
