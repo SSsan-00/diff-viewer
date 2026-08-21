@@ -18,7 +18,7 @@ function countIndent(line: string): number {
   return count;
 }
 
-type PairCandidate = {
+export type PairCandidate = {
   deleteIndex: number;
   insertIndex: number;
   indentDiff: number;
@@ -51,6 +51,8 @@ type MatchState = {
 };
 
 const WINDOW_SIZE = 40;
+const MAX_INDEX_TOKEN_OCCURRENCES = 24;
+const MAX_CANDIDATES_PER_DELETE = 160;
 const SCORE_THRESHOLD = 4;
 const APPEND_LITERAL_EXACT_SCORE = SCORE_THRESHOLD + 8;
 const EMPTY_MATCH_STATE: MatchState = {
@@ -209,7 +211,7 @@ function addCommentBodyTokens(line: PreparedPairLine): void {
 function buildIndexMap(lines: PreparedPairLine[]): Map<string, number[]> {
   const map = new Map<string, number[]>();
   lines.forEach((line, index) => {
-    line.tokens.forEach((token) => {
+    new Set(line.tokens).forEach((token) => {
       const bucket = map.get(token);
       if (bucket) {
         bucket.push(index);
@@ -233,13 +235,56 @@ function buildCandidateIndices(
   for (let i = start; i <= end; i += 1) {
     indices.add(i);
   }
-  tokens.forEach((token) => {
+  const remoteCandidates = new Map<
+    number,
+    { bucketSize: number; distance: number; special: boolean }
+  >();
+  new Set(tokens).forEach((token) => {
     const bucket = indexMap.get(token);
-    if (!bucket) {
+    if (!bucket || bucket.length > MAX_INDEX_TOKEN_OCCURRENCES) {
       return;
     }
-    bucket.forEach((entry) => indices.add(entry));
+    const special =
+      token.startsWith("appendpayload:") ||
+      token.startsWith("appendpayloadcore:") ||
+      token.startsWith("commentbody:");
+    bucket.forEach((entry) => {
+      if (indices.has(entry)) {
+        return;
+      }
+      const candidate = {
+        bucketSize: bucket.length,
+        distance: Math.abs(index - entry),
+        special,
+      };
+      const current = remoteCandidates.get(entry);
+      if (
+        !current ||
+        Number(candidate.special) > Number(current.special) ||
+        (candidate.special === current.special && candidate.bucketSize < current.bucketSize)
+      ) {
+        remoteCandidates.set(entry, candidate);
+      }
+    });
   });
+  const sortedRemote = [...remoteCandidates.entries()].sort((a, b) => {
+    if (a[1].special !== b[1].special) {
+      return Number(b[1].special) - Number(a[1].special);
+    }
+    if (a[1].bucketSize !== b[1].bucketSize) {
+      return a[1].bucketSize - b[1].bucketSize;
+    }
+    if (a[1].distance !== b[1].distance) {
+      return a[1].distance - b[1].distance;
+    }
+    return a[0] - b[0];
+  });
+  for (const [entry] of sortedRemote) {
+    if (indices.size >= MAX_CANDIDATES_PER_DELETE) {
+      break;
+    }
+    indices.add(entry);
+  }
   return [...indices];
 }
 
@@ -280,7 +325,10 @@ function canCompareCommentBodies(
   );
 }
 
-function buildCandidates(deletes: LineOp[], inserts: LineOp[]): PairCandidate[] {
+export function buildPairCandidates(
+  deletes: LineOp[],
+  inserts: LineOp[],
+): PairCandidate[] {
   const candidates: PairCandidate[] = [];
   const deletePrepared: PreparedPairLine[] = deletes.map((op) => {
     const text = op.leftLine ?? "";
@@ -588,7 +636,7 @@ function pairBlock(deletes: LineOp[], inserts: LineOp[]): PairedOp[] {
     () => [] as PairCandidate[],
   );
 
-  for (const candidate of buildCandidates(deletes, inserts)) {
+  for (const candidate of buildPairCandidates(deletes, inserts)) {
     candidatesByDelete[candidate.deleteIndex].push(candidate);
   }
 

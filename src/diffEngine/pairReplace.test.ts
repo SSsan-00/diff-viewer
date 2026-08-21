@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import type { LineOp, PairedOp } from "./types";
-import { pairReplace } from "./pairReplace";
+import { buildPairCandidates, pairReplace } from "./pairReplace";
 
 function compactOps(ops: PairedOp[]): Record<string, unknown>[] {
   // Drop undefined fields to keep expectations readable.
@@ -237,6 +237,135 @@ describe("pairReplace", () => {
         rightLineNo: 0,
       },
     ]);
+  });
+
+  it("pairs the same assignment target when only the right-hand side changes", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "const total = oldValue;", leftLineNo: 0 },
+      { type: "insert", rightLine: "const total = newValue;", rightLineNo: 0 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "replace",
+        leftLine: "const total = oldValue;",
+        rightLine: "const total = newValue;",
+        leftLineNo: 0,
+        rightLineNo: 0,
+      },
+    ]);
+  });
+
+  it("does not pair different assignment targets through a shared right-hand side", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "foo = sharedDependency;", leftLineNo: 0 },
+      { type: "insert", rightLine: "baz = sharedDependency;", rightLineNo: 0 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "delete",
+        leftLine: "foo = sharedDependency;",
+        leftLineNo: 0,
+      },
+      {
+        type: "insert",
+        rightLine: "baz = sharedDependency;",
+        rightLineNo: 0,
+      },
+    ]);
+  });
+
+  it("keeps same-target assignments aligned inside an ordered replace block", () => {
+    const input: LineOp[] = [
+      { type: "delete", leftLine: "foo = sharedDependency;", leftLineNo: 0 },
+      { type: "delete", leftLine: "bar = oldValue;", leftLineNo: 1 },
+      { type: "insert", rightLine: "bar = newValue;", rightLineNo: 0 },
+      { type: "insert", rightLine: "baz = sharedDependency;", rightLineNo: 1 },
+    ];
+
+    expect(compactOps(pairReplace(input))).toEqual([
+      {
+        type: "delete",
+        leftLine: "foo = sharedDependency;",
+        leftLineNo: 0,
+      },
+      {
+        type: "replace",
+        leftLine: "bar = oldValue;",
+        rightLine: "bar = newValue;",
+        leftLineNo: 1,
+        rightLineNo: 0,
+      },
+      {
+        type: "insert",
+        rightLine: "baz = sharedDependency;",
+        rightLineNo: 1,
+      },
+    ]);
+  });
+
+  it("pairs same-name declarations and calls but rejects different names", () => {
+    const sameName: LineOp[] = [
+      { type: "delete", leftLine: "function render(oldValue) {}", leftLineNo: 0 },
+      { type: "insert", rightLine: "string render(NewValue value) {}", rightLineNo: 0 },
+      { type: "delete", leftLine: "ui.refresh(oldValue);", leftLineNo: 1 },
+      { type: "insert", rightLine: "refresh(newValue);", rightLineNo: 1 },
+    ];
+    const differentNames: LineOp[] = [
+      { type: "delete", leftLine: "render(sharedValue);", leftLineNo: 0 },
+      { type: "insert", rightLine: "refresh(sharedValue);", rightLineNo: 0 },
+    ];
+
+    expect(compactOps(pairReplace(sameName))).toEqual([
+      {
+        type: "replace",
+        leftLine: "function render(oldValue) {}",
+        rightLine: "string render(NewValue value) {}",
+        leftLineNo: 0,
+        rightLineNo: 0,
+      },
+      {
+        type: "replace",
+        leftLine: "ui.refresh(oldValue);",
+        rightLine: "refresh(newValue);",
+        leftLineNo: 1,
+        rightLineNo: 1,
+      },
+    ]);
+    expect(compactOps(pairReplace(differentNames))).toEqual([
+      {
+        type: "delete",
+        leftLine: "render(sharedValue);",
+        leftLineNo: 0,
+      },
+      {
+        type: "insert",
+        rightLine: "refresh(sharedValue);",
+        rightLineNo: 0,
+      },
+    ]);
+  });
+
+  it("bounds candidate generation for frequent shared tokens", () => {
+    const lineCount = 400;
+    const deletes: LineOp[] = Array.from({ length: lineCount }, (_, index) => ({
+      type: "delete" as const,
+      leftLine: `sharedTarget = left${index};`,
+      leftLineNo: index,
+    }));
+    const inserts: LineOp[] = Array.from({ length: lineCount }, (_, index) => ({
+      type: "insert" as const,
+      rightLine: `sharedTarget = right${index};`,
+      rightLineNo: index,
+    }));
+
+    expect(buildPairCandidates(deletes, inserts).length).toBeLessThanOrEqual(
+      lineCount * 100,
+    );
+    const result = pairReplace([...deletes, ...inserts]);
+
+    expect(result).toHaveLength(lineCount);
   });
 
   it("keeps later close-call replaces aligned after a single inserted call", () => {
