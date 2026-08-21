@@ -76,6 +76,7 @@ import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import { shouldApplyBySignature } from "./ui/renderSignatures";
 import { canIgnoreLeadingWhitespaceInEditorText } from "./ui/leadingWhitespacePolicy";
 import { buildDiffContentCacheKey } from "./ui/diffContentCacheKey";
+import { buildWrappedAlignmentZones } from "./ui/wrappedAlignmentZones";
 import {
   buildPairedOpsSignature,
   buildSegmentsSignature,
@@ -4079,8 +4080,6 @@ function runAnchorAction(
   applyAnchorResult(result, side);
 }
 
-type ZoneSide = "insert" | "delete";
-
 type ViewZoneSpec = {
   afterLineNumber: number;
   heightInLines?: number;
@@ -4101,6 +4100,7 @@ type DerivedDiffCache = {
   opsSignature: string;
   segmentSignature: string;
   decorationVariantKey: string;
+  layoutSignature: string;
   foldRanges: FoldRange[];
   decorations: {
     left: monaco.editor.IModelDeltaDecoration[];
@@ -4597,71 +4597,6 @@ function buildDecorations(
   return { left, right };
 }
 
-function buildViewZones(ops: PairedOp[]): {
-  left: ViewZoneSpec[];
-  right: ViewZoneSpec[];
-} {
-  const left: ViewZoneSpec[] = [];
-  const right: ViewZoneSpec[] = [];
-  let consumedLeftLines = 0;
-  let consumedRightLines = 0;
-
-  const pushZone = (
-    target: ViewZoneSpec[],
-    side: ZoneSide,
-    afterLineNumber: number,
-    heightInLines: number,
-  ) => {
-    if (heightInLines <= 0) {
-      return;
-    }
-    const className = side === "insert" ? "diff-zone-insert" : "diff-zone-delete";
-    target.push({ afterLineNumber, heightInLines, className });
-  };
-
-  const appendOrExtendZone = (
-    target: ViewZoneSpec[],
-    side: ZoneSide,
-    afterLineNumber: number,
-    heightInLines: number,
-  ) => {
-    const className = side === "insert" ? "diff-zone-insert" : "diff-zone-delete";
-    const last = target[target.length - 1];
-    if (
-      last &&
-      last.className === className &&
-      last.afterLineNumber === afterLineNumber
-    ) {
-      last.heightInLines += heightInLines;
-      return;
-    }
-    pushZone(target, side, afterLineNumber, heightInLines);
-  };
-
-  for (const op of ops) {
-    if (op.type === "equal" || op.type === "replace") {
-      consumedLeftLines += 1;
-      consumedRightLines += 1;
-      continue;
-    }
-
-    if (op.type === "insert") {
-      consumedRightLines += 1;
-      const afterLineNumber = Math.max(consumedLeftLines, 0);
-      appendOrExtendZone(left, "insert", afterLineNumber, 1);
-      continue;
-    }
-
-    if (op.type === "delete") {
-      consumedLeftLines += 1;
-      const afterLineNumber = Math.max(consumedRightLines, 0);
-      appendOrExtendZone(right, "delete", afterLineNumber, 1);
-    }
-  }
-
-  return { left, right };
-}
-
 function applyViewZones(
   editor: monaco.editor.IStandaloneCodeEditor,
   currentZoneIds: string[],
@@ -4949,10 +4884,16 @@ function recalcDiff() {
 
   const deriveStartedAt = performance.now();
   const segmentSignature = `${buildSegmentsSignature(leftSegments)}\n---\n${buildSegmentsSignature(rightSegments)}`;
+  const layoutSignature = JSON.stringify([
+    leftEditor.getLayoutInfo().width,
+    rightEditor.getLayoutInfo().width,
+    wordWrapEnabled,
+  ]);
   const useCachedDerived =
     derivedDiffCache !== null &&
     derivedDiffCache.opsSignature === opsSignature &&
     derivedDiffCache.segmentSignature === segmentSignature &&
+    derivedDiffCache.layoutSignature === layoutSignature &&
     derivedDiffCache.decorationVariantKey === decorationVariantKey;
   const nextDerived = useCachedDerived
     ? derivedDiffCache
@@ -4960,6 +4901,7 @@ function recalcDiff() {
         opsSignature,
         segmentSignature,
         decorationVariantKey,
+        layoutSignature,
         foldRanges: buildFoldRanges(pairedOps, foldOptions),
         decorations: buildDecorations(pairedOps, {
           diffHighlightMode,
@@ -4969,7 +4911,7 @@ function recalcDiff() {
           manualAnchorKeys,
           rightLeadingFileWhitespaceEligible,
         }),
-        viewZones: buildViewZones(pairedOps),
+        viewZones: buildWrappedAlignmentZones(pairedOps, leftEditor, rightEditor),
         fileZones: buildAlignedFileBoundaryZones(pairedOps, leftSegments, rightSegments),
       };
   if (!useCachedDerived) {
