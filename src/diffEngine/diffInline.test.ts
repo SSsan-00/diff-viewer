@@ -27,6 +27,39 @@ describe("diffInline", () => {
     expect(result.rightRanges).toEqual([{ start: 6, end: 7 }]);
   });
 
+  it("keeps UTF-16 ranges on whole emoji boundaries", () => {
+    expect(diffInline("a🙂c", "a🙃c")).toEqual({
+      leftRanges: [{ start: 1, end: 3 }],
+      rightRanges: [{ start: 1, end: 3 }],
+    });
+  });
+
+  it("normalizes ranges returned by an injected core to grapheme boundaries", () => {
+    setDiffInlineCore(() => ({
+      leftRanges: [{ start: 2, end: 3 }],
+      rightRanges: [{ start: 2, end: 3 }],
+    }));
+
+    expect(diffInline("a🙂c", "a🙃c")).toEqual({
+      leftRanges: [{ start: 1, end: 3 }],
+      rightRanges: [{ start: 1, end: 3 }],
+    });
+  });
+
+  it("expands combining-mark changes to the whole grapheme", () => {
+    expect(diffInline("a\u0301b", "a\u0300b")).toEqual({
+      leftRanges: [{ start: 0, end: 2 }],
+      rightRanges: [{ start: 0, end: 2 }],
+    });
+  });
+
+  it("expands ZWJ emoji changes to the whole grapheme", () => {
+    expect(diffInline("👩‍💻", "👩‍🔬")).toEqual({
+      leftRanges: [{ start: 0, end: 5 }],
+      rightRanges: [{ start: 0, end: 5 }],
+    });
+  });
+
   it("treats AppendLine payload as the inline diff input", () => {
     const left = "<head>";
     const right = "sb.AppendLine(\"<head>\");";
@@ -62,6 +95,48 @@ describe("diffInline", () => {
       leftRanges: [],
       rightRanges: [],
     });
+  });
+
+  it("keeps interpolated AppendLine expression changes visible", () => {
+    const left = 'sb.AppendLine($"<b>{foo}</b>");';
+    const right = 'sb.AppendLine($"<b>{bar}</b>");';
+    const result = diffInlineWithAppendLiteral(left, right);
+
+    expect(result.leftRanges.some((range) =>
+      range.start <= left.indexOf("foo") && range.end >= left.indexOf("foo") + 3
+    )).toBe(true);
+    expect(result.rightRanges.some((range) =>
+      range.start <= right.indexOf("bar") && range.end >= right.indexOf("bar") + 3
+    )).toBe(true);
+  });
+
+  it("keeps verbatim AppendLine payload changes visible", () => {
+    const left = 'sb.AppendLine(@"say ""old""");';
+    const right = 'sb.AppendLine(@"say ""new""");';
+    const result = diffInlineWithAppendLiteral(left, right);
+
+    expect(result.leftRanges.some((range) =>
+      range.start <= left.indexOf("old") && range.end >= left.indexOf("old") + 3
+    )).toBe(true);
+    expect(result.rightRanges.some((range) =>
+      range.start <= right.indexOf("new") && range.end >= right.indexOf("new") + 3
+    )).toBe(true);
+  });
+
+  it("shows verbatim quote escapes while preserving matching payload text", () => {
+    const left = 'sb.AppendLine(@"say ""hello""");';
+    const right = 'say "hello"';
+    const result = diffInlineWithAppendLiteral(left, right);
+    const firstEscapedQuote = left.indexOf('""');
+    const secondEscapedQuote = left.lastIndexOf('""');
+
+    expect(result.leftRanges.some((range) =>
+      range.start < firstEscapedQuote + 2 && range.end > firstEscapedQuote
+    )).toBe(true);
+    expect(result.leftRanges.some((range) =>
+      range.start < secondEscapedQuote + 2 && range.end > secondEscapedQuote
+    )).toBe(true);
+    expect(result.rightRanges).toHaveLength(0);
   });
 
   it("highlights AppendLine wrapper and escape backslashes without flooding the payload", () => {
@@ -219,6 +294,61 @@ describe("diffInline", () => {
     expect(result.rightRanges).toEqual([{ start: 2, end: 5 }]);
   });
 
+  it("uses a deterministic coarse middle range above the LCS cell budget", () => {
+    const prefix = "prefix:";
+    const suffix = ":suffix";
+    const left = `${prefix}${"a".repeat(1_100)}${suffix}`;
+    const right = `${prefix}${"b".repeat(1_100)}${suffix}`;
+
+    expect(diffInline(left, right)).toEqual({
+      leftRanges: [{ start: prefix.length, end: prefix.length + 1_100 }],
+      rightRanges: [{ start: prefix.length, end: prefix.length + 1_100 }],
+    });
+  });
+
+  it("trims very large common edges before computing LCS", () => {
+    const prefix = "a".repeat(10_000);
+    const suffix = "b".repeat(10_000);
+
+    expect(diffInline(`${prefix}x${suffix}`, `${prefix}y${suffix}`)).toEqual({
+      leftRanges: [{ start: prefix.length, end: prefix.length + 1 }],
+      rightRanges: [{ start: prefix.length, end: prefix.length + 1 }],
+    });
+  });
+
+  it("handles a 100000-character one-sided inline change without an LCS table", () => {
+    const left = "x".repeat(100_000);
+
+    expect(diffInline(left, "")).toEqual({
+      leftRanges: [{ start: 0, end: left.length }],
+      rightRanges: [],
+    });
+  });
+
+  it("skips identical rows before invoking a batch core", () => {
+    const batchCore = vi.fn((inputs: Array<{ leftLine: string; rightLine: string }>) =>
+      inputs.map(() => ({
+        leftRanges: [{ start: 0, end: 1 }],
+        rightRanges: [{ start: 0, end: 1 }],
+      })),
+    );
+    setDiffInlineBatchCore(batchCore);
+
+    expect(diffInlineBatch([
+      { leftLine: "same", rightLine: "same" },
+      { leftLine: "left", rightLine: "right" },
+    ])).toEqual([
+      { leftRanges: [], rightRanges: [] },
+      {
+        leftRanges: [{ start: 0, end: 1 }],
+        rightRanges: [{ start: 0, end: 1 }],
+      },
+    ]);
+    expect(batchCore).toHaveBeenCalledWith([
+      { leftLine: "left", rightLine: "right" },
+    ]);
+  });
+
   it("lets callers replace the inline diff core", () => {
     const diffCore = vi.fn(() => ({
       leftRanges: [{ start: 1, end: 2 }],
@@ -272,7 +402,11 @@ describe("diffInline", () => {
 
     expect(diffInlineWithAppendLiteralBatch(inputs)).toEqual(
       inputs.map((input) =>
-        diffInlineWithAppendLiteral(input.leftLine, input.rightLine, input.options),
+        diffInlineWithAppendLiteral(
+          input.leftLine,
+          input.rightLine,
+          "options" in input ? input.options : undefined,
+        ),
       ),
     );
   });

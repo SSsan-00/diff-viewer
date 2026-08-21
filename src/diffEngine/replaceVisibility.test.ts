@@ -148,6 +148,25 @@ describe("normalizeReplaceOpsForDisplay", () => {
     });
   });
 
+  it("keeps interpolated AppendLine expression changes as replace rows", () => {
+    const leftLine = 'sb.AppendLine($"<b>{foo}</b>");';
+    const rightLine = 'sb.AppendLine($"<b>{bar}</b>");';
+    const prepared = prepareReplaceOpsForDisplay([
+      {
+        type: "replace",
+        leftLine,
+        rightLine,
+        leftLineNo: 2,
+        rightLineNo: 2,
+      },
+    ], {
+      ignoreLeadingFileWhitespace: false,
+    });
+
+    expect(prepared.ops[0]?.type).toBe("replace");
+    expect(prepared.displayDiffs[0]?.hasVisibleDiff).toBe(true);
+  });
+
   it("upgrades AppendLine-aligned rows so wrapper differences are highlighted without anchors", () => {
     const ops: PairedOp[] = [
       {

@@ -1,5 +1,8 @@
 import { describe, it, expect } from "vitest";
-import { extractAppendLiteralWithMap } from "./appendLiteral";
+import {
+  extractAppendLiteralInlineMap,
+  extractAppendLiteralWithMap,
+} from "./appendLiteral";
 
 describe("extractAppendLiteralWithMap", () => {
   it("extracts head tag from AppendLine", () => {
@@ -31,5 +34,27 @@ describe("extractAppendLiteralWithMap", () => {
     const result = extractAppendLiteralWithMap(line);
     expect(result?.payload).toBe("\tfoo\\bar");
     expect(result?.indices.length).toBe(result?.payload.length);
+  });
+
+  it("keeps interpolation expressions semantic for matching but raw for display", () => {
+    const line = 'sb.AppendLine($"<b>{customer.Name}</b>");';
+
+    expect(extractAppendLiteralWithMap(line)?.payload).toBe("<b>{expr}</b>");
+    const inline = extractAppendLiteralInlineMap(line);
+    expect(inline?.payload).toBe("<b>{customer.Name}</b>");
+    expect(inline?.indices.map((index) => line[index]).join("")).toBe(
+      "<b>{customer.Name}</b>",
+    );
+  });
+
+  it("keeps verbatim quote escapes raw for display", () => {
+    const line = 'sb.AppendLine(@"say ""hello""");';
+
+    expect(extractAppendLiteralWithMap(line)?.payload).toBe('say "hello"');
+    const inline = extractAppendLiteralInlineMap(line);
+    expect(inline?.payload).toBe('say ""hello""');
+    expect(inline?.indices.map((index) => line[index]).join("")).toBe(
+      'say ""hello""',
+    );
   });
 });

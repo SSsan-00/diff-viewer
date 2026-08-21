@@ -68,7 +68,7 @@ export function prepareReplaceOpsForDisplay(
   const inlineDiffs = diffInlineWithAppendLiteralBatch(batchInputs);
   const displayDiffs: Array<ReplaceDisplayDiff | null> = [];
   let inlineDiffIndex = 0;
-  const normalizedOps = ops.map((op) => {
+  const normalizedOps: PairedOp[] = ops.map((op): PairedOp => {
     if (op.diffVisible === false) {
       displayDiffs.push(null);
       return op;

@@ -84,6 +84,9 @@ function parseAppendLiteral(
     }
     if (isVerbatim && ch === "\"" && line[i + 1] === "\"") {
       pushChar("\"", i);
+      if (options.preserveEscapes) {
+        pushChar("\"", i + 1);
+      }
       i += 2;
       continue;
     }
@@ -94,10 +97,17 @@ function parseAppendLiteral(
     if (isInterpolated && ch === "{") {
       if (line[i + 1] === "{") {
         pushChar("{", i);
+        if (options.preserveEscapes) {
+          pushChar("{", i + 1);
+        }
         i += 2;
         continue;
       }
-      pushRepeated("{expr}", i);
+      if (options.preserveEscapes) {
+        pushChar("{", i);
+      } else {
+        pushRepeated("{expr}", i);
+      }
       i += 1;
       let depth = 1;
       while (i < line.length && depth > 0) {
@@ -108,11 +118,21 @@ function parseAppendLiteral(
           depth -= 1;
         }
         if (c === "\"" && !isVerbatim) {
+          if (options.preserveEscapes) {
+            pushChar(c, i);
+          }
           i += 1;
           while (i < line.length) {
             if (line[i] === "\\" && i + 1 < line.length) {
+              if (options.preserveEscapes) {
+                pushChar(line[i], i);
+                pushChar(line[i + 1], i + 1);
+              }
               i += 2;
               continue;
+            }
+            if (options.preserveEscapes) {
+              pushChar(line[i], i);
             }
             if (line[i] === "\"") {
               i += 1;
@@ -122,12 +142,18 @@ function parseAppendLiteral(
           }
           continue;
         }
+        if (options.preserveEscapes) {
+          pushChar(c, i);
+        }
         i += 1;
       }
       continue;
     }
     if (isInterpolated && ch === "}" && line[i + 1] === "}") {
       pushChar("}", i);
+      if (options.preserveEscapes) {
+        pushChar("}", i + 1);
+      }
       i += 2;
       continue;
     }
