@@ -73,6 +73,10 @@ import { bindPanelVisibilityToggle } from "./ui/panelVisibilityToggle";
 import { buildAlignedFileBoundaryZones } from "./ui/fileBoundaryZones";
 import { buildAnchorDecorations } from "./ui/anchorDecorations";
 import { shouldApplyBySignature } from "./ui/renderSignatures";
+import {
+  buildPairedOpsSignature,
+  buildSegmentsSignature,
+} from "./ui/diffRenderCacheKey";
 import { handleAnchorShortcut } from "./ui/anchorShortcut";
 import {
   handleLeftAnchorClick,
@@ -4614,32 +4618,6 @@ function buildDecorations(
   }
 
   return { left, right };
-}
-
-function buildPairedOpSignature(op: PairedOp): string {
-  const leftLineNo = op.leftLineNo ?? "";
-  const rightLineNo = op.rightLineNo ?? "";
-  const leftLine = op.leftLine ?? "";
-  const rightLine = op.rightLine ?? "";
-  const diffVisible = op.diffVisible === false ? "0" : "1";
-  return `${op.type}|${diffVisible}|${leftLineNo}|${rightLineNo}|${leftLine}|${rightLine}`;
-}
-
-function buildPairedOpsSignature(ops: readonly PairedOp[]): string {
-  return ops.map((op) => buildPairedOpSignature(op)).join("\n");
-}
-
-function buildSegmentsSignature(segments: readonly LineSegment[]): string {
-  return segments
-    .map((segment) =>
-      [
-        segment.fileIndex,
-        segment.fileName ?? "",
-        segment.startLine,
-        segment.lineCount,
-      ].join("|"),
-    )
-    .join("\n");
 }
 
 function buildViewZones(ops: PairedOp[]): {
