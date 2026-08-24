@@ -22,6 +22,10 @@ export type LineChange = {
   text: string;
 };
 
+export type SegmentUpdateOptions = {
+  currentText?: string;
+};
+
 function findSegment(segments: LineSegment[], lineNumber: number): LineSegment | null {
   for (const segment of segments) {
     const end = segment.startLine + segment.lineCount - 1;
@@ -65,6 +69,7 @@ function getLineDelta(change: LineChange): number {
 export function updateSegmentsForChanges(
   segments: LineSegment[],
   changes: readonly LineChange[],
+  options?: SegmentUpdateOptions,
 ): void {
   if (segments.length === 0 || changes.length === 0) {
     return;
@@ -79,6 +84,11 @@ export function updateSegmentsForChanges(
     }
     const index = findSegmentIndex(segments, change.range.startLineNumber);
     if (index < 0) {
+      for (const segment of segments) {
+        if (segment.startLine > change.range.startLineNumber) {
+          segment.startLine = Math.max(1, segment.startLine + delta);
+        }
+      }
       continue;
     }
     const nextCount = Math.max(1, segments[index].lineCount + delta);
@@ -86,6 +96,17 @@ export function updateSegmentsForChanges(
     for (let i = index + 1; i < segments.length; i += 1) {
       segments[i].startLine = segments[i - 1].startLine + segments[i - 1].lineCount;
     }
+  }
+
+  const currentText = options?.currentText;
+  if (currentText === undefined) {
+    return;
+  }
+  const lastSegment = segments[segments.length - 1];
+  const modelLineCount = currentText.split("\n").length;
+  const lastSegmentEnd = lastSegment.startLine + lastSegment.lineCount - 1;
+  if (lastSegmentEnd === modelLineCount) {
+    lastSegment.endsWithNewline = currentText.endsWith("\n");
   }
 }
 

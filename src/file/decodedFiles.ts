@@ -14,12 +14,41 @@ export type DecodedFilesResult = {
   segments: LineSegment[];
 };
 
-function appendText(currentValue: string, nextValue: string): string {
-  if (!currentValue) {
-    return nextValue;
+function appendTextAtLine(
+  currentValue: string,
+  nextValue: string,
+  startLine: number,
+): string {
+  const currentLineCount = currentValue.split("\n").length;
+  const separatorCount = Math.max(0, startLine - currentLineCount);
+  return currentValue + "\n".repeat(separatorCount) + nextValue;
+}
+
+function getAppendStartLine(
+  text: string,
+  segments: readonly LineSegment[],
+): number {
+  if (!text) {
+    return segments.length === 0
+      ? 1
+      : Math.max(
+          1,
+          segments[segments.length - 1].startLine +
+            segments[segments.length - 1].lineCount,
+        );
   }
-  const separator = currentValue.endsWith("\n") ? "" : "\n";
-  return currentValue + separator + nextValue;
+  const modelLineCount = text.split("\n").length;
+  const textAppendLine = text.endsWith("\n")
+    ? modelLineCount
+    : modelLineCount + 1;
+  if (segments.length === 0) {
+    return textAppendLine;
+  }
+  const lastSegment = segments[segments.length - 1];
+  return Math.max(
+    textAppendLine,
+    lastSegment.startLine + lastSegment.lineCount,
+  );
 }
 
 function getLogicalLineCount(
@@ -59,10 +88,7 @@ export function appendDecodedFiles(
       decoded,
       includeTrailingEmptyLine,
     );
-    const startLine =
-      segments.length === 0
-        ? 1
-        : segments[segments.length - 1].startLine + segments[segments.length - 1].lineCount;
+    const startLine = getAppendStartLine(text, segments);
     const fileIndex = segments.length + 1;
 
     segments.push({
@@ -72,7 +98,7 @@ export function appendDecodedFiles(
       fileName: file.name,
       endsWithNewline,
     });
-    text = appendText(text, decoded);
+    text = appendTextAtLine(text, decoded, startLine);
   });
 
   return { text, segments };

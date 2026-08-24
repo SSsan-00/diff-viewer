@@ -90,4 +90,166 @@ describe("line number formatter", () => {
     expect(segments[0].lineCount).toBe(2);
     expect(segments[1].startLine).toBe(3);
   });
+
+  it("moves managed segments when lines change inside an unmanaged prefix", () => {
+    const segments: LineSegment[] = [
+      { startLine: 3, lineCount: 2, fileIndex: 1, fileName: "managed.txt" },
+    ];
+
+    updateSegmentsForChanges(segments, [
+      {
+        range: {
+          startLineNumber: 2,
+          startColumn: 1,
+          endLineNumber: 2,
+          endColumn: 1,
+        },
+        text: "new prefix\n",
+      },
+    ]);
+
+    expect(segments).toEqual([
+      { startLine: 4, lineCount: 2, fileIndex: 1, fileName: "managed.txt" },
+    ]);
+  });
+
+  it("records a trailing newline added to the final managed file", () => {
+    const segments: LineSegment[] = [
+      {
+        startLine: 1,
+        lineCount: 1,
+        fileIndex: 1,
+        fileName: "a.txt",
+        endsWithNewline: false,
+      },
+    ];
+
+    updateSegmentsForChanges(
+      segments,
+      [
+        {
+          range: {
+            startLineNumber: 1,
+            startColumn: 2,
+            endLineNumber: 1,
+            endColumn: 2,
+          },
+          text: "\n",
+        },
+      ],
+      { currentText: "A\n" },
+    );
+
+    expect(segments[0]).toMatchObject({
+      lineCount: 2,
+      endsWithNewline: true,
+    });
+  });
+
+  it("clears a trailing newline removed from the final managed file", () => {
+    const segments: LineSegment[] = [
+      {
+        startLine: 1,
+        lineCount: 2,
+        fileIndex: 1,
+        fileName: "a.txt",
+        endsWithNewline: true,
+      },
+    ];
+
+    updateSegmentsForChanges(
+      segments,
+      [
+        {
+          range: {
+            startLineNumber: 1,
+            startColumn: 2,
+            endLineNumber: 2,
+            endColumn: 1,
+          },
+          text: "",
+        },
+      ],
+      { currentText: "A" },
+    );
+
+    expect(segments[0]).toMatchObject({
+      lineCount: 1,
+      endsWithNewline: false,
+    });
+  });
+
+  it("does not infer a final-file newline from an unmanaged suffix", () => {
+    const segments: LineSegment[] = [
+      {
+        startLine: 1,
+        lineCount: 1,
+        fileIndex: 1,
+        fileName: "managed.txt",
+        endsWithNewline: false,
+      },
+    ];
+
+    updateSegmentsForChanges(
+      segments,
+      [
+        {
+          range: {
+            startLineNumber: 2,
+            startColumn: 7,
+            endLineNumber: 2,
+            endColumn: 7,
+          },
+          text: " edited",
+        },
+      ],
+      { currentText: "managed\nsuffix edited\n" },
+    );
+
+    expect(segments[0]?.endsWithNewline).toBe(false);
+  });
+
+  it("preserves an intermediate file's recorded trailing newline", () => {
+    const segments: LineSegment[] = [
+      {
+        startLine: 1,
+        lineCount: 1,
+        fileIndex: 1,
+        fileName: "a.txt",
+        endsWithNewline: true,
+      },
+      {
+        startLine: 2,
+        lineCount: 1,
+        fileIndex: 2,
+        fileName: "b.txt",
+        endsWithNewline: false,
+      },
+    ];
+
+    updateSegmentsForChanges(
+      segments,
+      [
+        {
+          range: {
+            startLineNumber: 1,
+            startColumn: 2,
+            endLineNumber: 1,
+            endColumn: 2,
+          },
+          text: "\ninside",
+        },
+      ],
+      { currentText: "A\ninside\nB" },
+    );
+
+    expect(segments[0]).toMatchObject({
+      lineCount: 2,
+      endsWithNewline: true,
+    });
+    expect(segments[1]).toMatchObject({
+      startLine: 3,
+      endsWithNewline: false,
+    });
+  });
 });

@@ -11,7 +11,7 @@ describe("normalizeLastSegmentForAppend", () => {
     normalizeLastSegmentForAppend(segments, "A1\nA2_LAST\n");
 
     expect(segments[0].lineCount).toBe(2);
-    expect(segments[0].endsWithNewline).toBe(false);
+    expect(segments[0].endsWithNewline).toBe(true);
   });
 
   it("does nothing when the current value does not end with a newline", () => {

@@ -19,5 +19,5 @@ export function normalizeLastSegmentForAppend(
     return;
   }
   lastSegment.lineCount = physicalCount - 1;
-  lastSegment.endsWithNewline = false;
+  lastSegment.endsWithNewline = true;
 }

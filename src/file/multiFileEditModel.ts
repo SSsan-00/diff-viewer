@@ -16,6 +16,39 @@ export type MultiFileWriteItem<TTarget extends PaneSaveTarget = PaneSaveTarget> 
   bytes: Uint8Array;
 };
 
+export function isFullySegmentedText(
+  text: string,
+  segments: readonly LineSegment[],
+): boolean {
+  if (segments.length === 0) {
+    return text === "";
+  }
+  let expectedStartLine = 1;
+  for (const segment of segments) {
+    if (segment.startLine !== expectedStartLine || segment.lineCount < 1) {
+      return false;
+    }
+    expectedStartLine += segment.lineCount;
+  }
+  return expectedStartLine - 1 === text.split("\n").length;
+}
+
+export function canUsePaneSaveTargets(
+  text: string,
+  segments: readonly LineSegment[],
+  targets: readonly { fileName: string }[],
+): boolean {
+  return (
+    isFullySegmentedText(text, segments) &&
+    segments.length === targets.length &&
+    segments.every(
+      (segment, index) =>
+        segment.fileName !== undefined &&
+        segment.fileName === targets[index]?.fileName,
+    )
+  );
+}
+
 function findSegmentIndexAtLine(
   segments: readonly LineSegment[],
   lineNumber: number,
@@ -26,22 +59,33 @@ function findSegmentIndexAtLine(
   });
 }
 
+function findLineRegion(
+  segments: readonly LineSegment[],
+  lineNumber: number,
+): string {
+  const segmentIndex = findSegmentIndexAtLine(segments, lineNumber);
+  if (segmentIndex >= 0) {
+    return `segment:${segmentIndex}`;
+  }
+  const nextSegmentIndex = segments.findIndex(
+    (segment) => segment.startLine > lineNumber,
+  );
+  return `unmanaged:${nextSegmentIndex < 0 ? segments.length : nextSegmentIndex}`;
+}
+
 export function areChangesWithinSingleFileSegments(
   segments: readonly LineSegment[],
   changes: readonly LineChange[],
 ): boolean {
-  if (segments.length <= 1) {
+  if (segments.length === 0) {
     return true;
   }
 
-  return changes.every((change) => {
-    const startIndex = findSegmentIndexAtLine(
-      segments,
-      change.range.startLineNumber,
-    );
-    const endIndex = findSegmentIndexAtLine(segments, change.range.endLineNumber);
-    return startIndex >= 0 && startIndex === endIndex;
-  });
+  return changes.every(
+    (change) =>
+      findLineRegion(segments, change.range.startLineNumber) ===
+      findLineRegion(segments, change.range.endLineNumber),
+  );
 }
 
 export function extractSegmentTexts(
@@ -54,7 +98,9 @@ export function extractSegmentTexts(
     const endIndex = startIndex + Math.max(1, segment.lineCount);
     const selected = lines.slice(startIndex, endIndex);
     let segmentText = selected.join("\n");
-    if (segment.endsWithNewline && selected[selected.length - 1] !== "") {
+    const includesTrailingModelLine =
+      endIndex === lines.length && selected[selected.length - 1] === "";
+    if (segment.endsWithNewline && !includesTrailingModelLine) {
       segmentText += "\n";
     }
     return {
