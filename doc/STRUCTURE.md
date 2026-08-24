@@ -111,7 +111,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/file/decode.test.ts` `decodeArrayBuffer` のユニットテスト。
 - `src/file/fileOrder.ts` 複数ファイル読み込み時の順序調整（cshtml.cs → cshtml）。export: `reorderRazorPairs`。
 - `src/file/fileOrder.test.ts` cshtml ペア順序のテスト。
-- `src/file/decodedFiles.ts` rawBytes から連結テキスト/セグメントを生成（最終ファイルの末尾改行は保持し、行番号がモデル行数と一致するよう整合）。exports: `FileBytes`, `DecodedFilesResult`, `buildDecodedFiles`。
+- `src/file/decodedFiles.ts` rawBytes から連結テキスト/セグメントを生成（空ファイル、追記前の非ファイル本文、最終ファイルの末尾改行を含め、物理行とsegment開始を整合）。exports: `FileBytes`, `DecodedFilesResult`, `buildDecodedFiles`。
 - `src/file/decodedFiles.test.ts` 再デコード/セグメント生成のテスト。
 - `src/file/lineNumbering.ts` file-local 行番号フォーマット/取得ユーティリティ。exports: `LineSegment`, `LineSegmentInfo`, `getLineSegment`, `getLineSegmentInfo`, `createLineNumberFormatter`。
 - `src/file/lineNumbering.test.ts` 行番号計算のテスト。
@@ -129,7 +129,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/file/language.test.ts` 拡張子→言語推定のテスト。
 - `src/file/writeback.ts` File System Access API 経由の読み取り/保存ハンドル取得、再読み込み、文字コード/改行/BOMを維持した単一/複数ファイル書き戻しを担当。exports: `pickFilesWithHandles`, `collectDroppedFiles`, `getPaneWriteAvailability`, `readCurrentFileFromPaneTarget`, `saveTextWithPaneTarget` ほか。
 - `src/file/writeback.test.ts` 保存可否、読み取り専用ハンドルでの再読み込み、UTF-8/Shift_JIS/EUC-JP の安全な書き戻し、破損防止のテスト。
-- `src/file/multiFileEditModel.ts` 連結表示された複数ファイルの境界判定、ファイル別テキスト抽出、複数ファイル保存の事前エンコード検証を担当。exports: `areChangesWithinSingleFileSegments`, `extractSegmentTexts`, `buildMultiFileWritePlan`。
+- `src/file/multiFileEditModel.ts` 連結表示された複数ファイルの境界判定、unmanaged領域を除いたファイル別テキスト抽出、ペイン全体と保存ハンドルの対応検証、複数ファイル保存の事前エンコード検証を担当。exports: `areChangesWithinSingleFileSegments`, `isFullySegmentedText`, `canUsePaneSaveTargets`, `extractSegmentTexts`, `buildMultiFileWritePlan`。
 - `src/file/multiFileEditModel.test.ts` 境界をまたぐ編集の拒否、ファイル別抽出、保存前エンコード検証のテスト。
 
 ### src/ui/
@@ -249,6 +249,26 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/anchorDecorations.test.ts` アンカー装飾のテスト。
 - `src/ui/anchorNavigation.ts` アンカー一覧の↑/↓移動ロジック。exports: `getNextAnchorKey`, `resolveAnchorMoveDelta`。
 - `src/ui/anchorNavigation.test.ts` アンカーナビゲーションのテスト。
+- `src/ui/anchorTracking.ts` Monaco の変更範囲から通常編集後のアンカー行を追跡し、構造的に曖昧な変更を判定する純粋ロジック。exports: `transformTrackedLine`, `transformAnchorsForContentChanges`。
+- `src/ui/anchorTracking.test.ts` 行挿入・削除・結合・複数変更時のアンカー追跡テスト。
+- `src/ui/anchorReload.ts` 同一ファイル内の一意な未変更行へ再読み込み後のアンカー行を保守的に再配置し、ファイル追加時は物理的に不変な unmanaged 行も同じ絶対行へ維持する純粋ロジック。exports: `createAnchorReloadLineMapper`, `createAnchorAppendLineMapper`, `relocateAnchorLineForReload`。
+- `src/ui/anchorReload.test.ts` 再読み込み時の挿入・削除・重複・複数ファイル境界と、追加時の unmanaged 行追跡のテスト。
+- `src/ui/anchorLifecycle.ts` 通常編集/再読み込み/ファイル追加の追跡結果を manual/stale/pending/selected 状態へ反映し、左右の非同期操作結果を現行状態へ side 単位でrebaseする統合ロジック。一時的な順序逆転の検証保留と、prepare元座標へcanonicalizeした要確認化にも対応する。exports: `updateAnchorStateForContentChanges`, `updateAnchorStateForPaneReload`, `updateAnchorStateForPaneAppend`, `rebasePaneSnapshotAnchorLifecycleResult`, `finalizeDeferredAnchorValidation`。
+- `src/ui/anchorLifecycle.test.ts` アンカー状態の移動・要確認化・選択更新・historical staleとの共存・active重複排除と、左右同時操作の完了順に依存しないrebase/最終検証のテスト。
+- `src/ui/paneAnchorValidation.ts` 左右のreload/appendが並行する間だけ中間validationを保留し、成功・失敗を問わず両操作がidleになった時点で最終確定するcoordinator。通常編集割込みでもprepare元identityを引き継ぐ。
+- `src/ui/paneAnchorValidation.test.ts` 同時swapの両commit順、片側abort、通常編集割込み、canonical stale座標、idle後のorigin破棄を検証するテスト。
+- `src/ui/anchorEditHistory.ts` Monaco の alternative version ID ごとにアンカー状態をbounded履歴へ保持し、片側だけの通常編集 Undo / Redo を反対側の現行位置へ影響させず同期するロジック。
+- `src/ui/anchorEditHistory.test.ts` 複数段の Undo / Redo、左右交互編集、要確認化の復元、redo branch破棄、履歴上限、手動操作後の履歴破棄テスト。
+- `src/ui/paneReloadTransaction.ts` 全対象の権限確認・読み込み・事前計算が成功し、commit直前のコンテキスト検証にも通った場合だけ状態更新を1回実行する再読み込みトランザクション。export: `runPaneReloadTransaction`。
+- `src/ui/paneReloadTransaction.test.ts` 権限拒否・読み込み/デコード失敗・待機中コンテキスト変更時の非変更保証と成功時の単一commitテスト。
+- `src/ui/paneSaveTransaction.ts` source取得・書き込み内容生成・全権限確認・commit直前コンテキスト検証を全write前に行い、スナップショット化した内容だけを保存するトランザクション。export: `runPaneSaveTransaction`。
+- `src/ui/paneSaveTransaction.test.ts` source取得待機中のワークスペース変更、反対ペイン変更、複数対象の全事前検証とスナップショット保存テスト。
+- `src/ui/paneOperationGeneration.ts` 左右ペイン別のファイル操作世代トークンを管理し、同一ペインの保存開始などで古い非同期結果を無効化する純粋ロジック。
+- `src/ui/paneOperationGeneration.test.ts` 同一ペインの保存でreloadを無効化し、反対ペイン操作では無効化しないことのテスト。
+- `src/ui/paneEncodingChange.ts` 文字コード変更のprepare/commitを分離し、失敗時に直前の正常適用値へ選択を戻すcontroller。
+- `src/ui/paneEncodingChange.test.ts` 不正UTF-8とアンカー事前計算失敗時の非変更・選択復元テスト。
+- `src/ui/trackedPaneAppend.ts` ファイル追加前後のスナップショットから既存アンカーを保守的に再配置し、非同期読み込み結果をcontext guard後にだけcommitするロジック。exports: `prepareTrackedPaneAppend`, `runTrackedPaneAppendTransaction`。
+- `src/ui/trackedPaneAppend.test.ts` 空ペインの仮行・末尾空行の要確認化、重複行のfile-local維持、待機中コンテキスト変更時の非変更保証テスト。
 - `src/ui/anchorReset.ts` クリア時のアンカー状態/装飾を一括リセット。export: `resetAllAnchors` と関連型。
 - `src/ui/anchorReset.test.ts` アンカーリセットのテスト。
 - `src/ui/fileBoundaryZones.ts` ファイル境界の表示ゾーン生成（差分行と整列）。exports: `buildAlignedFileBoundaryZones` と関連型。
