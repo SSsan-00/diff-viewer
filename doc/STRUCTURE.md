@@ -249,16 +249,20 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/anchorDecorations.test.ts` アンカー装飾のテスト。
 - `src/ui/anchorNavigation.ts` アンカー一覧の↑/↓移動ロジック。exports: `getNextAnchorKey`, `resolveAnchorMoveDelta`。
 - `src/ui/anchorNavigation.test.ts` アンカーナビゲーションのテスト。
-- `src/ui/anchorTracking.ts` Monaco の変更範囲から通常編集後のアンカー行を追跡し、構造的に曖昧な変更を判定する純粋ロジック。exports: `transformTrackedLine`, `transformAnchorsForContentChanges`。
-- `src/ui/anchorTracking.test.ts` 行挿入・削除・結合・複数変更時のアンカー追跡テスト。
-- `src/ui/anchorReload.ts` 同一ファイル内の一意な未変更行へ再読み込み後のアンカー行を保守的に再配置し、ファイル追加時は物理的に不変な unmanaged 行も同じ絶対行へ維持する純粋ロジック。exports: `createAnchorReloadLineMapper`, `createAnchorAppendLineMapper`, `relocateAnchorLineForReload`。
-- `src/ui/anchorReload.test.ts` 再読み込み時の挿入・削除・重複・複数ファイル境界と、追加時の unmanaged 行追跡のテスト。
-- `src/ui/anchorLifecycle.ts` 通常編集/再読み込み/ファイル追加の追跡結果を manual/stale/pending/selected 状態へ反映し、左右の非同期操作結果を現行状態へ side 単位でrebaseする統合ロジック。一時的な順序逆転の検証保留と、prepare元座標へcanonicalizeした要確認化にも対応する。exports: `updateAnchorStateForContentChanges`, `updateAnchorStateForPaneReload`, `updateAnchorStateForPaneAppend`, `rebasePaneSnapshotAnchorLifecycleResult`, `finalizeDeferredAnchorValidation`。
-- `src/ui/anchorLifecycle.test.ts` アンカー状態の移動・要確認化・選択更新・historical staleとの共存・active重複排除と、左右同時操作の完了順に依存しないrebase/最終検証のテスト。
+- `src/ui/anchorTracking.ts` Monaco の変更範囲と必要時だけ参照する変更前行内容から通常編集後のアンカー行を追跡し、行末改行・隣接改行削除・複数行変更内の一意な完全行を判定する純粋ロジック。exports: `prepareContentChanges`, `transformTrackedLine`, `transformAnchorsForContentChanges` ほか。
+- `src/ui/anchorTracking.test.ts` 行挿入・削除・分割・結合・複数変更・一意な完全行の生存時のアンカー追跡テスト。
+- `src/ui/anchorReload.ts` 同一ファイル内で一意行と単調な前後文脈を使い再読み込み後の対応表を有界走査で準備し、安全な1行対1行変更も保守的に再配置する純粋ロジック。ファイル追加時は物理的に不変な unmanaged 行も同じ絶対行へ維持する。exports: `createAnchorReloadLineMapper`, `createAnchorAppendLineMapper`, `relocateAnchorLineForReload`。
+- `src/ui/anchorReload.test.ts` 再読み込み時の挿入・削除・文脈付き重複・1行変更・交差文脈・複数ファイル境界と、追加時の unmanaged 行追跡のテスト。
+- `src/ui/anchorEncoding.ts` 文字コード変更時にファイル識別子と file-local 行を使い、行数不変の同一ファイルだけを内容非依存で追跡する純粋ロジック。export: `createAnchorEncodingLineMapper`。
+- `src/ui/anchorEncoding.test.ts` 全文の見え方が変わる再デコード、ファイル絶対位置の変化、行数・識別子・segment異常時の保守的判定テスト。
+- `src/ui/staleAnchorRecovery.ts` 両側の内部追跡位置を保持できた要確認アンカーを全体検証し、activeや候補同士と競合しないものだけ自動復帰する純粋ロジック。export: `recoverUnambiguousStaleAnchors`。
+- `src/ui/staleAnchorRecovery.test.ts` 範囲・重複・順序・候補間競合と、独立候補だけの復帰を検証するテスト。
+- `src/ui/anchorLifecycle.ts` 通常編集/再読み込み/文字コード変更/ファイル追加の追跡結果を manual/stale内部追跡/pending/selected 状態へ反映し、左右の非同期操作結果を現行状態へ side 単位でrebaseする統合ロジック。一時的な順序逆転の検証保留、prepare元座標へcanonicalizeした要確認化、安全なstale再評価にも対応する。exports: `updateAnchorStateForContentChanges`, `updateAnchorStateForPaneReload`, `updateAnchorStateForPaneEncodingChange`, `updateAnchorStateForPaneAppend`, `rebasePaneSnapshotAnchorLifecycleResult`, `finalizeDeferredAnchorValidation`。
+- `src/ui/anchorLifecycle.test.ts` アンカー状態の移動・要確認化・内部片側追跡・安全な自動復帰・選択更新・historical staleとの世代衝突防止と、左右同時操作の完了順に依存しないrebase/最終検証のテスト。
 - `src/ui/paneAnchorValidation.ts` 左右のreload/appendが並行する間だけ中間validationを保留し、成功・失敗を問わず両操作がidleになった時点で最終確定するcoordinator。通常編集割込みでもprepare元identityを引き継ぐ。
 - `src/ui/paneAnchorValidation.test.ts` 同時swapの両commit順、片側abort、通常編集割込み、canonical stale座標、idle後のorigin破棄を検証するテスト。
-- `src/ui/anchorEditHistory.ts` Monaco の alternative version ID ごとにアンカー状態をbounded履歴へ保持し、片側だけの通常編集 Undo / Redo を反対側の現行位置へ影響させず同期するロジック。
-- `src/ui/anchorEditHistory.test.ts` 複数段の Undo / Redo、左右交互編集、要確認化の復元、redo branch破棄、履歴上限、手動操作後の履歴破棄テスト。
+- `src/ui/anchorEditHistory.ts` Monaco の alternative version ID ごとにアンカー状態をbounded履歴へ保持し、片側だけの通常編集 Undo / Redo を反対側の現行追跡位置へ影響させず同期するロジック。要確認からの復帰はアンカー単位の反対側追跡結果で判定する。
+- `src/ui/anchorEditHistory.test.ts` 複数段の Undo / Redo、左右交互編集、要確認化と片側追跡の復元、曖昧な反対側での復帰拒否、候補衝突、redo branch破棄、履歴上限、手動操作後の履歴破棄テスト。
 - `src/ui/paneReloadTransaction.ts` 全対象の権限確認・読み込み・事前計算が成功し、commit直前のコンテキスト検証にも通った場合だけ状態更新を1回実行する再読み込みトランザクション。export: `runPaneReloadTransaction`。
 - `src/ui/paneReloadTransaction.test.ts` 権限拒否・読み込み/デコード失敗・待機中コンテキスト変更時の非変更保証と成功時の単一commitテスト。
 - `src/ui/paneSaveTransaction.ts` source取得・書き込み内容生成・全権限確認・commit直前コンテキスト検証を全write前に行い、スナップショット化した内容だけを保存するトランザクション。export: `runPaneSaveTransaction`。
@@ -284,10 +288,12 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 - `src/storage/favoritePaths.ts` パス登録の永続化（左右別 + ワークスペース別キー・上限10件・ロード時補正・旧キー移行）。exports: `loadFavoritePaths`, `addFavoritePath`, `removeFavoritePath`, `moveFavoritePath` ほか。
 - `src/storage/favoritePaths.test.ts` パス登録保存のテスト。
-- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト/segments/選択/カーソル/スクロール・アンカー状態）。本文は IndexedDB を主ストアとし、小さい本文は localStorage に復元用フォールバックも残す。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`, `setWorkspaceTexts`, `setWorkspacePaneState`, `setWorkspaceAnchors`。
+- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト/segments/選択/カーソル/スクロール・アンカー状態）。要確認アンカーの片側追跡座標も正規化して保持する。本文は IndexedDB を主ストアとし、小さい本文は localStorage に復元用フォールバックも残す。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`, `setWorkspaceTexts`, `setWorkspacePaneState`, `setWorkspaceAnchors`。
 - `src/storage/workspaces.test.ts` ワークスペース保存のテスト。
 - `src/storage/persistedState.ts` UI状態の localStorage 保存/復元と本文の IndexedDB 保存、復元用フォールバック、スケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。
+- `src/storage/startupRestore.ts` ワークスペースと旧永続状態から起動時のペイン/アンカーを復元し、非整数・範囲外・重複segmentを破棄してマッパーへ不正レイアウトを渡さない。exports: `resolveStartupWorkspaceRestore`, `isSegmentLayoutValid`。
+- `src/storage/startupRestore.test.ts` 復元優先順位、legacyアンカー移行、要確認追跡座標、segment範囲・重複検証のテスト。
 - `src/storage/paneSaveTargets.ts` 再読み込み/保存用ハンドルをワークスペース/ペイン別に IndexedDB 保存する。単一/複数ファイルに対応。exports: `loadPaneSaveTargets`, `savePaneSaveTargets`, `clearPaneSaveTarget`, `createIndexedDbPaneSaveTargetStore`。
 - `src/storage/paneSaveTargets.test.ts` ペイン再読み込み/保存用ハンドルの保存/復元/削除テスト。
 - `src/storage/paneSummary.ts` 読み込み完了サマリの保存/復元。exports: `loadPaneSummary`, `savePaneSummary`, `clearPaneSummary`。
