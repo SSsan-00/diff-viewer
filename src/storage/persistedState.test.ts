@@ -49,6 +49,7 @@ function createState(overrides: Partial<PersistedState> = {}): PersistedState {
     staleAnchors: [
       {
         anchor: { leftLineNo: 4, rightLineNo: 5 },
+        tracking: { leftLineNo: null, rightLineNo: 7 },
         reason: "reload-unresolved",
       },
     ],
@@ -91,6 +92,7 @@ describe("persisted state", () => {
     expect(restored?.staleAnchors).toEqual([
       {
         anchor: { leftLineNo: 4, rightLineNo: 5 },
+        tracking: { leftLineNo: null, rightLineNo: 7 },
         reason: "reload-unresolved",
       },
     ]);
@@ -105,6 +107,56 @@ describe("persisted state", () => {
     const restored = await loadPersistedState(storage);
 
     expect(restored?.staleAnchors).toEqual([]);
+  });
+
+  it("keeps legacy stale anchors without synthesizing tracking", async () => {
+    const storage = createStorage();
+    const legacy = createState({
+      staleAnchors: [
+        {
+          anchor: { leftLineNo: 2, rightLineNo: 3 },
+          reason: "edit-unresolved",
+        },
+      ],
+    });
+    storage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    const restored = await loadPersistedState(storage);
+
+    expect(restored?.staleAnchors).toEqual(legacy.staleAnchors);
+    expect(restored?.staleAnchors?.[0]).not.toHaveProperty("tracking");
+  });
+
+  it("normalizes malformed stale tracking per side", async () => {
+    const storage = createStorage();
+    const malformed = createState();
+    malformed.staleAnchors = [
+      {
+        anchor: { leftLineNo: 2, rightLineNo: 3 },
+        tracking: { leftLineNo: 4, rightLineNo: "invalid" },
+        reason: "reload-unresolved",
+      },
+      {
+        anchor: { leftLineNo: 5, rightLineNo: 6 },
+        tracking: { leftLineNo: -1, rightLineNo: 1.5 },
+        reason: "edit-unresolved",
+      },
+    ] as unknown as NonNullable<PersistedState["staleAnchors"]>;
+    storage.setItem(STORAGE_KEY, JSON.stringify(malformed));
+
+    const restored = await loadPersistedState(storage);
+
+    expect(restored?.staleAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 2, rightLineNo: 3 },
+        tracking: { leftLineNo: 4, rightLineNo: null },
+        reason: "reload-unresolved",
+      },
+      {
+        anchor: { leftLineNo: 5, rightLineNo: 6 },
+        reason: "edit-unresolved",
+      },
+    ]);
   });
 
   it("keeps cleared pane content after save", async () => {

@@ -219,9 +219,11 @@ import {
 import { createToastManager } from "./ui/toast";
 import {
   updateAnchorStateForContentChanges,
+  updateAnchorStateForPaneEncodingChange,
   updateAnchorStateForPaneReload,
   type AnchorLifecycleResult,
 } from "./ui/anchorLifecycle";
+import { recoverUnambiguousStaleAnchors } from "./ui/staleAnchorRecovery";
 import {
   applySideScopedAnchorTransition,
   beginVersionedStateTransition,
@@ -604,13 +606,27 @@ const emptyWorkspaceAnchors: WorkspaceAnchorState = {
   selectedAnchorKey: null,
 };
 
+function cloneStaleManualAnchor(item: StaleManualAnchor): StaleManualAnchor {
+  return {
+    anchor: { ...item.anchor },
+    reason: item.reason,
+    ...(item.tracking
+      ? {
+          tracking: {
+            leftLineNo: item.tracking.leftLineNo,
+            rightLineNo: item.tracking.rightLineNo,
+          },
+        }
+      : {}),
+  };
+}
+
 function cloneWorkspaceAnchors(state: WorkspaceAnchorState): WorkspaceAnchorState {
   return {
     manualAnchors: state.manualAnchors.map((anchor) => ({ ...anchor })),
-    staleManualAnchors: (state.staleManualAnchors ?? []).map((item) => ({
-      anchor: { ...item.anchor },
-      reason: item.reason,
-    })),
+    staleManualAnchors: (state.staleManualAnchors ?? []).map(
+      cloneStaleManualAnchor,
+    ),
     autoAnchor: state.autoAnchor ? { ...state.autoAnchor } : null,
     suppressedAutoAnchorKey: state.suppressedAutoAnchorKey,
     pendingLeftLineNo: state.pendingLeftLineNo,
@@ -880,10 +896,9 @@ function persistCurrentWorkspaceState(
 function applyWorkspaceAnchors(anchors: WorkspaceAnchorState) {
   paneAnchorValidationCoordinator = createPaneAnchorValidationCoordinator();
   manualAnchors = anchors.manualAnchors.map((anchor) => ({ ...anchor }));
-  staleManualAnchors = (anchors.staleManualAnchors ?? []).map((item) => ({
-    anchor: { ...item.anchor },
-    reason: item.reason,
-  }));
+  staleManualAnchors = (anchors.staleManualAnchors ?? []).map(
+    cloneStaleManualAnchor,
+  );
   autoAnchor = anchors.autoAnchor ? { ...anchors.autoAnchor } : null;
   suppressedAutoAnchorKey = anchors.suppressedAutoAnchorKey;
   pendingLeftLineNo = anchors.pendingLeftLineNo;
@@ -1603,6 +1618,17 @@ function commitPaneBoundarySnapshot(side: "left" | "right"): void {
   };
 }
 
+function createContentChangeTrackingContext(side: "left" | "right") {
+  const beforeText = paneBoundarySnapshots[side].text;
+  let beforeLines: string[] | null = null;
+  return {
+    getBeforeLineContent(lineNumber: number): string | undefined {
+      beforeLines ??= normalizeText(beforeText).split("\n");
+      return beforeLines[lineNumber - 1];
+    },
+  };
+}
+
 function invalidateDiffRendering(): void {
   diffRenderingInvalidated = true;
 }
@@ -1792,10 +1818,7 @@ function getEditorAlternativeVersionId(
 function captureAnchorSnapshot(): AnchorSnapshot {
   return {
     manualAnchors: manualAnchors.map((anchor) => ({ ...anchor })),
-    staleManualAnchors: staleManualAnchors.map((item) => ({
-      anchor: { ...item.anchor },
-      reason: item.reason,
-    })),
+    staleManualAnchors: staleManualAnchors.map(cloneStaleManualAnchor),
     suppressedAutoAnchorKey,
     pendingLeftLineNo,
     pendingRightLineNo,
@@ -1808,10 +1831,7 @@ function captureAnchorSnapshot(): AnchorSnapshot {
 function cloneAnchorSnapshot(snapshot: AnchorSnapshot): AnchorSnapshot {
   return {
     manualAnchors: snapshot.manualAnchors.map((anchor) => ({ ...anchor })),
-    staleManualAnchors: snapshot.staleManualAnchors.map((item) => ({
-      anchor: { ...item.anchor },
-      reason: item.reason,
-    })),
+    staleManualAnchors: snapshot.staleManualAnchors.map(cloneStaleManualAnchor),
     suppressedAutoAnchorKey: snapshot.suppressedAutoAnchorKey,
     pendingLeftLineNo: snapshot.pendingLeftLineNo,
     pendingRightLineNo: snapshot.pendingRightLineNo,
@@ -1823,10 +1843,7 @@ function cloneAnchorSnapshot(snapshot: AnchorSnapshot): AnchorSnapshot {
 
 function applyAnchorSnapshot(snapshot: AnchorSnapshot): void {
   manualAnchors = snapshot.manualAnchors.map((anchor) => ({ ...anchor }));
-  staleManualAnchors = snapshot.staleManualAnchors.map((item) => ({
-    anchor: { ...item.anchor },
-    reason: item.reason,
-  }));
+  staleManualAnchors = snapshot.staleManualAnchors.map(cloneStaleManualAnchor);
   suppressedAutoAnchorKey = snapshot.suppressedAutoAnchorKey;
   pendingLeftLineNo = snapshot.pendingLeftLineNo;
   pendingRightLineNo = snapshot.pendingRightLineNo;
@@ -2413,6 +2430,7 @@ leftEditor.onDidChangeModelContent((event) => {
   } else if (
     manualAnchors.length > 0 ||
     pendingLeftLineNo !== null ||
+    staleManualAnchors.some((item) => item.tracking !== undefined) ||
     selectedAnchorKey?.startsWith("auto:")
   ) {
     applyTrackedContentAnchorLifecycleUpdate(
@@ -2426,6 +2444,7 @@ leftEditor.onDidChangeModelContent((event) => {
             isPaneAnchorValidationCoordinating(),
           validationOrigins:
             paneAnchorValidationCoordinator.validationOrigins,
+          trackingContext: createContentChangeTrackingContext("left"),
         },
       ),
     );
@@ -2475,6 +2494,7 @@ rightEditor.onDidChangeModelContent((event) => {
   } else if (
     manualAnchors.length > 0 ||
     pendingRightLineNo !== null ||
+    staleManualAnchors.some((item) => item.tracking !== undefined) ||
     selectedAnchorKey?.startsWith("auto:")
   ) {
     applyTrackedContentAnchorLifecycleUpdate(
@@ -2488,6 +2508,7 @@ rightEditor.onDidChangeModelContent((event) => {
             isPaneAnchorValidationCoordinating(),
           validationOrigins:
             paneAnchorValidationCoordinator.validationOrigins,
+          trackingContext: createContentChangeTrackingContext("right"),
         },
       ),
     );
@@ -2542,7 +2563,7 @@ function preparePaneEncodingChange(
   } else {
     nextLineCounts.rightLineCount = getNormalizedLineCount(text);
   }
-  const anchorResult = updateAnchorStateForPaneReload(
+  const anchorResult = updateAnchorStateForPaneEncodingChange(
     getCurrentAnchorState(),
     side,
     previousAnchorSnapshot,
@@ -4094,10 +4115,7 @@ function getPersistedStateSnapshot(): PersistedState {
     foldEnabled,
     anchorPanelCollapsed: anchorPanel?.classList.contains("is-collapsed") ?? false,
     anchors: manualAnchors.map((anchor) => ({ ...anchor })),
-    staleAnchors: staleManualAnchors.map((item) => ({
-      anchor: { ...item.anchor },
-      reason: item.reason,
-    })),
+    staleAnchors: staleManualAnchors.map(cloneStaleManualAnchor),
     leftSegments: leftSegments.map((segment) => ({ ...segment })),
     rightSegments: rightSegments.map((segment) => ({ ...segment })),
   };
@@ -4507,7 +4525,7 @@ initialWorkspaceAnchors = cloneWorkspaceAnchors(initialWorkspaceAnchors);
 let manualAnchors: Anchor[] = initialWorkspaceAnchors.manualAnchors;
 let staleManualAnchors: StaleManualAnchor[] = (
   initialWorkspaceAnchors.staleManualAnchors ?? []
-).map((item) => ({ anchor: { ...item.anchor }, reason: item.reason }));
+).map(cloneStaleManualAnchor);
 let autoAnchor: Anchor | null = initialWorkspaceAnchors.autoAnchor;
 let suppressedAutoAnchorKey: string | null =
   initialWorkspaceAnchors.suppressedAutoAnchorKey;
@@ -4602,7 +4620,29 @@ function beginAnchorEditChange(
     : false;
   return transition
     ? applySideScopedAnchorTransition(currentSnapshot, side, transition, {
-        allowStaleReactivation: oppositeSideUnchanged,
+        lineCounts: getCurrentAnchorLineCounts(),
+        resolveStaleReactivation: ({ staleAnchor }) => {
+          const tracking = staleAnchor.tracking;
+          if (tracking) {
+            const oppositeLineNo =
+              side === "left"
+                ? tracking.rightLineNo
+                : tracking.leftLineNo;
+            return Number.isSafeInteger(oppositeLineNo) && oppositeLineNo! >= 0
+              ? { status: "tracked", oppositeLineNo: oppositeLineNo! }
+              : { status: "unresolved" };
+          }
+          if (!oppositeSideUnchanged) {
+            return { status: "unresolved" };
+          }
+          return {
+            status: "tracked",
+            oppositeLineNo:
+              side === "left"
+                ? staleAnchor.anchor.rightLineNo
+                : staleAnchor.anchor.leftLineNo,
+          };
+        },
       }).state
     : null;
 }
@@ -4634,10 +4674,7 @@ function replaceCurrentAnchorEditHistoryState(): void {
 function getCurrentAnchorState(): WorkspaceAnchorState {
   return {
     manualAnchors: manualAnchors.map((anchor) => ({ ...anchor })),
-    staleManualAnchors: staleManualAnchors.map((item) => ({
-      anchor: { ...item.anchor },
-      reason: item.reason,
-    })),
+    staleManualAnchors: staleManualAnchors.map(cloneStaleManualAnchor),
     autoAnchor: autoAnchor ? { ...autoAnchor } : null,
     suppressedAutoAnchorKey,
     pendingLeftLineNo,
@@ -4655,6 +4692,22 @@ function getCurrentAnchorLineCounts() {
       rightEditor.getModel()?.getLineCount() ??
       getNormalizedLineCount(rightEditor.getValue()),
   };
+}
+
+function recoverTrackedStaleAnchorState(
+  lineCounts = getCurrentAnchorLineCounts(),
+): number {
+  const recovery = recoverUnambiguousStaleAnchors(
+    manualAnchors,
+    staleManualAnchors,
+    lineCounts,
+  );
+  if (recovery.recovered === 0) {
+    return 0;
+  }
+  manualAnchors = recovery.manualAnchors;
+  staleManualAnchors = recovery.staleManualAnchors;
+  return recovery.recovered;
 }
 
 function getPaneSnapshotPendingState(): Record<"left" | "right", boolean> {
@@ -4756,10 +4809,9 @@ function applyAnchorLifecycleUpdate(
   source: "edit" | "load" | "reload",
 ): void {
   manualAnchors = result.state.manualAnchors.map((anchor) => ({ ...anchor }));
-  staleManualAnchors = (result.state.staleManualAnchors ?? []).map((item) => ({
-    anchor: { ...item.anchor },
-    reason: item.reason,
-  }));
+  staleManualAnchors = (result.state.staleManualAnchors ?? []).map(
+    cloneStaleManualAnchor,
+  );
   autoAnchor = result.state.autoAnchor ? { ...result.state.autoAnchor } : null;
   suppressedAutoAnchorKey = result.state.suppressedAutoAnchorKey;
   pendingLeftLineNo = result.state.pendingLeftLineNo;
@@ -4776,6 +4828,10 @@ function applyAnchorLifecycleUpdate(
           : "編集後";
     setAnchorMessage(
       `${operation}に対応行を一意に追跡できないアンカーが${result.staleAdded}件あります。要確認として差分から除外しました。`,
+    );
+  } else if (result.recovered > 0) {
+    setAnchorMessage(
+      `対応行を一意に再確認できたアンカーを${result.recovered}件、差分へ戻しました。`,
     );
   } else if (result.pendingCleared) {
     setAnchorMessage("選択中の対応行を追跡できなかったため解除しました。");
@@ -5672,6 +5728,17 @@ function recalcDiff() {
   const recalcStartedAt = performance.now();
   const leftText = leftEditor.getValue();
   const rightText = rightEditor.getValue();
+  const recoveredStaleAnchors = recoverTrackedStaleAnchorState({
+    leftLineCount: getNormalizedLineCount(leftText),
+    rightLineCount: getNormalizedLineCount(rightText),
+  });
+  if (recoveredStaleAnchors > 0) {
+    replaceCurrentAnchorEditHistoryState();
+    setAnchorMessage(
+      `対応行を一意に再確認できたアンカーを${recoveredStaleAnchors}件、差分へ戻しました。`,
+    );
+    schedulePersistAll();
+  }
   const leftLeadingFileWhitespaceEligible =
     canIgnoreLeadingWhitespaceInEditorText(leftText);
   const rightLeadingFileWhitespaceEligible =

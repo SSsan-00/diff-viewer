@@ -10,12 +10,15 @@ import {
   type AnchorReloadLineMapper,
   type AnchorReloadPaneSnapshot,
 } from "./anchorReload";
+import { createAnchorEncodingLineMapper } from "./anchorEncoding";
+import { recoverUnambiguousStaleAnchors } from "./staleAnchorRecovery";
 import {
   prepareContentChanges,
   transformAnchorsWithPreparedChanges,
   transformTrackedLineWithPreparedChanges,
   type AnchorSide,
   type ContentChangeLike,
+  type ContentChangeTrackingContext,
   type TrackedAnchorResult,
 } from "./anchorTracking";
 
@@ -27,6 +30,7 @@ export type AnchorLineCounts = {
 export type AnchorLifecycleResult = {
   state: WorkspaceAnchorState;
   moved: number;
+  recovered: number;
   pendingCleared: boolean;
   staleAdded: number;
   validationDeferred: boolean;
@@ -50,6 +54,12 @@ export type PaneSnapshotAnchorRebaseOptions = Readonly<{
   validationOrigins?: readonly DeferredAnchorValidationOrigin[];
 }>;
 
+export type ContentChangeAnchorUpdateOptions =
+  PaneSnapshotAnchorRebaseOptions &
+    Readonly<{
+      trackingContext?: ContentChangeTrackingContext;
+    }>;
+
 type ReconcileMappedAnchorOptions = PaneSnapshotAnchorRebaseOptions &
   Readonly<{
     originalAnchors?: readonly (Anchor | undefined)[];
@@ -72,7 +82,54 @@ function cloneAnchor(anchor: Anchor): Anchor {
 }
 
 function cloneStaleAnchor(item: StaleManualAnchor): StaleManualAnchor {
-  return { anchor: cloneAnchor(item.anchor), reason: item.reason };
+  return {
+    anchor: cloneAnchor(item.anchor),
+    reason: item.reason,
+    ...(item.tracking
+      ? {
+          tracking: {
+            leftLineNo: item.tracking.leftLineNo,
+            rightLineNo: item.tracking.rightLineNo,
+          },
+        }
+      : {}),
+  };
+}
+
+function createUnresolvedTracking(
+  anchor: Anchor,
+  side: AnchorSide,
+): NonNullable<StaleManualAnchor["tracking"]> {
+  return side === "left"
+    ? { leftLineNo: null, rightLineNo: anchor.rightLineNo }
+    : { leftLineNo: anchor.leftLineNo, rightLineNo: null };
+}
+
+function mapStaleAnchorTracking(
+  item: StaleManualAnchor,
+  side: AnchorSide,
+  mapLine: (lineNo: number) => LineMappingResult,
+): StaleManualAnchor {
+  const clone = cloneStaleAnchor(item);
+  if (!clone.tracking) {
+    return clone;
+  }
+  const lineNo =
+    side === "left"
+      ? clone.tracking.leftLineNo
+      : clone.tracking.rightLineNo;
+  if (lineNo === null) {
+    return clone;
+  }
+  const mapped = mapLine(lineNo);
+  if (side === "left") {
+    clone.tracking.leftLineNo =
+      mapped.status === "mapped" ? mapped.lineNo : null;
+  } else {
+    clone.tracking.rightLineNo =
+      mapped.status === "mapped" ? mapped.lineNo : null;
+  }
+  return clone;
 }
 
 function buildValidationOriginsByAnchor(
@@ -104,7 +161,9 @@ function reconcileMappedAnchors(
   lineCounts: AnchorLineCounts,
   options: ReconcileMappedAnchorOptions = {},
 ): AnchorLifecycleResult {
-  const staleManualAnchors = (state.staleManualAnchors ?? []).map(cloneStaleAnchor);
+  let staleManualAnchors = (state.staleManualAnchors ?? []).map((item) =>
+    mapStaleAnchorTracking(item, side, mapPendingLine),
+  );
   const stalePairKeys = new Set(
     staleManualAnchors.map((item) => anchorPairKey(item.anchor)),
   );
@@ -117,13 +176,29 @@ function reconcileMappedAnchors(
   let moved = 0;
   let staleAdded = 0;
 
-  const addStale = (anchor: Anchor): void => {
+  const addStale = (
+    anchor: Anchor,
+    tracking: NonNullable<StaleManualAnchor["tracking"]>,
+  ): void => {
     const key = anchorPairKey(anchor);
     if (stalePairKeys.has(key)) {
+      // The same historical display coordinate can represent a different
+      // logical anchor generation. Combining their tracking candidates could
+      // reactivate the wrong one, so retain the audit coordinate but discard
+      // every automatic recovery candidate at that coordinate.
+      staleManualAnchors.forEach((item) => {
+        if (anchorPairKey(item.anchor) === key) {
+          delete item.tracking;
+        }
+      });
       return;
     }
     stalePairKeys.add(key);
-    staleManualAnchors.push({ anchor: cloneAnchor(anchor), reason: staleReason });
+    staleManualAnchors.push({
+      anchor: cloneAnchor(anchor),
+      reason: staleReason,
+      tracking: { ...tracking },
+    });
     staleAdded += 1;
   };
 
@@ -135,7 +210,7 @@ function reconcileMappedAnchors(
     const original = options.originalAnchors?.[index] ?? current;
     const wasSelected = selectedAnchorKey === manualAnchorKey(current);
     if (result.stale) {
-      addStale(original);
+      addStale(original, createUnresolvedTracking(current, side));
       if (wasSelected) {
         selectedAnchorKey = null;
       }
@@ -166,7 +241,7 @@ function reconcileMappedAnchors(
   if (!validationDeferred) {
     validation.invalid.forEach((issue) => {
       const original = originalByMappedAnchor.get(issue.anchor) ?? issue.anchor;
-      addStale(original);
+      addStale(original, cloneAnchor(issue.anchor));
       if (selectedAnchorKey === manualAnchorKey(issue.anchor)) {
         selectedAnchorKey = null;
       }
@@ -195,12 +270,26 @@ function reconcileMappedAnchors(
     }
   }
 
+  const activeAnchors = (validationDeferred
+    ? activeCandidates
+    : validation.valid
+  ).map(cloneAnchor);
+  const recovery = validationDeferred
+    ? {
+        manualAnchors: activeAnchors,
+        staleManualAnchors,
+        recovered: 0,
+      }
+    : recoverUnambiguousStaleAnchors(
+        activeAnchors,
+        staleManualAnchors,
+        lineCounts,
+      );
+  staleManualAnchors = recovery.staleManualAnchors;
+
   return {
     state: {
-      manualAnchors: (validationDeferred
-        ? activeCandidates
-        : validation.valid
-      ).map(cloneAnchor),
+      manualAnchors: recovery.manualAnchors,
       staleManualAnchors,
       autoAnchor: state.autoAnchor ? cloneAnchor(state.autoAnchor) : null,
       suppressedAutoAnchorKey: state.suppressedAutoAnchorKey,
@@ -209,6 +298,7 @@ function reconcileMappedAnchors(
       selectedAnchorKey,
     },
     moved,
+    recovered: recovery.recovered,
     pendingCleared,
     staleAdded,
     validationDeferred,
@@ -222,7 +312,7 @@ export function updateAnchorStateForContentChanges(
   side: AnchorSide,
   changes: readonly ContentChangeLike[],
   lineCounts: AnchorLineCounts,
-  options: PaneSnapshotAnchorRebaseOptions = {},
+  options: ContentChangeAnchorUpdateOptions = {},
 ): AnchorLifecycleResult {
   const preparedChanges = prepareContentChanges(changes);
   const originsByAnchor = buildValidationOriginsByAnchor(
@@ -235,6 +325,7 @@ export function updateAnchorStateForContentChanges(
     state.manualAnchors,
     side,
     preparedChanges,
+    options.trackingContext,
   );
   return reconcileMappedAnchors(
     state,
@@ -244,6 +335,7 @@ export function updateAnchorStateForContentChanges(
       const result = transformTrackedLineWithPreparedChanges(
         lineNo,
         preparedChanges,
+        options.trackingContext,
       );
       return result.stale
         ? { status: "stale" }
@@ -266,6 +358,21 @@ export function updateAnchorStateForPaneReload(
     state,
     side,
     createAnchorReloadLineMapper(previous, next),
+    lineCounts,
+  );
+}
+
+export function updateAnchorStateForPaneEncodingChange(
+  state: WorkspaceAnchorState,
+  side: AnchorSide,
+  previous: AnchorReloadPaneSnapshot,
+  next: AnchorReloadPaneSnapshot,
+  lineCounts: AnchorLineCounts,
+): AnchorLifecycleResult {
+  return updateAnchorStateForPaneSnapshotChange(
+    state,
+    side,
+    createAnchorEncodingLineMapper(previous, next),
     lineCounts,
   );
 }
@@ -379,7 +486,7 @@ export function finalizeDeferredAnchorValidation(
     lineCounts.leftLineCount,
     lineCounts.rightLineCount,
   );
-  const staleManualAnchors = (state.staleManualAnchors ?? []).map(cloneStaleAnchor);
+  let staleManualAnchors = (state.staleManualAnchors ?? []).map(cloneStaleAnchor);
   const stalePairKeys = new Set(
     staleManualAnchors.map((item) => anchorPairKey(item.anchor)),
   );
@@ -395,6 +502,7 @@ export function finalizeDeferredAnchorValidation(
       staleManualAnchors.push({
         anchor: cloneAnchor(original),
         reason: "reload-unresolved",
+        tracking: cloneAnchor(issue.anchor),
       });
       staleAdded += 1;
     }
@@ -403,9 +511,16 @@ export function finalizeDeferredAnchorValidation(
     }
   });
 
+  const recovery = recoverUnambiguousStaleAnchors(
+    validation.valid,
+    staleManualAnchors,
+    lineCounts,
+  );
+  staleManualAnchors = recovery.staleManualAnchors;
+
   return {
     state: {
-      manualAnchors: validation.valid.map(cloneAnchor),
+      manualAnchors: recovery.manualAnchors,
       staleManualAnchors,
       autoAnchor: state.autoAnchor ? cloneAnchor(state.autoAnchor) : null,
       suppressedAutoAnchorKey: state.suppressedAutoAnchorKey,
@@ -414,6 +529,7 @@ export function finalizeDeferredAnchorValidation(
       selectedAnchorKey,
     },
     moved: 0,
+    recovered: recovery.recovered,
     pendingCleared: false,
     staleAdded,
     validationDeferred: false,

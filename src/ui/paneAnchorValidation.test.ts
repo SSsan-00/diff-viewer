@@ -239,6 +239,7 @@ describe("pane anchor validation coordinator", () => {
       {
         anchor: { leftLineNo: 1, rightLineNo: 1 },
         reason: "reload-unresolved",
+        tracking: { leftLineNo: 2, rightLineNo: 1 },
       },
     ]);
     expect(settled.result?.state.selectedAnchorKey).toBeNull();
@@ -268,7 +269,7 @@ describe("pane anchor validation coordinator", () => {
   it("clears safe concurrent origins at idle before a later independent operation", () => {
     const previous = snapshot("head\nfirst\ntarget\ntail");
     const shifted = snapshot("inserted\nhead\nfirst\ntarget\ntail");
-    const withoutTarget = snapshot("head\nfirst\nchanged\ntail");
+    const withoutTarget = snapshot("head\nFIRST\nchanged\ntail");
     const initial: WorkspaceAnchorState = {
       ...initialState(),
       manualAnchors: [{ leftLineNo: 2, rightLineNo: 2 }],
@@ -462,6 +463,7 @@ describe("pane anchor validation coordinator", () => {
           {
             anchor: { leftLineNo: 1, rightLineNo: 1 },
             reason: "reload-unresolved",
+            tracking: { leftLineNo: 3, rightLineNo: 1 },
           },
         ]);
         expect(current.selectedAnchorKey).toBeNull();
@@ -518,10 +520,12 @@ describe("pane anchor validation coordinator", () => {
     });
 
     expect(aborted.coordinator).toEqual(createPaneAnchorValidationCoordinator());
-    expect(aborted.result?.state.staleManualAnchors).toContainEqual({
-      anchor: { leftLineNo: 1, rightLineNo: 1 },
-      reason: "reload-unresolved",
-    });
+    expect(aborted.result?.state.staleManualAnchors).toContainEqual(
+      expect.objectContaining({
+        anchor: { leftLineNo: 1, rightLineNo: 1 },
+        reason: "reload-unresolved",
+      }),
+    );
   });
 
   it("does not reuse an old origin after a manual remove and add at the same pair", () => {
@@ -568,7 +572,7 @@ describe("pane anchor validation coordinator", () => {
       replacement,
       "left",
       previous,
-      snapshot("head\nfirst\nchanged\ntail"),
+      snapshot("head\nFIRST\nchanged\ntail"),
       { leftLineCount: 4, rightLineCount: 5 },
     );
     const later = commitPaneSnapshotAnchorTransition({

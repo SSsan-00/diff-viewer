@@ -300,9 +300,15 @@ export type SideScopedAnchor = {
   rightLineNo: number;
 };
 
+export type SideScopedStaleAnchorTracking = {
+  leftLineNo: number | null;
+  rightLineNo: number | null;
+};
+
 export type SideScopedStaleAnchor = {
   anchor: SideScopedAnchor;
   reason: string;
+  tracking?: SideScopedStaleAnchorTracking;
 };
 
 export type SideScopedAnchorState = {
@@ -318,6 +324,7 @@ type AnchorRecord = {
   category: "active" | "stale";
   anchor: SideScopedAnchor;
   reason?: string;
+  tracking?: SideScopedStaleAnchorTracking;
 };
 
 type TransitionAnchorPair = {
@@ -338,12 +345,42 @@ export type SideScopedAnchorTransitionResult<State> = {
   skippedAnchors: number;
 };
 
+export type SideScopedStaleReactivationRequest = Readonly<{
+  side: AnchorHistorySide;
+  staleAnchor: SideScopedStaleAnchor;
+  targetAnchor: SideScopedAnchor;
+}>;
+
+export type SideScopedStaleReactivationResolution =
+  | Readonly<{ status: "tracked"; oppositeLineNo: number }>
+  | Readonly<{ status: "unresolved" }>;
+
+export type SideScopedAnchorLineCounts = Readonly<{
+  leftLineCount: number;
+  rightLineCount: number;
+}>;
+
 export type SideScopedAnchorTransitionOptions = {
   allowStaleReactivation?: boolean;
+  lineCounts?: SideScopedAnchorLineCounts;
+  resolveStaleReactivation?: (
+    request: SideScopedStaleReactivationRequest,
+  ) => SideScopedStaleReactivationResolution;
 };
 
 function cloneAnchor(anchor: SideScopedAnchor): SideScopedAnchor {
   return { leftLineNo: anchor.leftLineNo, rightLineNo: anchor.rightLineNo };
+}
+
+function cloneStaleTracking(
+  tracking: SideScopedStaleAnchorTracking | undefined,
+): SideScopedStaleAnchorTracking | undefined {
+  return tracking
+    ? {
+        leftLineNo: tracking.leftLineNo,
+        rightLineNo: tracking.rightLineNo,
+      }
+    : undefined;
 }
 
 function anchorPairKey(anchor: SideScopedAnchor): string {
@@ -372,6 +409,103 @@ function replaceSideLine(
     : { ...anchor, rightLineNo: lineNo };
 }
 
+function replaceOppositeLine(
+  anchor: SideScopedAnchor,
+  side: AnchorHistorySide,
+  lineNo: number,
+): SideScopedAnchor {
+  return side === "left"
+    ? { ...anchor, rightLineNo: lineNo }
+    : { ...anchor, leftLineNo: lineNo };
+}
+
+type StaleReactivationPlan = {
+  desiredAnchor: SideScopedAnchor | null;
+  tracking?: SideScopedStaleAnchorTracking;
+};
+
+function createStaleReactivationTracking(
+  targetAnchor: SideScopedAnchor,
+  side: AnchorHistorySide,
+  resolvedOppositeLineNo: number | null,
+): SideScopedStaleAnchorTracking {
+  const targetSideLineNo = sideLine(targetAnchor, side);
+  const trackedSideLineNo =
+    Number.isSafeInteger(targetSideLineNo) && targetSideLineNo >= 0
+      ? targetSideLineNo
+      : null;
+  return side === "left"
+    ? {
+        leftLineNo: trackedSideLineNo,
+        rightLineNo: resolvedOppositeLineNo,
+      }
+    : {
+        leftLineNo: resolvedOppositeLineNo,
+        rightLineNo: trackedSideLineNo,
+      };
+}
+
+function resolveStaleReactivationPlan(
+  currentStale: AnchorRecord,
+  targetAnchor: SideScopedAnchor,
+  side: AnchorHistorySide,
+  options: SideScopedAnchorTransitionOptions,
+): StaleReactivationPlan {
+  const resolution: SideScopedStaleReactivationResolution =
+    options.allowStaleReactivation === false
+      ? { status: "unresolved" }
+      : options.resolveStaleReactivation
+        ? options.resolveStaleReactivation({
+            side,
+            staleAnchor: {
+              anchor: cloneAnchor(currentStale.anchor),
+              reason: currentStale.reason ?? "edit-unresolved",
+              ...(currentStale.tracking
+                ? { tracking: cloneStaleTracking(currentStale.tracking) }
+                : {}),
+            },
+            targetAnchor: cloneAnchor(targetAnchor),
+          })
+        : {
+            status: "tracked",
+            oppositeLineNo: oppositeLine(currentStale.anchor, side),
+          };
+  const hasResolvedOppositeLine =
+    resolution.status === "tracked" &&
+    Number.isSafeInteger(resolution.oppositeLineNo) &&
+    resolution.oppositeLineNo >= 0;
+  const currentOppositeTracking = currentStale.tracking
+    ? side === "left"
+      ? currentStale.tracking.rightLineNo
+      : currentStale.tracking.leftLineNo
+    : null;
+  const resolvedOppositeLineNo = hasResolvedOppositeLine
+    ? resolution.oppositeLineNo
+    : currentOppositeTracking;
+  const tracking = currentStale.tracking
+    ? createStaleReactivationTracking(
+        targetAnchor,
+        side,
+        resolvedOppositeLineNo,
+      )
+    : undefined;
+  if (!hasResolvedOppositeLine) {
+    return { desiredAnchor: null, tracking };
+  }
+  return {
+    desiredAnchor: replaceOppositeLine(
+      replaceSideLine(
+        currentStale.anchor,
+        side,
+        sideLine(targetAnchor, side),
+      ),
+      side,
+      resolution.oppositeLineNo,
+    ),
+    tracking,
+  };
+}
+
 function toAnchorRecords(state: SideScopedAnchorState): AnchorRecord[] {
   return [
     ...state.manualAnchors.map((anchor, index) => ({
@@ -384,8 +518,51 @@ function toAnchorRecords(state: SideScopedAnchorState): AnchorRecord[] {
       category: "stale" as const,
       anchor: cloneAnchor(item.anchor),
       reason: item.reason,
+      tracking: cloneStaleTracking(item.tracking),
     })),
   ];
+}
+
+function trackingForStaleTransition(
+  current: AnchorRecord,
+  target: AnchorRecord,
+  side: AnchorHistorySide,
+): SideScopedStaleAnchorTracking | undefined {
+  if (target.category !== "stale") {
+    return undefined;
+  }
+  const currentTracking = current.tracking;
+  const targetTracking = target.tracking;
+  if (!currentTracking && !targetTracking) {
+    return undefined;
+  }
+
+  const currentLeftLineNo = currentTracking
+    ? currentTracking.leftLineNo
+    : current.category === "active"
+      ? current.anchor.leftLineNo
+      : targetTracking?.leftLineNo ?? null;
+  const currentRightLineNo = currentTracking
+    ? currentTracking.rightLineNo
+    : current.category === "active"
+      ? current.anchor.rightLineNo
+      : targetTracking?.rightLineNo ?? null;
+  const targetLeftLineNo = targetTracking
+    ? targetTracking.leftLineNo
+    : currentLeftLineNo;
+  const targetRightLineNo = targetTracking
+    ? targetTracking.rightLineNo
+    : currentRightLineNo;
+
+  return side === "left"
+    ? {
+        leftLineNo: targetLeftLineNo,
+        rightLineNo: currentRightLineNo,
+      }
+    : {
+        leftLineNo: currentLeftLineNo,
+        rightLineNo: targetRightLineNo,
+      };
 }
 
 function findUniqueRecord(
@@ -397,6 +574,32 @@ function findUniqueRecord(
     (record) => !usedIds?.has(record.id) && predicate(record),
   );
   return matches.length === 1 ? matches[0] : null;
+}
+
+function findUniqueCurrentStaleRecord(
+  records: readonly AnchorRecord[],
+  reference: AnchorRecord,
+  side: AnchorHistorySide,
+  usedIds: ReadonlySet<string>,
+): AnchorRecord | null {
+  const candidates = records.filter(
+    (record) =>
+      !usedIds.has(record.id) &&
+      record.category === "stale" &&
+      (reference.reason === undefined || record.reason === reference.reason),
+  );
+  const exactMatches = candidates.filter(
+    (record) =>
+      anchorPairKey(record.anchor) === anchorPairKey(reference.anchor),
+  );
+  if (exactMatches.length > 0) {
+    return exactMatches.length === 1 ? exactMatches[0] : null;
+  }
+  const sideMatches = candidates.filter(
+    (record) =>
+      sideLine(record.anchor, side) === sideLine(reference.anchor, side),
+  );
+  return sideMatches.length === 1 ? sideMatches[0] : null;
 }
 
 function pairTransitionAnchors(
@@ -545,8 +748,18 @@ export function applySideScopedAnchorTransition<
   const pairing = pairTransitionAnchors(transition.from, transition.to, side);
   const usedCurrentIds = new Set<string>();
   const plans = new Map<string, TransitionAnchorPair>();
+  const plannedAnchors = new Map<string, SideScopedAnchor>();
+  const plannedStaleTrackings = new Map<
+    string,
+    SideScopedStaleAnchorTracking | undefined
+  >();
+  const staleTrackingOverrides = new Map<
+    string,
+    SideScopedStaleAnchorTracking
+  >();
   const removedCurrentIds = new Set<string>();
   const addedRecords: AnchorRecord[] = [];
+  const addedRecordIds = new Set<string>();
   const appliedCoalesced: {
     transition: CoalescedAnchorTransition;
     liveActiveId?: string;
@@ -555,15 +768,7 @@ export function applySideScopedAnchorTransition<
   let skippedAnchors = pairing.skipped;
 
   pairing.pairs.forEach((pair) => {
-    if (
-      options.allowStaleReactivation === false &&
-      pair.from.category === "stale" &&
-      pair.to.category === "active"
-    ) {
-      skippedAnchors += 1;
-      return;
-    }
-    const current =
+    let current =
       pair.from.category === "active"
         ? findUniqueRecord(
             currentRecords,
@@ -572,23 +777,61 @@ export function applySideScopedAnchorTransition<
               sideLine(record.anchor, side) === sideLine(pair.from.anchor, side),
             usedCurrentIds,
           )
-        : findUniqueRecord(
+        : findUniqueCurrentStaleRecord(
             currentRecords,
-            (record) =>
-              record.category === "stale" &&
-              anchorPairKey(record.anchor) === anchorPairKey(pair.from.anchor),
+            pair.from,
+            side,
             usedCurrentIds,
           );
+    if (
+      !current &&
+      pair.from.category === "active" &&
+      pair.to.category === "stale"
+    ) {
+      current = findUniqueCurrentStaleRecord(
+        currentRecords,
+        pair.to,
+        side,
+        usedCurrentIds,
+      );
+    }
     if (!current) {
+      skippedAnchors += 1;
+      return;
+    }
+    const reactivation =
+      pair.from.category === "stale" && pair.to.category === "active"
+        ? resolveStaleReactivationPlan(
+            current,
+            pair.to.anchor,
+            side,
+            options,
+          )
+        : null;
+    if (reactivation?.tracking) {
+      staleTrackingOverrides.set(current.id, reactivation.tracking);
+    }
+    const desiredAnchor = reactivation
+      ? reactivation.desiredAnchor
+      : replaceSideLine(
+          current.anchor,
+          side,
+          sideLine(pair.to.anchor, side),
+        );
+    if (!desiredAnchor) {
       skippedAnchors += 1;
       return;
     }
     usedCurrentIds.add(current.id);
     plans.set(current.id, pair);
+    plannedAnchors.set(current.id, desiredAnchor);
+    plannedStaleTrackings.set(
+      current.id,
+      trackingForStaleTransition(current, pair.to, side),
+    );
   });
 
   pairing.coalesced.forEach((coalesced, index) => {
-    const pairKey = anchorPairKey(coalesced.active.anchor);
     if (coalesced.direction === "collapse") {
       const currentActive = findUniqueRecord(
         currentRecords,
@@ -598,20 +841,30 @@ export function applySideScopedAnchorTransition<
             sideLine(coalesced.active.anchor, side),
         usedCurrentIds,
       );
-      const currentStale = findUniqueRecord(
+      const currentStale = findUniqueCurrentStaleRecord(
         currentRecords,
-        (record) =>
-          record.category === "stale" &&
-          anchorPairKey(record.anchor) === pairKey &&
-          record.reason === coalesced.fromStale.reason,
+        coalesced.fromStale,
+        side,
         usedCurrentIds,
       );
-      if (!currentActive || !currentStale) {
+      if (!currentStale) {
+        skippedAnchors += 1;
+        return;
+      }
+      usedCurrentIds.add(currentStale.id);
+      const nextStaleTracking = trackingForStaleTransition(
+        currentStale,
+        coalesced.toStale,
+        side,
+      );
+      if (nextStaleTracking) {
+        staleTrackingOverrides.set(currentStale.id, nextStaleTracking);
+      }
+      if (!currentActive) {
         skippedAnchors += 1;
         return;
       }
       usedCurrentIds.add(currentActive.id);
-      usedCurrentIds.add(currentStale.id);
       removedCurrentIds.add(currentActive.id);
       appliedCoalesced.push({
         transition: coalesced,
@@ -620,25 +873,24 @@ export function applySideScopedAnchorTransition<
       return;
     }
 
-    if (options.allowStaleReactivation === false) {
-      skippedAnchors += 1;
-      return;
-    }
-    const currentStale = findUniqueRecord(
+    const currentStale = findUniqueCurrentStaleRecord(
       currentRecords,
-      (record) =>
-        record.category === "stale" &&
-        anchorPairKey(record.anchor) === pairKey &&
-        record.reason === coalesced.fromStale.reason,
+      coalesced.fromStale,
+      side,
       usedCurrentIds,
     );
-    const desiredAnchor = currentStale
-      ? replaceSideLine(
-          currentStale.anchor,
+    const reactivation = currentStale
+      ? resolveStaleReactivationPlan(
+          currentStale,
+          coalesced.active.anchor,
           side,
-          sideLine(coalesced.active.anchor, side),
+          options,
         )
       : null;
+    if (currentStale && reactivation?.tracking) {
+      staleTrackingOverrides.set(currentStale.id, reactivation.tracking);
+    }
+    const desiredAnchor = reactivation?.desiredAnchor ?? null;
     const conflictsWithActive = desiredAnchor
       ? currentRecords.some(
           (record) =>
@@ -653,6 +905,7 @@ export function applySideScopedAnchorTransition<
     }
     usedCurrentIds.add(currentStale.id);
     const addedActiveId = `added-active:${index}`;
+    addedRecordIds.add(addedActiveId);
     addedRecords.push({
       id: addedActiveId,
       category: "active",
@@ -670,17 +923,20 @@ export function applySideScopedAnchorTransition<
       .map((record): AnchorRecord => {
         const pair = plans.get(record.id);
         if (!pair) {
-          return { ...record, anchor: cloneAnchor(record.anchor) };
+          return {
+            ...record,
+            anchor: cloneAnchor(record.anchor),
+            tracking: cloneStaleTracking(
+              staleTrackingOverrides.get(record.id) ?? record.tracking,
+            ),
+          };
         }
         return {
           ...record,
           category: pair.to.category,
-          anchor: replaceSideLine(
-            record.anchor,
-            side,
-            sideLine(pair.to.anchor, side),
-          ),
+          anchor: cloneAnchor(plannedAnchors.get(record.id) ?? record.anchor),
           reason: pair.to.reason,
+          tracking: cloneStaleTracking(plannedStaleTrackings.get(record.id)),
         };
       }),
     ...addedRecords,
@@ -697,7 +953,7 @@ export function applySideScopedAnchorTransition<
   pairGroups.forEach((records) => {
     if (records.length > 1) {
       records.forEach((record) => {
-        if (plans.has(record.id)) {
+        if (plans.has(record.id) || addedRecordIds.has(record.id)) {
           invalidPlanIds.add(record.id);
         }
       });
@@ -719,16 +975,76 @@ export function applySideScopedAnchorTransition<
   [...activeByLeft.values(), ...activeByRight.values()].forEach((records) => {
     if (records.length > 1) {
       records.forEach((record) => {
-        if (plans.has(record.id)) {
+        if (plans.has(record.id) || addedRecordIds.has(record.id)) {
           invalidPlanIds.add(record.id);
         }
       });
     }
   });
 
+  const isCandidateRecord = (record: AnchorRecord): boolean =>
+    plans.has(record.id) || addedRecordIds.has(record.id);
+  const isAnchorCoordinateValid = (anchor: SideScopedAnchor): boolean => {
+    if (
+      !Number.isSafeInteger(anchor.leftLineNo) ||
+      !Number.isSafeInteger(anchor.rightLineNo) ||
+      anchor.leftLineNo < 0 ||
+      anchor.rightLineNo < 0
+    ) {
+      return false;
+    }
+    return options.lineCounts
+      ? anchor.leftLineNo < options.lineCounts.leftLineCount &&
+          anchor.rightLineNo < options.lineCounts.rightLineCount
+      : true;
+  };
+  const orderedActiveRecords = plannedRecords
+    .filter((record) => record.category === "active")
+    .filter((record) => {
+      const valid = isAnchorCoordinateValid(record.anchor);
+      if (!valid && isCandidateRecord(record)) {
+        invalidPlanIds.add(record.id);
+      }
+      return valid;
+    })
+    .sort(
+      (left, right) =>
+        left.anchor.leftLineNo - right.anchor.leftLineNo ||
+        left.anchor.rightLineNo - right.anchor.rightLineNo,
+    );
+  const maximumRightBefore = new Array<number>(orderedActiveRecords.length);
+  const minimumRightAfter = new Array<number>(orderedActiveRecords.length);
+  let maximumRight = Number.NEGATIVE_INFINITY;
+  orderedActiveRecords.forEach((record, index) => {
+    maximumRightBefore[index] = maximumRight;
+    maximumRight = Math.max(maximumRight, record.anchor.rightLineNo);
+  });
+  let minimumRight = Number.POSITIVE_INFINITY;
+  for (let index = orderedActiveRecords.length - 1; index >= 0; index -= 1) {
+    minimumRightAfter[index] = minimumRight;
+    minimumRight = Math.min(
+      minimumRight,
+      orderedActiveRecords[index].anchor.rightLineNo,
+    );
+  }
+  orderedActiveRecords.forEach((record, index) => {
+    if (
+      isCandidateRecord(record) &&
+      (maximumRightBefore[index] >= record.anchor.rightLineNo ||
+        minimumRightAfter[index] <= record.anchor.rightLineNo)
+    ) {
+      invalidPlanIds.add(record.id);
+    }
+  });
+
   invalidPlanIds.forEach((id) => {
-    plans.delete(id);
-    skippedAnchors += 1;
+    const removedPlan = plans.delete(id);
+    plannedAnchors.delete(id);
+    plannedStaleTrackings.delete(id);
+    const removedAddition = addedRecordIds.delete(id);
+    if (removedPlan || removedAddition) {
+      skippedAnchors += 1;
+    }
   });
 
   const finalRecords = [
@@ -737,20 +1053,23 @@ export function applySideScopedAnchorTransition<
       .map((record): AnchorRecord => {
         const pair = plans.get(record.id);
         if (!pair) {
-          return { ...record, anchor: cloneAnchor(record.anchor) };
+          return {
+            ...record,
+            anchor: cloneAnchor(record.anchor),
+            tracking: cloneStaleTracking(
+              staleTrackingOverrides.get(record.id) ?? record.tracking,
+            ),
+          };
         }
         return {
           ...record,
           category: pair.to.category,
-          anchor: replaceSideLine(
-            record.anchor,
-            side,
-            sideLine(pair.to.anchor, side),
-          ),
+          anchor: cloneAnchor(plannedAnchors.get(record.id) ?? record.anchor),
           reason: pair.to.reason,
+          tracking: cloneStaleTracking(plannedStaleTrackings.get(record.id)),
         };
       }),
-    ...addedRecords,
+    ...addedRecords.filter((record) => addedRecordIds.has(record.id)),
   ];
 
   const manualAnchors = finalRecords
@@ -762,6 +1081,9 @@ export function applySideScopedAnchorTransition<
     .map((record) => ({
       anchor: cloneAnchor(record.anchor),
       reason: record.reason ?? "edit-unresolved",
+      ...(record.tracking
+        ? { tracking: cloneStaleTracking(record.tracking) }
+        : {}),
     }));
 
   let selectedAnchorKey = currentState.selectedAnchorKey;
@@ -799,6 +1121,12 @@ export function applySideScopedAnchorTransition<
     }
   }
   appliedCoalesced.forEach((applied) => {
+    if (
+      applied.addedActiveId &&
+      !addedRecordIds.has(applied.addedActiveId)
+    ) {
+      return;
+    }
     const transitionActiveKey = manualAnchorKey(
       applied.transition.active.anchor,
     );
@@ -854,7 +1182,12 @@ export function applySideScopedAnchorTransition<
 
   return {
     state,
-    restoredAnchors: plans.size + appliedCoalesced.length,
+    restoredAnchors:
+      plans.size +
+      appliedCoalesced.filter(
+        (applied) =>
+          !applied.addedActiveId || addedRecordIds.has(applied.addedActiveId),
+      ).length,
     skippedAnchors,
   };
 }

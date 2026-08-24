@@ -76,6 +76,7 @@ describe("prepareTrackedPaneAppend", () => {
       {
         anchor: { leftLineNo: 1, rightLineNo: 1 },
         reason: "reload-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 1 },
       },
     ]);
     expect(result.anchorResult.state.pendingLeftLineNo).toBeNull();
@@ -127,6 +128,7 @@ describe("prepareTrackedPaneAppend", () => {
       {
         anchor: { leftLineNo: 0, rightLineNo: 0 },
         reason: "reload-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 0 },
       },
     ]);
     expect(result.anchorResult.state.pendingLeftLineNo).toBeNull();

@@ -5,6 +5,7 @@ import type {
   WorkspaceDraft,
   StaleManualAnchor,
 } from "../storage/workspaces";
+import { normalizeStaleAnchorTracking } from "../storage/workspaces";
 import type { LineSegment } from "../file/lineNumbering";
 
 export const WORKSPACE_TRANSFER_KIND = "diff-viewer-workspace";
@@ -37,6 +38,14 @@ function cloneAnchors(anchors: WorkspaceAnchorState): WorkspaceAnchorState {
     manualAnchors: anchors.manualAnchors.map((anchor) => ({ ...anchor })),
     staleManualAnchors: (anchors.staleManualAnchors ?? []).map((item) => ({
       anchor: { ...item.anchor },
+      ...(item.tracking
+        ? {
+            tracking: {
+              leftLineNo: item.tracking.leftLineNo,
+              rightLineNo: item.tracking.rightLineNo,
+            },
+          }
+        : {}),
       reason: item.reason,
     })),
     autoAnchor: anchors.autoAnchor ? { ...anchors.autoAnchor } : null,
@@ -95,11 +104,16 @@ function normalizeStaleAnchorList(value: unknown): StaleManualAnchor[] {
       return;
     }
     const anchor = normalizeAnchor(entry.anchor);
+    const tracking = normalizeStaleAnchorTracking(entry.tracking);
     if (
       anchor &&
       (entry.reason === "edit-unresolved" || entry.reason === "reload-unresolved")
     ) {
-      anchors.push({ anchor, reason: entry.reason });
+      anchors.push({
+        anchor,
+        ...(tracking ? { tracking } : {}),
+        reason: entry.reason,
+      });
     }
   });
   return anchors;

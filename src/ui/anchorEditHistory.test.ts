@@ -28,6 +28,10 @@ type AnchorState = {
   staleManualAnchors: {
     anchor: { leftLineNo: number; rightLineNo: number };
     reason: string;
+    tracking?: {
+      leftLineNo: number | null;
+      rightLineNo: number | null;
+    };
   }[];
   pendingLeftLineNo: number | null;
   pendingRightLineNo: number | null;
@@ -42,6 +46,7 @@ function cloneAnchorState(state: AnchorState): AnchorState {
     staleManualAnchors: state.staleManualAnchors.map((item) => ({
       anchor: { ...item.anchor },
       reason: item.reason,
+      ...(item.tracking ? { tracking: { ...item.tracking } } : {}),
     })),
     pendingLeftLineNo: state.pendingLeftLineNo,
     pendingRightLineNo: state.pendingRightLineNo,
@@ -498,6 +503,436 @@ describe("side-scoped anchor history restoration", () => {
     expect(restored.skippedAnchors).toBeGreaterThan(0);
   });
 
+  it("reactivates only stale anchors whose opposite logical line is safely tracked", () => {
+    const stale = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 6 },
+          reason: "edit-unresolved",
+        },
+        {
+          anchor: { leftLineNo: 9, rightLineNo: 12 },
+          reason: "edit-unresolved",
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+    const active = anchorState(4, 6, {
+      manualAnchors: [
+        { leftLineNo: 4, rightLineNo: 6 },
+        { leftLineNo: 9, rightLineNo: 12 },
+      ],
+      staleManualAnchors: [],
+      selectedAnchorKey: "manual:4:6",
+    });
+
+    const restored = applySideScopedAnchorTransition(
+      stale,
+      "left",
+      { from: stale, to: active },
+      {
+        resolveStaleReactivation: ({ staleAnchor }) =>
+          staleAnchor.anchor.leftLineNo === 4
+            ? { status: "tracked", oppositeLineNo: 8 }
+            : { status: "unresolved" },
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([
+      { leftLineNo: 4, rightLineNo: 8 },
+    ]);
+    expect(restored.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 9, rightLineNo: 12 },
+        reason: "edit-unresolved",
+      },
+    ]);
+    expect(restored.state.selectedAnchorKey).toBe("manual:4:8");
+    expect(restored).toMatchObject({ restoredAnchors: 1, skippedAnchors: 1 });
+  });
+
+  it("maps the left coordinate when restoring a right-side edit", () => {
+    const active = anchorState(6, 4);
+    const stale = anchorState(6, 4, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 6, rightLineNo: 4 },
+          reason: "edit-unresolved",
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+
+    const restored = applySideScopedAnchorTransition(
+      stale,
+      "right",
+      { from: stale, to: active },
+      {
+        resolveStaleReactivation: ({ side, targetAnchor }) => {
+          expect(side).toBe("right");
+          expect(targetAnchor).toEqual({ leftLineNo: 6, rightLineNo: 4 });
+          return { status: "tracked", oppositeLineNo: 8 };
+        },
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([
+      { leftLineNo: 8, rightLineNo: 4 },
+    ]);
+    expect(restored.state.staleManualAnchors).toEqual([]);
+    expect(restored.state.selectedAnchorKey).toBe("manual:8:4");
+  });
+
+  it.each(["deleted", "split", "ambiguous"])(
+    "keeps an anchor stale when its opposite logical line becomes %s",
+    () => {
+      const active = anchorState(4, 6);
+      const stale = anchorState(4, 6, {
+        manualAnchors: [],
+        staleManualAnchors: [
+          {
+            anchor: { leftLineNo: 4, rightLineNo: 6 },
+            reason: "edit-unresolved",
+          },
+        ],
+        selectedAnchorKey: null,
+      });
+
+      const restored = applySideScopedAnchorTransition(
+        stale,
+        "left",
+        { from: stale, to: active },
+        {
+          resolveStaleReactivation: () => ({ status: "unresolved" }),
+        },
+      );
+
+      expect(restored.state.manualAnchors).toEqual([]);
+      expect(restored.state.staleManualAnchors).toEqual(
+        stale.staleManualAnchors,
+      );
+      expect(restored).toMatchObject({ restoredAnchors: 0, skippedAnchors: 1 });
+    },
+  );
+
+  it("keeps a safely tracked stale anchor stale when its mapped candidate conflicts", () => {
+    const transitionStale = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 6 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 6 },
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+    const transitionActive = anchorState(4, 6);
+    const current = anchorState(9, 8, {
+      staleManualAnchors: transitionStale.staleManualAnchors,
+      selectedAnchorKey: "manual:9:8",
+    });
+
+    const restored = applySideScopedAnchorTransition(
+      current,
+      "left",
+      { from: transitionStale, to: transitionActive },
+      {
+        resolveStaleReactivation: () => ({
+          status: "tracked",
+          oppositeLineNo: 8,
+        }),
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual(current.manualAnchors);
+    expect(restored.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 6 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: 4, rightLineNo: 8 },
+      },
+    ]);
+    expect(restored.state.selectedAnchorKey).toBe("manual:9:8");
+    expect(restored).toMatchObject({ restoredAnchors: 0, skippedAnchors: 1 });
+  });
+
+  it("keeps an order-reversing reactivation candidate stale", () => {
+    const transitionStale = anchorState(2, 2, {
+      manualAnchors: [{ leftLineNo: 4, rightLineNo: 4 }],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 2, rightLineNo: 2 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 5 },
+        },
+      ],
+      selectedAnchorKey: "manual:4:4",
+    });
+    const transitionActive = anchorState(2, 2, {
+      manualAnchors: [
+        { leftLineNo: 2, rightLineNo: 2 },
+        { leftLineNo: 4, rightLineNo: 4 },
+      ],
+      staleManualAnchors: [],
+      selectedAnchorKey: "manual:4:4",
+    });
+
+    const restored = applySideScopedAnchorTransition(
+      transitionStale,
+      "left",
+      { from: transitionStale, to: transitionActive },
+      {
+        lineCounts: { leftLineCount: 10, rightLineCount: 10 },
+        resolveStaleReactivation: () => ({
+          status: "tracked",
+          oppositeLineNo: 5,
+        }),
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([
+      { leftLineNo: 4, rightLineNo: 4 },
+    ]);
+    expect(restored.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 2, rightLineNo: 2 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: 2, rightLineNo: 5 },
+      },
+    ]);
+  });
+
+  it("keeps an out-of-range reactivation candidate stale", () => {
+    const transitionStale = anchorState(4, 2, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 2 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 2 },
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+    const transitionActive = anchorState(4, 2);
+
+    const restored = applySideScopedAnchorTransition(
+      transitionStale,
+      "left",
+      { from: transitionStale, to: transitionActive },
+      {
+        lineCounts: { leftLineCount: 4, rightLineCount: 3 },
+        resolveStaleReactivation: () => ({
+          status: "tracked",
+          oppositeLineNo: 2,
+        }),
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([]);
+    expect(restored.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 2 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: 4, rightLineNo: 2 },
+      },
+    ]);
+  });
+
+  it("keeps a negative reactivation candidate stale without line counts", () => {
+    const transitionStale = anchorState(-1, 2, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: -1, rightLineNo: 2 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 2 },
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+    const transitionActive = anchorState(-1, 2);
+
+    const restored = applySideScopedAnchorTransition(
+      transitionStale,
+      "left",
+      { from: transitionStale, to: transitionActive },
+      {
+        resolveStaleReactivation: () => ({
+          status: "tracked",
+          oppositeLineNo: 2,
+        }),
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([]);
+    expect(restored.state.staleManualAnchors).toEqual(
+      transitionStale.staleManualAnchors,
+    );
+  });
+
+  it("restores edited-side tracking when reactivation stays unresolved", () => {
+    const transitionStale = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 6 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 6 },
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+    const transitionActive = anchorState(4, 6);
+    const current = cloneAnchorState(transitionStale);
+    current.staleManualAnchors[0].tracking = {
+      leftLineNo: null,
+      rightLineNo: null,
+    };
+
+    const restored = applySideScopedAnchorTransition(
+      current,
+      "left",
+      { from: transitionStale, to: transitionActive },
+      {
+        resolveStaleReactivation: ({ staleAnchor }) => {
+          expect(staleAnchor.tracking).toEqual({
+            leftLineNo: null,
+            rightLineNo: null,
+          });
+          return { status: "unresolved" };
+        },
+      },
+    );
+
+    expect(restored.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 6 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: 4, rightLineNo: null },
+      },
+    ]);
+    expect(restored.state.staleManualAnchors[0].tracking).not.toBe(
+      current.staleManualAnchors[0].tracking,
+    );
+
+    const redone = applySideScopedAnchorTransition(
+      restored.state,
+      "left",
+      { from: transitionActive, to: transitionStale },
+    );
+    expect(redone.state.manualAnchors).toEqual([]);
+    expect(redone.state.staleManualAnchors[0].tracking).toEqual({
+      leftLineNo: null,
+      rightLineNo: null,
+    });
+  });
+
+  it("makes two-sided deletions recoverable in either undo order", () => {
+    const active = anchorState(4, 6);
+    const leftDeleted = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 6 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 6 },
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+    const bothDeleted = cloneAnchorState(leftDeleted);
+    bothDeleted.staleManualAnchors[0].tracking = {
+      leftLineNo: null,
+      rightLineNo: null,
+    };
+
+    const leftFirst = applySideScopedAnchorTransition(
+      bothDeleted,
+      "left",
+      { from: leftDeleted, to: active },
+      { resolveStaleReactivation: () => ({ status: "unresolved" }) },
+    ).state;
+    const thenRight = applySideScopedAnchorTransition(leftFirst, "right", {
+      from: bothDeleted,
+      to: leftDeleted,
+    }).state;
+    expect(thenRight.staleManualAnchors[0].tracking).toEqual({
+      leftLineNo: 4,
+      rightLineNo: 6,
+    });
+
+    const rightFirst = applySideScopedAnchorTransition(
+      bothDeleted,
+      "right",
+      { from: bothDeleted, to: leftDeleted },
+    ).state;
+    const thenLeft = applySideScopedAnchorTransition(
+      rightFirst,
+      "left",
+      { from: leftDeleted, to: active },
+      {
+        resolveStaleReactivation: ({ staleAnchor }) => ({
+          status: "tracked",
+          oppositeLineNo: staleAnchor.tracking?.rightLineNo ?? -1,
+        }),
+      },
+    ).state;
+    expect(thenLeft.manualAnchors).toEqual([
+      { leftLineNo: 4, rightLineNo: 6 },
+    ]);
+    expect(thenLeft.staleManualAnchors).toEqual([]);
+  });
+
+  it("combines target-side stale tracking with the live opposite coordinate", () => {
+    const transitionActive = anchorState(4, 6);
+    const transitionStale = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 6 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 6 },
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+    const current = anchorState(4, 8);
+
+    const result = applySideScopedAnchorTransition(current, "left", {
+      from: transitionActive,
+      to: transitionStale,
+    });
+
+    expect(result.state.manualAnchors).toEqual([]);
+    expect(result.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 8 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 8 },
+      },
+    ]);
+
+    const restored = applySideScopedAnchorTransition(
+      result.state,
+      "left",
+      { from: transitionStale, to: transitionActive },
+      {
+        resolveStaleReactivation: ({ staleAnchor }) => ({
+          status: "tracked",
+          oppositeLineNo: staleAnchor.tracking?.rightLineNo ?? -1,
+        }),
+      },
+    );
+    expect(restored.state.manualAnchors).toEqual([
+      { leftLineNo: 4, rightLineNo: 8 },
+    ]);
+    expect(restored.state.staleManualAnchors).toEqual([]);
+  });
+
   it("still deactivates an active anchor when stale reactivation is disabled", () => {
     const active = anchorState(4, 6);
     const stale = anchorState(4, 6, {
@@ -670,6 +1105,254 @@ describe("side-scoped anchor history restoration", () => {
     );
     expect(redone.state.selectedAnchorKey).toBeNull();
     expect(redone).toMatchObject({ restoredAnchors: 1, skippedAnchors: 0 });
+  });
+
+  it("reactivates a coalesced anchor at its safely tracked opposite line", () => {
+    const expanded = anchorState(4, 6, {
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 6 },
+          reason: "edit-unresolved",
+        },
+      ],
+    });
+    const collapsed = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors: expanded.staleManualAnchors,
+      selectedAnchorKey: null,
+    });
+
+    const restored = applySideScopedAnchorTransition(
+      collapsed,
+      "left",
+      { from: collapsed, to: expanded },
+      {
+        resolveStaleReactivation: () => ({
+          status: "tracked",
+          oppositeLineNo: 8,
+        }),
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([
+      { leftLineNo: 4, rightLineNo: 8 },
+    ]);
+    expect(restored.state.staleManualAnchors).toEqual(
+      collapsed.staleManualAnchors,
+    );
+    expect(restored.state.selectedAnchorKey).toBe("manual:4:8");
+    expect(restored).toMatchObject({ restoredAnchors: 1, skippedAnchors: 0 });
+  });
+
+  it("updates stale tracking through coalesced reactivation and collapse", () => {
+    const transitionStale = {
+      anchor: { leftLineNo: 4, rightLineNo: 6 },
+      reason: "edit-unresolved",
+      tracking: { leftLineNo: null, rightLineNo: 6 },
+    };
+    const collapsed = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors: [transitionStale],
+      selectedAnchorKey: null,
+    });
+    const expanded = anchorState(4, 6, {
+      staleManualAnchors: [transitionStale],
+    });
+    const current = cloneAnchorState(collapsed);
+    current.staleManualAnchors[0].tracking = {
+      leftLineNo: null,
+      rightLineNo: 8,
+    };
+
+    const restored = applySideScopedAnchorTransition(
+      current,
+      "left",
+      { from: collapsed, to: expanded },
+      {
+        resolveStaleReactivation: () => ({
+          status: "tracked",
+          oppositeLineNo: 8,
+        }),
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([
+      { leftLineNo: 4, rightLineNo: 8 },
+    ]);
+    expect(restored.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 6 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: 4, rightLineNo: 8 },
+      },
+    ]);
+
+    const collapsedAgain = applySideScopedAnchorTransition(
+      restored.state,
+      "left",
+      { from: expanded, to: collapsed },
+    );
+    expect(collapsedAgain.state.manualAnchors).toEqual([]);
+    expect(collapsedAgain.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 6 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 8 },
+      },
+    ]);
+  });
+
+  it("restores edited-side tracking when coalesced reactivation is unresolved", () => {
+    const collapsed = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 6 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 6 },
+        },
+      ],
+      selectedAnchorKey: null,
+    });
+    const expanded = anchorState(4, 6, {
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 6 },
+          reason: "edit-unresolved",
+          tracking: { leftLineNo: 4, rightLineNo: 6 },
+        },
+      ],
+    });
+    const current = cloneAnchorState(collapsed);
+    current.staleManualAnchors[0].tracking = {
+      leftLineNo: null,
+      rightLineNo: null,
+    };
+
+    const restored = applySideScopedAnchorTransition(
+      current,
+      "left",
+      { from: collapsed, to: expanded },
+      { resolveStaleReactivation: () => ({ status: "unresolved" }) },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([]);
+    expect(restored.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 6 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: 4, rightLineNo: null },
+      },
+    ]);
+
+    const redone = applySideScopedAnchorTransition(
+      restored.state,
+      "left",
+      { from: expanded, to: collapsed },
+    );
+    expect(redone.state.manualAnchors).toEqual([]);
+    expect(redone.state.staleManualAnchors[0].tracking).toEqual({
+      leftLineNo: null,
+      rightLineNo: null,
+    });
+  });
+
+  it("does not choose between conflicting coalesced reactivation candidates", () => {
+    const staleManualAnchors = [
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 6 },
+        reason: "edit-unresolved",
+      },
+      {
+        anchor: { leftLineNo: 9, rightLineNo: 12 },
+        reason: "edit-unresolved",
+      },
+    ];
+    const collapsed = anchorState(4, 6, {
+      manualAnchors: [],
+      staleManualAnchors,
+      selectedAnchorKey: null,
+    });
+    const expanded = anchorState(4, 6, {
+      manualAnchors: [
+        { leftLineNo: 4, rightLineNo: 6 },
+        { leftLineNo: 9, rightLineNo: 12 },
+      ],
+      staleManualAnchors,
+      selectedAnchorKey: "manual:4:6",
+    });
+
+    const restored = applySideScopedAnchorTransition(
+      collapsed,
+      "left",
+      { from: collapsed, to: expanded },
+      {
+        resolveStaleReactivation: () => ({
+          status: "tracked",
+          oppositeLineNo: 8,
+        }),
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([]);
+    expect(restored.state.staleManualAnchors).toEqual(staleManualAnchors);
+    expect(restored.state.selectedAnchorKey).toBeNull();
+    expect(restored).toMatchObject({ restoredAnchors: 0, skippedAnchors: 2 });
+  });
+
+  it("keeps order-reversing coalesced candidates stale", () => {
+    const staleManualAnchors = [
+      {
+        anchor: { leftLineNo: 2, rightLineNo: 2 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 5 },
+      },
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 4 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 4 },
+      },
+    ];
+    const collapsed = anchorState(2, 2, {
+      manualAnchors: [],
+      staleManualAnchors,
+      selectedAnchorKey: null,
+    });
+    const expanded = anchorState(2, 2, {
+      manualAnchors: [
+        { leftLineNo: 2, rightLineNo: 2 },
+        { leftLineNo: 4, rightLineNo: 4 },
+      ],
+      staleManualAnchors,
+      selectedAnchorKey: "manual:2:2",
+    });
+
+    const restored = applySideScopedAnchorTransition(
+      collapsed,
+      "left",
+      { from: collapsed, to: expanded },
+      {
+        lineCounts: { leftLineCount: 10, rightLineCount: 10 },
+        resolveStaleReactivation: ({ staleAnchor }) => ({
+          status: "tracked",
+          oppositeLineNo:
+            staleAnchor.anchor.leftLineNo === 2 ? 5 : 4,
+        }),
+      },
+    );
+
+    expect(restored.state.manualAnchors).toEqual([]);
+    expect(restored.state.staleManualAnchors).toEqual([
+      {
+        ...staleManualAnchors[0],
+        tracking: { leftLineNo: 2, rightLineNo: 5 },
+      },
+      {
+        ...staleManualAnchors[1],
+        tracking: { leftLineNo: 4, rightLineNo: 4 },
+      },
+    ]);
+    expect(restored).toMatchObject({ restoredAnchors: 0, skippedAnchors: 2 });
   });
 
   it("still collapses a coalesced active anchor after its opposite side moved", () => {

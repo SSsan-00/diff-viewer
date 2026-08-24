@@ -2,11 +2,13 @@ import { validateAnchors, type Anchor } from "../diffEngine/anchors";
 import { normalizeText } from "../diffEngine/normalize";
 import type { LineSegment } from "../file/lineNumbering";
 import type { PersistedState } from "./persistedState";
-import type {
-  Workspace,
-  WorkspaceAnchorState,
-  WorkspacePaneState,
-  WorkspacesState,
+import {
+  normalizeStaleAnchorTracking,
+  type StaleManualAnchor,
+  type Workspace,
+  type WorkspaceAnchorState,
+  type WorkspacePaneState,
+  type WorkspacesState,
 } from "./workspaces";
 
 export type StartupWorkspaceRestore = {
@@ -26,13 +28,34 @@ function cloneAnchor(anchor: Anchor): Anchor {
   return { leftLineNo: anchor.leftLineNo, rightLineNo: anchor.rightLineNo };
 }
 
+function cloneStaleAnchor(item: StaleManualAnchor): StaleManualAnchor {
+  return {
+    anchor: cloneAnchor(item.anchor),
+    ...(item.tracking
+      ? {
+          tracking: {
+            leftLineNo: item.tracking.leftLineNo,
+            rightLineNo: item.tracking.rightLineNo,
+          },
+        }
+      : {}),
+    reason: item.reason,
+  };
+}
+
+function sanitizeStaleAnchor(item: StaleManualAnchor): StaleManualAnchor {
+  const tracking = normalizeStaleAnchorTracking(item.tracking);
+  return {
+    anchor: cloneAnchor(item.anchor),
+    ...(tracking ? { tracking } : {}),
+    reason: item.reason,
+  };
+}
+
 function cloneWorkspaceAnchors(state: WorkspaceAnchorState): WorkspaceAnchorState {
   return {
     manualAnchors: state.manualAnchors.map(cloneAnchor),
-    staleManualAnchors: (state.staleManualAnchors ?? []).map((item) => ({
-      anchor: cloneAnchor(item.anchor),
-      reason: item.reason,
-    })),
+    staleManualAnchors: (state.staleManualAnchors ?? []).map(cloneStaleAnchor),
     autoAnchor: state.autoAnchor ? cloneAnchor(state.autoAnchor) : null,
     suppressedAutoAnchorKey: state.suppressedAutoAnchorKey,
     pendingLeftLineNo: state.pendingLeftLineNo,
@@ -61,6 +84,9 @@ export function isSegmentLayoutValid(segments: LineSegment[], text: string): boo
   let lastEnd = 0;
   for (const segment of segments) {
     if (
+      !Number.isSafeInteger(segment.startLine) ||
+      !Number.isSafeInteger(segment.lineCount) ||
+      !Number.isSafeInteger(segment.fileIndex) ||
       segment.startLine < 1 ||
       segment.lineCount < 1 ||
       segment.fileIndex < 1
@@ -68,10 +94,14 @@ export function isSegmentLayoutValid(segments: LineSegment[], text: string): boo
       return false;
     }
     const end = segment.startLine + segment.lineCount - 1;
-    if (end < segment.startLine || end < lastEnd) {
+    if (
+      !Number.isSafeInteger(end) ||
+      end < segment.startLine ||
+      segment.startLine <= lastEnd
+    ) {
       return false;
     }
-    lastEnd = Math.max(lastEnd, end);
+    lastEnd = end;
   }
   return lastEnd <= lineCount;
 }
@@ -146,10 +176,9 @@ function sanitizeWorkspaceAnchors(
 ): WorkspaceAnchorState {
   const leftLineCount = getNormalizedLineCount(leftText);
   const rightLineCount = getNormalizedLineCount(rightText);
-  const staleManualAnchors = (state.staleManualAnchors ?? []).map((item) => ({
-    anchor: cloneAnchor(item.anchor),
-    reason: item.reason,
-  }));
+  const staleManualAnchors = (state.staleManualAnchors ?? []).map(
+    sanitizeStaleAnchor,
+  );
   const manualAnchors = validateAnchors(
     state.manualAnchors,
     leftLineCount,
@@ -249,10 +278,9 @@ export function resolveStartupWorkspaceRestore(params: {
     (initialAnchors.staleManualAnchors?.length ?? 0) === 0 &&
     (persistedState?.staleAnchors?.length ?? 0) > 0
   ) {
-    const staleManualAnchors = (persistedState?.staleAnchors ?? []).map((item) => ({
-      anchor: cloneAnchor(item.anchor),
-      reason: item.reason,
-    }));
+    const staleManualAnchors = (persistedState?.staleAnchors ?? []).map(
+      sanitizeStaleAnchor,
+    );
     initialAnchors = {
       ...initialAnchors,
       staleManualAnchors,

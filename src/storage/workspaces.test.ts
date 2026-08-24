@@ -229,6 +229,7 @@ describe("workspaces storage", () => {
       staleManualAnchors: [
         {
           anchor: { leftLineNo: 4, rightLineNo: 5 },
+          tracking: { leftLineNo: 6, rightLineNo: null },
           reason: "reload-unresolved",
         },
       ],
@@ -247,6 +248,7 @@ describe("workspaces storage", () => {
       expect(beta?.anchors.staleManualAnchors).toEqual([
         {
           anchor: { leftLineNo: 4, rightLineNo: 5 },
+          tracking: { leftLineNo: 6, rightLineNo: null },
           reason: "reload-unresolved",
         },
       ]);
@@ -254,6 +256,42 @@ describe("workspaces storage", () => {
       expect(alpha?.anchors.manualAnchors).toHaveLength(0);
       expect(alpha?.anchors.staleManualAnchors).toEqual([]);
     }
+  });
+
+  it("normalizes invalid stale tracking without discarding a valid side", async () => {
+    const storage = createStorage();
+    const state = createState(["Alpha"]);
+    const staleManualAnchors = [
+      {
+        anchor: { leftLineNo: 1, rightLineNo: 2 },
+        tracking: { leftLineNo: 3, rightLineNo: "invalid" },
+        reason: "reload-unresolved",
+      },
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 5 },
+        tracking: { leftLineNo: -1, rightLineNo: 2.5 },
+        reason: "edit-unresolved",
+      },
+    ];
+    state.workspaces[0].anchors.staleManualAnchors =
+      staleManualAnchors as unknown as NonNullable<
+        typeof state.workspaces[0]["anchors"]["staleManualAnchors"]
+      >;
+    await saveWorkspaces(storage, state);
+
+    const restored = await loadWorkspaces(storage);
+
+    expect(restored.workspaces[0].anchors.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 1, rightLineNo: 2 },
+        tracking: { leftLineNo: 3, rightLineNo: null },
+        reason: "reload-unresolved",
+      },
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 5 },
+        reason: "edit-unresolved",
+      },
+    ]);
   });
 
   it("restores active and historical stale anchors at the same coordinates", async () => {

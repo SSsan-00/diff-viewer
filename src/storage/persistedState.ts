@@ -1,7 +1,10 @@
 import type { Anchor } from "../diffEngine/anchors";
 import type { FileEncoding } from "../file/decode";
 import type { LineSegment } from "../file/lineNumbering";
-import type { StaleManualAnchor } from "./workspaces";
+import {
+  normalizeStaleAnchorTracking,
+  type StaleManualAnchor,
+} from "./workspaces";
 import {
   createUnavailableTextStore,
   type TextStore,
@@ -85,11 +88,16 @@ function normalizeStaleAnchors(value: unknown): StaleManualAnchor[] {
       return;
     }
     const normalized = normalizeAnchors([entry.anchor])[0];
+    const tracking = normalizeStaleAnchorTracking(entry.tracking);
     if (
       normalized &&
       (entry.reason === "edit-unresolved" || entry.reason === "reload-unresolved")
     ) {
-      anchors.push({ anchor: normalized, reason: entry.reason });
+      anchors.push({
+        anchor: normalized,
+        ...(tracking ? { tracking } : {}),
+        reason: entry.reason,
+      });
     }
   });
   return anchors;

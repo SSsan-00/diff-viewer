@@ -10,8 +10,14 @@ import {
 
 export type StaleAnchorReason = "edit-unresolved" | "reload-unresolved";
 
+export type StaleAnchorTracking = {
+  leftLineNo: number | null;
+  rightLineNo: number | null;
+};
+
 export type StaleManualAnchor = {
   anchor: Anchor;
+  tracking?: StaleAnchorTracking;
   reason: StaleAnchorReason;
 };
 
@@ -152,6 +158,46 @@ function normalizeAnchorList(value: unknown): Anchor[] {
   return anchors;
 }
 
+function normalizeTrackingLineNo(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isInteger(value) &&
+    value >= 0
+    ? value
+    : null;
+}
+
+export function normalizeStaleAnchorTracking(
+  value: unknown,
+): StaleAnchorTracking | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const tracking = {
+    leftLineNo: normalizeTrackingLineNo(record.leftLineNo),
+    rightLineNo: normalizeTrackingLineNo(record.rightLineNo),
+  };
+  return tracking.leftLineNo === null && tracking.rightLineNo === null
+    ? undefined
+    : tracking;
+}
+
+function cloneStaleAnchor(item: StaleManualAnchor): StaleManualAnchor {
+  return {
+    anchor: { ...item.anchor },
+    ...(item.tracking
+      ? {
+          tracking: {
+            leftLineNo: item.tracking.leftLineNo,
+            rightLineNo: item.tracking.rightLineNo,
+          },
+        }
+      : {}),
+    reason: item.reason,
+  };
+}
+
 function normalizeStaleAnchorList(value: unknown): StaleManualAnchor[] {
   if (!Array.isArray(value)) {
     return [];
@@ -163,12 +209,17 @@ function normalizeStaleAnchorList(value: unknown): StaleManualAnchor[] {
     }
     const record = entry as Record<string, unknown>;
     const anchor = normalizeAnchor(record.anchor);
+    const tracking = normalizeStaleAnchorTracking(record.tracking);
     const reason = record.reason;
     if (
       anchor &&
       (reason === "edit-unresolved" || reason === "reload-unresolved")
     ) {
-      anchors.push({ anchor, reason });
+      anchors.push({
+        anchor,
+        ...(tracking ? { tracking } : {}),
+        reason,
+      });
     }
   });
   return anchors;
@@ -178,10 +229,7 @@ function cloneAnchorState(state: WorkspaceAnchorState): WorkspaceAnchorState {
   return {
     ...state,
     manualAnchors: state.manualAnchors.map((anchor) => ({ ...anchor })),
-    staleManualAnchors: (state.staleManualAnchors ?? []).map((item) => ({
-      anchor: { ...item.anchor },
-      reason: item.reason,
-    })),
+    staleManualAnchors: (state.staleManualAnchors ?? []).map(cloneStaleAnchor),
     autoAnchor: state.autoAnchor ? { ...state.autoAnchor } : null,
   };
 }

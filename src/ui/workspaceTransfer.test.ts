@@ -28,6 +28,7 @@ describe("workspace transfer", () => {
       staleManualAnchors: [
         {
           anchor: { leftLineNo: 5, rightLineNo: 6 },
+          tracking: { leftLineNo: null, rightLineNo: 8 },
           reason: "reload-unresolved",
         },
       ],
@@ -55,6 +56,7 @@ describe("workspace transfer", () => {
         staleManualAnchors: [
           {
             anchor: { leftLineNo: 5, rightLineNo: 6 },
+            tracking: { leftLineNo: null, rightLineNo: 8 },
             reason: "reload-unresolved",
           },
         ],
@@ -77,6 +79,7 @@ describe("workspace transfer", () => {
     expect(parsed.workspace.anchors.staleManualAnchors).toEqual([
       {
         anchor: { leftLineNo: 5, rightLineNo: 6 },
+        tracking: { leftLineNo: null, rightLineNo: 8 },
         reason: "reload-unresolved",
       },
     ]);
@@ -93,6 +96,44 @@ describe("workspace transfer", () => {
     expect(parsed.ok).toBe(true);
     if (parsed.ok) {
       expect(parsed.workspace.anchors.staleManualAnchors).toEqual([]);
+    }
+  });
+
+  it("keeps legacy stale entries without adding tracking", () => {
+    const payload = buildWorkspaceTransferPayload(workspace);
+    const stale = payload.workspace.anchors.staleManualAnchors?.[0];
+    if (stale) {
+      delete (stale as Partial<typeof stale>).tracking;
+    }
+
+    const parsed = parseWorkspaceTransferPayload(payload);
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.workspace.anchors.staleManualAnchors?.[0]).not.toHaveProperty(
+        "tracking",
+      );
+    }
+  });
+
+  it("normalizes malformed imported tracking per side", () => {
+    const payload = buildWorkspaceTransferPayload(workspace);
+    const stale = payload.workspace.anchors.staleManualAnchors?.[0];
+    if (stale) {
+      stale.tracking = {
+        leftLineNo: 3,
+        rightLineNo: "invalid",
+      } as unknown as NonNullable<typeof stale.tracking>;
+    }
+
+    const parsed = parseWorkspaceTransferPayload(payload);
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.workspace.anchors.staleManualAnchors?.[0]?.tracking).toEqual({
+        leftLineNo: 3,
+        rightLineNo: null,
+      });
     }
   });
 });

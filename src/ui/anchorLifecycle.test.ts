@@ -6,6 +6,7 @@ import {
   rebasePaneSnapshotAnchorLifecycleResult,
   updateAnchorStateForContentChanges,
   updateAnchorStateForPaneAppend,
+  updateAnchorStateForPaneEncodingChange,
   updateAnchorStateForPaneReload,
 } from "./anchorLifecycle";
 import {
@@ -132,10 +133,61 @@ describe("updateAnchorStateForContentChanges", () => {
       {
         anchor: { leftLineNo: 2, rightLineNo: 2 },
         reason: "edit-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 2 },
       },
     ]);
     expect(result.state.selectedAnchorKey).toBeNull();
     expect(result.staleAdded).toBe(1);
+  });
+
+  it("keeps stale display coordinates while tracking a provable opposite-side edit", () => {
+    const unresolved = updateAnchorStateForContentChanges(
+      state(),
+      "left",
+      [change(3, 1, 4, 1, "")],
+      { leftLineCount: 4, rightLineCount: 5 },
+    );
+    const shifted = updateAnchorStateForContentChanges(
+      unresolved.state,
+      "right",
+      [change(1, 1, 1, 1, "inserted\n")],
+      { leftLineCount: 4, rightLineCount: 6 },
+    );
+
+    expect(shifted.state.manualAnchors).toEqual([]);
+    expect(shifted.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 2, rightLineNo: 2 },
+        reason: "edit-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 3 },
+      },
+    ]);
+    expect(shifted.recovered).toBe(0);
+  });
+
+  it("keeps an anchor active when its complete line survives uniquely in a multiline edit", () => {
+    const beforeLines = "head\nbefore\ntarget\nafter\ntail".split("\n");
+    const result = updateAnchorStateForContentChanges(
+      state({
+        manualAnchors: [{ leftLineNo: 2, rightLineNo: 2 }],
+        pendingLeftLineNo: 2,
+      }),
+      "left",
+      [change(2, 1, 5, 1, "target\nother\n")],
+      { leftLineCount: 4, rightLineCount: 5 },
+      {
+        trackingContext: {
+          getBeforeLineContent: (lineNumber) => beforeLines[lineNumber - 1],
+        },
+      },
+    );
+
+    expect(result.state.manualAnchors).toEqual([
+      { leftLineNo: 1, rightLineNo: 2 },
+    ]);
+    expect(result.state.pendingLeftLineNo).toBe(1);
+    expect(result.state.staleManualAnchors).toEqual([]);
+    expect(result.state.selectedAnchorKey).toBe("manual:1:2");
   });
 
   it("returns a shifted anchor to its original line through an inverse edit", () => {
@@ -199,6 +251,32 @@ describe("updateAnchorStateForContentChanges", () => {
     expect(result.staleAdded).toBe(0);
   });
 
+  it("does not reactivate an older candidate when a newer anchor becomes stale at the same display coordinate", () => {
+    const result = updateAnchorStateForContentChanges(
+      state({
+        staleManualAnchors: [
+          {
+            anchor: { leftLineNo: 2, rightLineNo: 2 },
+            reason: "edit-unresolved",
+            tracking: { leftLineNo: 4, rightLineNo: 4 },
+          },
+        ],
+      }),
+      "left",
+      [change(3, 1, 4, 1, "")],
+      { leftLineCount: 5, rightLineCount: 6 },
+    );
+
+    expect(result.state.manualAnchors).toEqual([]);
+    expect(result.state.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 2, rightLineNo: 2 },
+        reason: "edit-unresolved",
+      },
+    ]);
+    expect(result.recovered).toBe(0);
+  });
+
   it("still deactivates true collisions between active anchors", () => {
     const result = updateAnchorStateForContentChanges(
       state({
@@ -218,10 +296,12 @@ describe("updateAnchorStateForContentChanges", () => {
       {
         anchor: { leftLineNo: 1, rightLineNo: 1 },
         reason: "edit-unresolved",
+        tracking: { leftLineNo: 1, rightLineNo: 1 },
       },
       {
         anchor: { leftLineNo: 1, rightLineNo: 2 },
         reason: "edit-unresolved",
+        tracking: { leftLineNo: 1, rightLineNo: 2 },
       },
     ]);
   });
@@ -396,6 +476,7 @@ describe("updateAnchorStateForPaneReload", () => {
       {
         anchor: { leftLineNo: 1, rightLineNo: 1 },
         reason: "reload-unresolved",
+        tracking: { leftLineNo: 2, rightLineNo: 1 },
       },
     ]);
     expect(finalized.state.pendingLeftLineNo).toBe(2);
@@ -413,7 +494,7 @@ describe("updateAnchorStateForPaneReload", () => {
         { name: "pane.txt", text: "head\nfirst\ntarget\ntail" },
       ]);
       const withoutTarget = snapshot([
-        { name: "pane.txt", text: "head\nfirst\nchanged\ntail" },
+        { name: "pane.txt", text: "head\nFIRST\nchanged\ntail" },
       ]);
       const shifted = snapshot([
         {
@@ -460,6 +541,7 @@ describe("updateAnchorStateForPaneReload", () => {
         {
           anchor: { leftLineNo: 2, rightLineNo: 2 },
           reason: "reload-unresolved",
+          tracking: { leftLineNo: null, rightLineNo: 3 },
         },
       ]);
       expect(current.pendingLeftLineNo).toBeNull();
@@ -694,6 +776,7 @@ describe("updateAnchorStateForPaneReload", () => {
       {
         anchor: { leftLineNo: 2, rightLineNo: 2 },
         reason: "reload-unresolved",
+        tracking: { leftLineNo: null, rightLineNo: 2 },
       },
     ]);
     expect(result.state.pendingLeftLineNo).toBeNull();
@@ -728,6 +811,7 @@ describe("updateAnchorStateForPaneReload", () => {
       {
         anchor: { leftLineNo: 1, rightLineNo: 1 },
         reason: "reload-unresolved",
+        tracking: { leftLineNo: 2, rightLineNo: 1 },
       },
     ]);
     expect(result.validationDeferred).toBe(false);
@@ -768,5 +852,33 @@ describe("updateAnchorStateForPaneReload", () => {
     ]);
     expect(result.state.selectedAnchorKey).toBe("manual:2:2");
     expect(result.staleAdded).toBe(0);
+  });
+
+  it("keeps file-local anchor rows across a text-changing encoding switch", () => {
+    const previous = {
+      text: "譁�\n譁�\ntail",
+      segments: [
+        { startLine: 1, lineCount: 3, fileIndex: 1, fileName: "sample.txt" },
+      ],
+    };
+    const next = {
+      text: "日本語\n日本語\ntail",
+      segments: [
+        { startLine: 1, lineCount: 3, fileIndex: 1, fileName: "sample.txt" },
+      ],
+    };
+
+    const result = updateAnchorStateForPaneEncodingChange(
+      state(),
+      "left",
+      previous,
+      next,
+      { leftLineCount: 3, rightLineCount: 5 },
+    );
+
+    expect(result.state.manualAnchors).toEqual([
+      { leftLineNo: 2, rightLineNo: 2 },
+    ]);
+    expect(result.state.staleManualAnchors).toEqual([]);
   });
 });

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PersistedState } from "./persistedState";
 import {
+  isSegmentLayoutValid,
   resolveStartupWorkspaceRestore,
   type StartupWorkspaceRestore,
 } from "./startupRestore";
@@ -9,6 +10,47 @@ import type {
   WorkspaceAnchorState,
   WorkspacesState,
 } from "./workspaces";
+
+describe("isSegmentLayoutValid", () => {
+  it("rejects overlapping or nested segments", () => {
+    expect(
+      isSegmentLayoutValid(
+        [
+          { startLine: 1, lineCount: 4, fileIndex: 1 },
+          { startLine: 2, lineCount: 2, fileIndex: 2 },
+        ],
+        "one\ntwo\nthree\nfour",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects fractional segment coordinates before mapper preparation", () => {
+    expect(
+      isSegmentLayoutValid(
+        [{ startLine: 1.5, lineCount: 1, fileIndex: 1 }],
+        "one\ntwo",
+      ),
+    ).toBe(false);
+    expect(
+      isSegmentLayoutValid(
+        [{ startLine: 1, lineCount: 1, fileIndex: 1.5 }],
+        "one",
+      ),
+    ).toBe(false);
+  });
+
+  it("accepts ordered non-overlapping segments with an unmanaged gap", () => {
+    expect(
+      isSegmentLayoutValid(
+        [
+          { startLine: 2, lineCount: 1, fileIndex: 1 },
+          { startLine: 4, lineCount: 1, fileIndex: 2 },
+        ],
+        "prefix\none\ngap\ntwo",
+      ),
+    ).toBe(true);
+  });
+});
 
 const emptyAnchors: WorkspaceAnchorState = {
   manualAnchors: [],
@@ -166,6 +208,7 @@ describe("resolveStartupWorkspaceRestore", () => {
             staleManualAnchors: [
               {
                 anchor: { leftLineNo: 12, rightLineNo: 14 },
+                tracking: { leftLineNo: 1, rightLineNo: null },
                 reason: "reload-unresolved",
               },
             ],
@@ -180,10 +223,42 @@ describe("resolveStartupWorkspaceRestore", () => {
     expect(result.initialAnchors.staleManualAnchors).toEqual([
       {
         anchor: { leftLineNo: 12, rightLineNo: 14 },
+        tracking: { leftLineNo: 1, rightLineNo: null },
         reason: "reload-unresolved",
       },
     ]);
     expect(result.shouldPersistAnchors).toBe(false);
+  });
+
+  it("normalizes malformed stale tracking while restoring a workspace", () => {
+    const workspaceState: WorkspacesState = {
+      selectedId: "current",
+      workspaces: [
+        createWorkspace("current", {
+          anchors: {
+            ...emptyAnchors,
+            staleManualAnchors: [
+              {
+                anchor: { leftLineNo: 2, rightLineNo: 3 },
+                tracking: { leftLineNo: 4, rightLineNo: -1 },
+                reason: "edit-unresolved",
+              },
+            ],
+          },
+        }),
+      ],
+    } as WorkspacesState;
+
+    const result = resolve(workspaceState, null);
+
+    expect(result.initialAnchors.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 2, rightLineNo: 3 },
+        tracking: { leftLineNo: 4, rightLineNo: null },
+        reason: "edit-unresolved",
+      },
+    ]);
+    expect(result.shouldPersistAnchors).toBe(true);
   });
 
   it("keeps an active anchor when a historical stale anchor has the same coordinates", () => {
@@ -231,6 +306,7 @@ describe("resolveStartupWorkspaceRestore", () => {
       staleAnchors: [
         {
           anchor: { leftLineNo: 9, rightLineNo: 11 },
+          tracking: { leftLineNo: null, rightLineNo: 13 },
           reason: "edit-unresolved",
         },
       ],
@@ -244,6 +320,7 @@ describe("resolveStartupWorkspaceRestore", () => {
     expect(result.initialAnchors.staleManualAnchors).toEqual([
       {
         anchor: { leftLineNo: 9, rightLineNo: 11 },
+        tracking: { leftLineNo: null, rightLineNo: 13 },
         reason: "edit-unresolved",
       },
     ]);
