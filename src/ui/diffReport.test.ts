@@ -362,4 +362,27 @@ describe("bindExportReportButton", () => {
     );
     expect(toast.show).toHaveBeenCalledWith("レポートを出力しました。");
   });
+
+  it("settles the source snapshot before building the report", () => {
+    const dom = new JSDOM(`<button id="export-report" type="button">レポート出力</button>`);
+    const button =
+      dom.window.document.querySelector<HTMLButtonElement>("#export-report");
+    const order: string[] = [];
+
+    bindExportReportButton({
+      button,
+      doc: dom.window.document,
+      toast: { show: vi.fn() },
+      beforeBuild: () => order.push("settle"),
+      buildHtml: () => {
+        order.push("build");
+        return "<!doctype html><html><body>ok</body></html>";
+      },
+      download: () => true,
+    });
+
+    button?.click();
+
+    expect(order).toEqual(["settle", "build"]);
+  });
 });

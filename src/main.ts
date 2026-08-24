@@ -29,7 +29,6 @@ import {
   type LineSegment,
 } from "./file/lineNumbering";
 import {
-  appendDecodedFiles,
   buildDecodedFiles,
   type FileBytes,
 } from "./file/decodedFiles";
@@ -51,6 +50,8 @@ import {
 import {
   areChangesWithinSingleFileSegments,
   buildMultiFileWritePlan,
+  canUsePaneSaveTargets,
+  isFullySegmentedText,
 } from "./file/multiFileEditModel";
 import { pairFilesWithHandlesInDisplayOrder, reorderRazorPairs } from "./file/fileOrder";
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
@@ -154,6 +155,7 @@ import {
   type WorkspaceAnchorState,
   type WorkspacePaneState,
   type WorkspacesState,
+  type StaleManualAnchor,
 } from "./storage/workspaces";
 import {
   bindFavoritePathDragHandlers,
@@ -215,6 +217,45 @@ import {
   parseWorkspaceTransferPayload,
 } from "./ui/workspaceTransfer";
 import { createToastManager } from "./ui/toast";
+import {
+  updateAnchorStateForContentChanges,
+  updateAnchorStateForPaneReload,
+  type AnchorLifecycleResult,
+} from "./ui/anchorLifecycle";
+import {
+  applySideScopedAnchorTransition,
+  beginVersionedStateTransition,
+  commitVersionedStateChange,
+  createVersionedStateHistory,
+  replaceCurrentVersionedState,
+  resetVersionedStateHistory,
+  type VersionedStateHistory,
+} from "./ui/anchorEditHistory";
+import { runPaneReloadTransaction } from "./ui/paneReloadTransaction";
+import { runPaneSaveTransaction } from "./ui/paneSaveTransaction";
+import {
+  advancePaneOperationGeneration,
+  capturePaneOperationGeneration,
+  createPaneOperationGenerations,
+  invalidatePaneOperationGenerations,
+  isPaneOperationGenerationCurrent,
+  type PaneOperationGenerationToken,
+} from "./ui/paneOperationGeneration";
+import { createPaneEncodingChangeController } from "./ui/paneEncodingChange";
+import {
+  commitPaneSnapshotAnchorTransition,
+  createPaneAnchorValidationCoordinator,
+  recordDeferredAnchorValidationResult,
+  settlePaneSnapshotAnchorOperation,
+  shouldInterruptPaneSnapshotForPersistence,
+  type PaneAnchorValidationCoordinator,
+} from "./ui/paneAnchorValidation";
+import {
+  prepareTrackedPaneAppend,
+  runTrackedPaneAppendTransaction,
+  sameTrackedPaneAppendContext,
+  type TrackedPaneAppendContext,
+} from "./ui/trackedPaneAppend";
 import {
   clearPersistedState,
   createPersistScheduler,
@@ -315,9 +356,14 @@ let persistScheduler: ReturnType<typeof createPersistScheduler> | null = null;
 let persistSuppressed = false;
 let suppressRecalc = false;
 let workspacePersistTimer: ReturnType<typeof setTimeout> | null = null;
+let paneAnchorValidationCoordinator: PaneAnchorValidationCoordinator =
+  createPaneAnchorValidationCoordinator();
 
 function schedulePersist() {
-  if (persistSuppressed) {
+  if (
+    persistSuppressed ||
+    paneAnchorValidationCoordinator.validationDeferred
+  ) {
     return;
   }
   persistScheduler?.schedule();
@@ -329,7 +375,10 @@ function cancelPersist() {
 }
 
 function scheduleWorkspacePersist() {
-  if (!storage) {
+  if (
+    !storage ||
+    paneAnchorValidationCoordinator.validationDeferred
+  ) {
     return;
   }
   if (workspacePersistTimer) {
@@ -547,6 +596,7 @@ let workspaceState: WorkspacesState = await loadWorkspaces(storage, { textStore 
 
 const emptyWorkspaceAnchors: WorkspaceAnchorState = {
   manualAnchors: [],
+  staleManualAnchors: [],
   autoAnchor: null,
   suppressedAutoAnchorKey: null,
   pendingLeftLineNo: null,
@@ -557,6 +607,10 @@ const emptyWorkspaceAnchors: WorkspaceAnchorState = {
 function cloneWorkspaceAnchors(state: WorkspaceAnchorState): WorkspaceAnchorState {
   return {
     manualAnchors: state.manualAnchors.map((anchor) => ({ ...anchor })),
+    staleManualAnchors: (state.staleManualAnchors ?? []).map((item) => ({
+      anchor: { ...item.anchor },
+      reason: item.reason,
+    })),
     autoAnchor: state.autoAnchor ? { ...state.autoAnchor } : null,
     suppressedAutoAnchorKey: state.suppressedAutoAnchorKey,
     pendingLeftLineNo: state.pendingLeftLineNo,
@@ -798,7 +852,15 @@ function loadFavoriteListsForWorkspace(workspaceId: string) {
   renderFavoriteList("right");
 }
 
-function persistCurrentWorkspaceState() {
+function persistCurrentWorkspaceState(
+  options: { forceAnchorSettlement?: boolean } = {},
+) {
+  if (shouldInterruptPaneSnapshotForPersistence(
+    paneAnchorValidationCoordinator,
+    options.forceAnchorSettlement ?? false,
+  )) {
+    abortCoordinatingPaneAnchorBatch({ resetHistory: false });
+  }
   const result = setWorkspaceSnapshot(
     storage,
     workspaceState,
@@ -816,7 +878,12 @@ function persistCurrentWorkspaceState() {
 }
 
 function applyWorkspaceAnchors(anchors: WorkspaceAnchorState) {
+  paneAnchorValidationCoordinator = createPaneAnchorValidationCoordinator();
   manualAnchors = anchors.manualAnchors.map((anchor) => ({ ...anchor }));
+  staleManualAnchors = (anchors.staleManualAnchors ?? []).map((item) => ({
+    anchor: { ...item.anchor },
+    reason: item.reason,
+  }));
   autoAnchor = anchors.autoAnchor ? { ...anchors.autoAnchor } : null;
   suppressedAutoAnchorKey = anchors.suppressedAutoAnchorKey;
   pendingLeftLineNo = anchors.pendingLeftLineNo;
@@ -824,6 +891,7 @@ function applyWorkspaceAnchors(anchors: WorkspaceAnchorState) {
   selectedAnchorKey = anchors.selectedAnchorKey;
   updatePendingAnchorDecoration();
   setAnchorMessage("");
+  resetAnchorEditHistory();
 }
 
 function applyWorkspaceState(
@@ -831,6 +899,9 @@ function applyWorkspaceState(
   options?: { focusInput?: boolean },
 ) {
   const previousSelectedId = workspaceState.selectedId;
+  if (nextState.selectedId !== previousSelectedId) {
+    abortCoordinatingPaneAnchorBatch();
+  }
   workspaceState = nextState;
   renderWorkspacePanel(options);
   if (nextState.selectedId !== previousSelectedId) {
@@ -865,6 +936,7 @@ function switchWorkspaceById(
   if (id === workspaceState.selectedId) {
     return;
   }
+  abortCoordinatingPaneAnchorBatch();
   if (options?.focusItem) {
     focusedWorkspaceId = id;
   }
@@ -1454,13 +1526,26 @@ const paneSaveTargetLists: Record<"left" | "right", PaneSaveTarget[]> = {
   left: [],
   right: [],
 };
+const paneSaveTargetRevisions: Record<"left" | "right", number> = {
+  left: 0,
+  right: 0,
+};
 const paneSavePending: Record<"left" | "right", boolean> = {
+  left: false,
+  right: false,
+};
+const paneAppendPending: Record<"left" | "right", boolean> = {
   left: false,
   right: false,
 };
 const paneReloadPending: Record<"left" | "right", boolean> = {
   left: false,
   right: false,
+};
+let paneOperationGenerations = createPaneOperationGenerations();
+const paneContentRevisions: Record<"left" | "right", number> = {
+  left: 0,
+  right: 0,
 };
 
 function clonePaneSaveTarget(target: PaneSaveTarget | null): PaneSaveTarget | null {
@@ -1542,6 +1627,7 @@ function withProgrammaticEdit(
     }
     suppressRecalc = false;
     invalidateDiffRendering();
+    queueMicrotask(() => resetAnchorEditHistory(side));
   }
 }
 
@@ -1706,19 +1792,49 @@ function getEditorAlternativeVersionId(
 function captureAnchorSnapshot(): AnchorSnapshot {
   return {
     manualAnchors: manualAnchors.map((anchor) => ({ ...anchor })),
+    staleManualAnchors: staleManualAnchors.map((item) => ({
+      anchor: { ...item.anchor },
+      reason: item.reason,
+    })),
     suppressedAutoAnchorKey,
     pendingLeftLineNo,
     pendingRightLineNo,
     selectedAnchorKey,
+    leftContentRevision: paneContentRevisions.left,
+    rightContentRevision: paneContentRevisions.right,
   };
 }
 
-function restoreAnchorsFromSnapshot(snapshot: AnchorSnapshot) {
+function cloneAnchorSnapshot(snapshot: AnchorSnapshot): AnchorSnapshot {
+  return {
+    manualAnchors: snapshot.manualAnchors.map((anchor) => ({ ...anchor })),
+    staleManualAnchors: snapshot.staleManualAnchors.map((item) => ({
+      anchor: { ...item.anchor },
+      reason: item.reason,
+    })),
+    suppressedAutoAnchorKey: snapshot.suppressedAutoAnchorKey,
+    pendingLeftLineNo: snapshot.pendingLeftLineNo,
+    pendingRightLineNo: snapshot.pendingRightLineNo,
+    selectedAnchorKey: snapshot.selectedAnchorKey,
+    leftContentRevision: snapshot.leftContentRevision,
+    rightContentRevision: snapshot.rightContentRevision,
+  };
+}
+
+function applyAnchorSnapshot(snapshot: AnchorSnapshot): void {
   manualAnchors = snapshot.manualAnchors.map((anchor) => ({ ...anchor }));
+  staleManualAnchors = snapshot.staleManualAnchors.map((item) => ({
+    anchor: { ...item.anchor },
+    reason: item.reason,
+  }));
   suppressedAutoAnchorKey = snapshot.suppressedAutoAnchorKey;
   pendingLeftLineNo = snapshot.pendingLeftLineNo;
   pendingRightLineNo = snapshot.pendingRightLineNo;
   selectedAnchorKey = snapshot.selectedAnchorKey;
+}
+
+function restoreAnchorsFromSnapshot(snapshot: AnchorSnapshot) {
+  applyAnchorSnapshot(snapshot);
   recalcDiff();
   schedulePersistAll();
 }
@@ -1824,6 +1940,11 @@ function clearAfterRedo(): void {
   schedulePersistAll();
 }
 
+const skipAnchorTrackingForNextChange: Record<"left" | "right", boolean> = {
+  left: false,
+  right: false,
+};
+
 function handleClearUndoRedo(
   event: monaco.editor.IModelContentChangedEvent,
   side: "left" | "right",
@@ -1902,6 +2023,7 @@ function bindAnchorUndoHandler(
   }
   model.onDidChangeContent((event) => {
     if (handleClearUndoRedo(event, side, editor)) {
+      skipAnchorTrackingForNextChange[side] = true;
       return;
     }
     if (!anchorUndoState || anchorUndoState.editor !== side) {
@@ -1915,6 +2037,7 @@ function bindAnchorUndoHandler(
       ) {
         restoreAnchorsFromSnapshot(anchorUndoState.snapshot);
         anchorUndoState.status = "restored";
+        skipAnchorTrackingForNextChange[side] = true;
       }
       return;
     }
@@ -1925,6 +2048,7 @@ function bindAnchorUndoHandler(
       ) {
         clearAnchorsForRedo();
         anchorUndoState.status = "armed";
+        skipAnchorTrackingForNextChange[side] = true;
       }
     }
   });
@@ -2257,6 +2381,7 @@ if (terminalPlugActive) {
 }
 
 leftEditor.onDidChangeModelContent((event) => {
+  paneContentRevisions.left += 1;
   if (suppressLeftFileBytesClear) {
     return;
   }
@@ -2272,7 +2397,45 @@ leftEditor.onDidChangeModelContent((event) => {
     scheduleRecalc();
     return;
   }
-  updateSegmentsForChanges(leftSegments, event.changes);
+  const skipAnchorTracking = skipAnchorTrackingForNextChange.left;
+  skipAnchorTrackingForNextChange.left = false;
+  if (!skipAnchorTracking && (event.isUndoing || event.isRedoing)) {
+    abortCoordinatingPaneAnchorBatch({ resetHistory: false });
+  }
+  const restoredAnchorSnapshot = skipAnchorTracking
+    ? null
+    : beginAnchorEditChange("left", event);
+  if (skipAnchorTracking) {
+    resetAnchorEditHistory("left");
+  } else if (restoredAnchorSnapshot) {
+    applyAnchorSnapshot(restoredAnchorSnapshot);
+    updatePendingAnchorDecoration();
+  } else if (
+    manualAnchors.length > 0 ||
+    pendingLeftLineNo !== null ||
+    selectedAnchorKey?.startsWith("auto:")
+  ) {
+    applyTrackedContentAnchorLifecycleUpdate(
+      updateAnchorStateForContentChanges(
+        getCurrentAnchorState(),
+        "left",
+        event.changes,
+        getCurrentAnchorLineCounts(),
+        {
+          deferValidation:
+            isPaneAnchorValidationCoordinating(),
+          validationOrigins:
+            paneAnchorValidationCoordinator.validationOrigins,
+        },
+      ),
+    );
+  }
+  if (!skipAnchorTracking) {
+    commitAnchorEditChange("left");
+  }
+  updateSegmentsForChanges(leftSegments, event.changes, {
+    currentText: leftEditor.getValue(),
+  });
   updateLineNumbers(leftEditor, leftSegments);
   commitPaneBoundarySnapshot("left");
   clearPaneRawFiles("left");
@@ -2280,6 +2443,7 @@ leftEditor.onDidChangeModelContent((event) => {
   scheduleRecalc();
 });
 rightEditor.onDidChangeModelContent((event) => {
+  paneContentRevisions.right += 1;
   if (suppressRightFileBytesClear) {
     return;
   }
@@ -2295,7 +2459,45 @@ rightEditor.onDidChangeModelContent((event) => {
     scheduleRecalc();
     return;
   }
-  updateSegmentsForChanges(rightSegments, event.changes);
+  const skipAnchorTracking = skipAnchorTrackingForNextChange.right;
+  skipAnchorTrackingForNextChange.right = false;
+  if (!skipAnchorTracking && (event.isUndoing || event.isRedoing)) {
+    abortCoordinatingPaneAnchorBatch({ resetHistory: false });
+  }
+  const restoredAnchorSnapshot = skipAnchorTracking
+    ? null
+    : beginAnchorEditChange("right", event);
+  if (skipAnchorTracking) {
+    resetAnchorEditHistory("right");
+  } else if (restoredAnchorSnapshot) {
+    applyAnchorSnapshot(restoredAnchorSnapshot);
+    updatePendingAnchorDecoration();
+  } else if (
+    manualAnchors.length > 0 ||
+    pendingRightLineNo !== null ||
+    selectedAnchorKey?.startsWith("auto:")
+  ) {
+    applyTrackedContentAnchorLifecycleUpdate(
+      updateAnchorStateForContentChanges(
+        getCurrentAnchorState(),
+        "right",
+        event.changes,
+        getCurrentAnchorLineCounts(),
+        {
+          deferValidation:
+            isPaneAnchorValidationCoordinating(),
+          validationOrigins:
+            paneAnchorValidationCoordinator.validationOrigins,
+        },
+      ),
+    );
+  }
+  if (!skipAnchorTracking) {
+    commitAnchorEditChange("right");
+  }
+  updateSegmentsForChanges(rightSegments, event.changes, {
+    currentText: rightEditor.getValue(),
+  });
   updateLineNumbers(rightEditor, rightSegments);
   commitPaneBoundarySnapshot("right");
   clearPaneRawFiles("right");
@@ -2312,23 +2514,63 @@ function updateLineNumbers(
   });
 }
 
-function applyDecodedFiles(
+type PreparedPaneEncodingChange = {
+  text: string;
+  nextSegments: LineSegment[];
+  anchorResult: AnchorLifecycleResult;
+} | null;
+
+function preparePaneEncodingChange(
   side: "left" | "right",
   editor: monaco.editor.IStandaloneCodeEditor,
   segments: LineSegment[],
   rawFiles: FileBytes[],
   encoding: FileEncoding,
-) {
+): PreparedPaneEncodingChange {
   if (rawFiles.length === 0) {
+    return null;
+  }
+  const { text, segments: nextSegments } = buildDecodedFiles(rawFiles, encoding);
+  const previousAnchorSnapshot = {
+    text: editor.getValue(),
+    segments: segments.map((segment) => ({ ...segment })),
+  };
+  const nextAnchorSnapshot = { text, segments: nextSegments };
+  const nextLineCounts = getCurrentAnchorLineCounts();
+  if (side === "left") {
+    nextLineCounts.leftLineCount = getNormalizedLineCount(text);
+  } else {
+    nextLineCounts.rightLineCount = getNormalizedLineCount(text);
+  }
+  const anchorResult = updateAnchorStateForPaneReload(
+    getCurrentAnchorState(),
+    side,
+    previousAnchorSnapshot,
+    nextAnchorSnapshot,
+    nextLineCounts,
+  );
+  return { text, nextSegments, anchorResult };
+}
+
+function commitPaneEncodingChange(
+  side: "left" | "right",
+  editor: monaco.editor.IStandaloneCodeEditor,
+  segments: LineSegment[],
+  prepared: PreparedPaneEncodingChange,
+): void {
+  if (!prepared) {
     schedulePersist();
     return;
   }
-  const { text, segments: nextSegments } = buildDecodedFiles(rawFiles, encoding);
+  const { text, nextSegments, anchorResult } = prepared;
   withProgrammaticEdit(side, () => {
     editor.setValue(text);
   });
   segments.length = 0;
   segments.push(...nextSegments);
+  applyRebasedPaneAnchorLifecycleUpdate(anchorResult, "reload", side);
+  anchorUndoState = null;
+  clearUndoState = null;
   updateLineNumbers(editor, segments);
   applyIndentOptions(editor);
   commitPaneBoundarySnapshot(side);
@@ -2355,6 +2597,45 @@ function applyEncodingSelection(
   }
 }
 
+type PaneAppendCommit = {
+  context: TrackedPaneAppendContext;
+  canAttachSaveTargets: boolean;
+};
+
+function captureTrackedPaneAppendContext(
+  side: "left" | "right",
+  editor: monaco.editor.IStandaloneCodeEditor,
+  segments: readonly LineSegment[],
+): TrackedPaneAppendContext {
+  return {
+    side,
+    operationGeneration: capturePaneOperationGeneration(
+      paneOperationGenerations,
+      side,
+    ).generation,
+    workspaceId: workspaceState.selectedId,
+    contentRevision: paneContentRevisions[side],
+    modelVersionId: getEditorAlternativeVersionId(editor),
+    selectedEncoding: paneBindings[side].encodingSelect.value as FileEncoding,
+    segmentsSignature: buildSegmentsSignature(segments),
+    saveTargetsRevision: paneSaveTargetRevisions[side],
+  };
+}
+
+function isTrackedPaneAppendContextCurrent(
+  expected: TrackedPaneAppendContext,
+): boolean {
+  const config = paneBindings[expected.side];
+  return sameTrackedPaneAppendContext(
+    expected,
+    captureTrackedPaneAppendContext(
+      expected.side,
+      config.editor,
+      config.segments,
+    ),
+  );
+}
+
 async function appendFilesToEditor(
   files: FileList | File[],
   encoding: FileEncoding,
@@ -2363,42 +2644,105 @@ async function appendFilesToEditor(
   segments: LineSegment[],
   rawFiles: FileBytes[],
   side: "left" | "right",
-): Promise<boolean> {
+): Promise<PaneAppendCommit | null> {
   const fileList = reorderRazorPairs(Array.from(files));
   if (fileList.length === 0) {
     showPaneMessage(messageTarget, "ファイルが見つかりませんでした", true);
-    return false;
+    return null;
+  }
+  if (paneAppendPending[side] || paneSavePending[side] || paneReloadPending[side]) {
+    showPaneMessage(messageTarget, "別のファイル操作が完了してから再試行してください", true);
+    return null;
   }
 
   let currentFileName = "";
-  const shouldTrackRawBytes = rawFiles.length > 0 || editor.getValue() === "";
-  let nextSegments: LineSegment[] = [];
-  let loadedNames: string[] = [];
+  const currentText = editor.getValue();
+  const currentSegments = segments.map((segment) => ({ ...segment }));
+  const shouldTrackRawBytes = rawFiles.length > 0 || currentText === "";
+  paneAppendPending[side] = true;
+  paneOperationGenerations = advancePaneOperationGeneration(
+    paneOperationGenerations,
+    side,
+  );
+  const appendContext = captureTrackedPaneAppendContext(side, editor, segments);
+  updatePaneSaveButton(side);
+  updatePaneReloadButton(side);
   try {
-    const incomingFiles: FileBytes[] = [];
-    for (const file of fileList) {
-      currentFileName = file.name;
-      const buffer = await file.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      incomingFiles.push({ name: file.name, bytes });
-      if (shouldTrackRawBytes) {
-        rawFiles.push({ name: file.name, bytes });
-      }
+    const transaction = await runTrackedPaneAppendTransaction({
+      items: fileList,
+      load: async (file) => {
+        currentFileName = file.name;
+        return {
+          name: file.name,
+          bytes: new Uint8Array(await file.arrayBuffer()),
+        };
+      },
+      prepare: (incomingFiles) => {
+        const appended = prepareTrackedPaneAppend({
+          side,
+          currentText,
+          currentSegments,
+          incomingFiles,
+          encoding,
+          anchorState: getCurrentAnchorState(),
+          lineCounts: getCurrentAnchorLineCounts(),
+        });
+        const segmentNames = listLoadedFileNames(appended.segments);
+        return {
+          appended,
+          incomingFiles,
+          loadedNames:
+            segmentNames.length > 0
+              ? segmentNames
+              : fileList.map((file) => file.name),
+        };
+      },
+      commit: ({ appended, incomingFiles }) => {
+        withProgrammaticEdit(side, () => {
+          editor.setValue(appended.text);
+        });
+        if (shouldTrackRawBytes) {
+          rawFiles.push(...incomingFiles);
+        }
+        segments.length = 0;
+        segments.push(...appended.segments);
+        applyRebasedPaneAnchorLifecycleUpdate(
+          appended.anchorResult,
+          "load",
+          side,
+        );
+        anchorUndoState = null;
+        clearUndoState = null;
+        updateLineNumbers(editor, segments);
+        commitPaneBoundarySnapshot(side);
+        refreshSyntaxHighlight();
+      },
+      commitGuard: {
+        expectedContext: appendContext,
+        isCurrent: isTrackedPaneAppendContextCurrent,
+      },
+    });
+    if (transaction.status === "context-changed") {
+      showPaneMessage(
+        messageTarget,
+        "ファイル読み込み中に表示内容が変更されたため、追加を中断しました",
+        true,
+      );
+      return null;
     }
 
-    const appended = appendDecodedFiles(editor.getValue(), segments, incomingFiles, encoding);
-    nextSegments = appended.segments;
-    withProgrammaticEdit(side, () => {
-      editor.setValue(appended.text);
-    });
-    segments.length = 0;
-    segments.push(...nextSegments);
-    updateLineNumbers(editor, segments);
-    commitPaneBoundarySnapshot(side);
-    refreshSyntaxHighlight();
-    const segmentNames = listLoadedFileNames(nextSegments);
-    loadedNames =
-      segmentNames.length > 0 ? segmentNames : fileList.map((file) => file.name);
+    const loadedNames = transaction.prepared.loadedNames;
+    resetPaneMessage(messageTarget);
+    clearPaneSummary(storage, side);
+    updateFileCards(side, loadedNames);
+    if (!goToLineSelection[side] || !loadedNames.includes(goToLineSelection[side] ?? "")) {
+      setGoToLineSelection(side, loadedNames[0] ?? null);
+    }
+    runPostLoadTasks([recalcDiff, schedulePersist, scheduleWorkspacePersist]);
+    return {
+      context: captureTrackedPaneAppendContext(side, editor, segments),
+      canAttachSaveTargets: isFullySegmentedText(editor.getValue(), segments),
+    };
   } catch (error) {
     if (shouldLogFileLoadError(error)) {
       console.error(error);
@@ -2407,17 +2751,13 @@ async function appendFilesToEditor(
     }
     const detail = formatFileLoadError(error, currentFileName);
     showPaneMessage(messageTarget, detail, true);
-    return false;
+    return null;
+  } finally {
+    paneAppendPending[side] = false;
+    settleDeferredPaneAnchorValidation();
+    updatePaneSaveButton(side);
+    updatePaneReloadButton(side);
   }
-
-  resetPaneMessage(messageTarget);
-  clearPaneSummary(storage, side);
-  updateFileCards(side, loadedNames);
-  if (!goToLineSelection[side] || !loadedNames.includes(goToLineSelection[side] ?? "")) {
-    setGoToLineSelection(side, loadedNames[0] ?? null);
-  }
-  runPostLoadTasks([recalcDiff, schedulePersist, scheduleWorkspacePersist]);
-  return true;
 }
 
 function bindDropZone(
@@ -2477,7 +2817,7 @@ function bindDropZone(
         dropped.map((item) => item.handle),
       );
       const encoding = encodingSelect.value as FileEncoding;
-      const loaded = await appendFilesToEditor(
+      const appendCommit = await appendFilesToEditor(
         orderedDropped.map((item) => item.file),
         encoding,
         editor,
@@ -2486,7 +2826,13 @@ function bindDropZone(
         rawFiles,
         side,
       );
-      if (!loaded) {
+      if (!appendCommit) {
+        return;
+      }
+      if (!appendCommit.canAttachSaveTargets) {
+        if (isTrackedPaneAppendContextCurrent(appendCommit.context)) {
+          clearPaneSaveTarget(side);
+        }
         return;
       }
 
@@ -2504,6 +2850,9 @@ function bindDropZone(
               buildPaneSaveTarget(item.handle, item.file, encoding),
             ),
           );
+          if (!isTrackedPaneAppendContextCurrent(appendCommit.context)) {
+            return;
+          }
           setPaneSaveTargets(side, previousTargets.concat(nextTargets));
         } catch (error) {
           if (shouldLogFileLoadError(error)) {
@@ -2511,12 +2860,16 @@ function bindDropZone(
           } else {
             console.warn("Dropped file writeback metadata could not be prepared.");
           }
-          clearPaneSaveTarget(side);
+          if (isTrackedPaneAppendContextCurrent(appendCommit.context)) {
+            clearPaneSaveTarget(side);
+          }
         }
         return;
       }
 
-      clearPaneSaveTarget(side);
+      if (isTrackedPaneAppendContextCurrent(appendCommit.context)) {
+        clearPaneSaveTarget(side);
+      }
     })().catch((error) => {
       if (shouldLogFileLoadError(error)) {
         console.error(error);
@@ -2558,6 +2911,14 @@ const paneBindings = {
     reloadButton: rightReloadFileButton,
   },
 } as const;
+const paneEncodingChangeControllers = {
+  left: createPaneEncodingChangeController<FileEncoding>(
+    leftEncodingSelect.value as FileEncoding,
+  ),
+  right: createPaneEncodingChangeController<FileEncoding>(
+    rightEncodingSelect.value as FileEncoding,
+  ),
+};
 const paneEntries = Object.entries(paneBindings) as [
   "left" | "right",
   (typeof paneBindings)["left"],
@@ -2574,8 +2935,24 @@ function getPaneWriteAvailabilityForTargets(side: "left" | "right"): {
   enabled: boolean;
   reason: string | null;
 } {
+  const config = paneBindings[side];
+  if (!isFullySegmentedText(config.editor.getValue(), config.segments)) {
+    return {
+      enabled: false,
+      reason: "ファイル外の本文がある場合は上書き保存できません。",
+    };
+  }
   const fileCount = getPaneFileCount(side);
   const targets = paneSaveTargetLists[side];
+  if (
+    targets.length > 0 &&
+    !canUsePaneSaveTargets(config.editor.getValue(), config.segments, targets)
+  ) {
+    return {
+      enabled: false,
+      reason: "表示中のファイルと保存先が一致しません。",
+    };
+  }
   if (fileCount <= 1) {
     return getPaneWriteAvailability({
       hasFileSystemAccess,
@@ -2633,6 +3010,12 @@ function updatePaneSaveButton(side: "left" | "right"): void {
     button.setAttribute("aria-busy", "true");
     return;
   }
+  if (paneAppendPending[side]) {
+    button.disabled = true;
+    button.title = "ファイル追加中です。";
+    button.setAttribute("aria-busy", "true");
+    return;
+  }
 
   const targets = paneSaveTargetLists[side];
   const availability = getPaneWriteAvailabilityForTargets(side);
@@ -2657,15 +3040,45 @@ function updatePaneReloadButton(side: "left" | "right"): void {
     button.setAttribute("aria-busy", "true");
     return;
   }
+  if (paneSavePending[side]) {
+    button.disabled = true;
+    button.title = "保存中は再読み込みできません。";
+    button.removeAttribute("aria-busy");
+    return;
+  }
+  if (paneAppendPending[side]) {
+    button.disabled = true;
+    button.title = "ファイル追加中です。";
+    button.setAttribute("aria-busy", "true");
+    return;
+  }
   const fileCount = getPaneFileCount(side);
   const targets = paneSaveTargetLists[side];
+  if (
+    !isFullySegmentedText(
+      paneBindings[side].editor.getValue(),
+      paneBindings[side].segments,
+    )
+  ) {
+    button.disabled = true;
+    button.removeAttribute("aria-busy");
+    button.title = "ファイル外の本文がある場合は再読み込みできません。";
+    return;
+  }
   if (fileCount === 0) {
     button.disabled = true;
     button.removeAttribute("aria-busy");
     button.title = "再読み込みできるファイルがありません。";
     return;
   }
-  if (targets.length !== fileCount || targets.some((target) => !target.handle)) {
+  if (
+    !canUsePaneSaveTargets(
+      paneBindings[side].editor.getValue(),
+      paneBindings[side].segments,
+      targets,
+    ) ||
+    targets.some((target) => !target.handle)
+  ) {
     button.disabled = true;
     button.removeAttribute("aria-busy");
     button.title = "ファイル選択ボタンから開いたファイルだけ再読み込みできます。";
@@ -2698,6 +3111,7 @@ function setPaneSaveTargets(
   options?: { persist?: boolean },
 ): void {
   paneSaveTargetLists[side] = clonePaneSaveTargets(targets);
+  paneSaveTargetRevisions[side] += 1;
   paneSaveTargets[side] =
     paneSaveTargetLists[side].length === 1
       ? clonePaneSaveTarget(paneSaveTargetLists[side][0])
@@ -2783,7 +3197,7 @@ async function openPaneFiles(side: "left" | "right"): Promise<void> {
       picked.files,
       picked.handles,
     );
-    const loaded = await appendFilesToEditor(
+    const appendCommit = await appendFilesToEditor(
       pickedItems.map((item) => item.file),
       encoding,
       config.editor,
@@ -2792,7 +3206,13 @@ async function openPaneFiles(side: "left" | "right"): Promise<void> {
       config.rawFiles,
       side,
     );
-    if (!loaded) {
+    if (!appendCommit) {
+      return;
+    }
+    if (!appendCommit.canAttachSaveTargets) {
+      if (isTrackedPaneAppendContextCurrent(appendCommit.context)) {
+        clearPaneSaveTarget(side);
+      }
       return;
     }
 
@@ -2806,6 +3226,9 @@ async function openPaneFiles(side: "left" | "right"): Promise<void> {
             buildPaneSaveTarget(item.handle, item.file, encoding),
           ),
         );
+        if (!isTrackedPaneAppendContextCurrent(appendCommit.context)) {
+          return;
+        }
         setPaneSaveTargets(side, previousTargets.concat(nextTargets));
       } catch (error) {
         if (shouldLogFileLoadError(error)) {
@@ -2813,12 +3236,16 @@ async function openPaneFiles(side: "left" | "right"): Promise<void> {
         } else {
           console.warn("File writeback metadata could not be prepared.");
         }
-        clearPaneSaveTarget(side);
+        if (isTrackedPaneAppendContextCurrent(appendCommit.context)) {
+          clearPaneSaveTarget(side);
+        }
       }
       return;
     }
 
-    clearPaneSaveTarget(side);
+    if (isTrackedPaneAppendContextCurrent(appendCommit.context)) {
+      clearPaneSaveTarget(side);
+    }
   } catch (error) {
     if (isAbortError(error)) {
       return;
@@ -2838,10 +3265,10 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
     updatePaneSaveButton(side);
     return;
   }
-  if (paneSavePending[side]) {
+  if (paneSavePending[side] || paneAppendPending[side]) {
     return;
   }
-  const targets = paneSaveTargetLists[side];
+  const targets = clonePaneSaveTargets(paneSaveTargetLists[side]);
   const availability = getPaneWriteAvailabilityForTargets(side);
   if (!availability.enabled || targets.length === 0) {
     toast.show(availability.reason ?? "保存できませんでした。", "error");
@@ -2850,38 +3277,76 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
   }
 
   paneSavePending[side] = true;
+  paneOperationGenerations = advancePaneOperationGeneration(
+    paneOperationGenerations,
+    side,
+  );
   updatePaneSaveButton(side);
+  updatePaneReloadButton(side);
   try {
+    const config = paneBindings[side];
+    const saveContext = capturePaneFileOperationContext(side);
+    const snapshotText = config.editor.getValue();
+    const snapshotSegments = config.segments.map((segment) => ({ ...segment }));
+    const snapshotRawFiles = config.rawFiles.map((file) => ({ ...file }));
     const writableTargets = targets.filter(hasWritablePaneHandle);
     if (writableTargets.length !== targets.length) {
       toast.show("保存用の権限がないファイルがあります。", "error");
       return;
     }
-    const sourceFiles = await getPaneSourceFilesForSave(side, writableTargets);
-    const writeItems = buildMultiFileWritePlan(
-      paneBindings[side].editor.getValue(),
-      paneBindings[side].segments,
-      writableTargets,
-      { sourceFiles },
-    );
-    for (const { target } of writeItems) {
-      const permitted = await requestFileHandlePermission(target.handle, "readwrite");
-      if (!permitted) {
-        toast.show(`${target.fileName} の保存権限がありません。`, "error");
-        return;
-      }
+    const transaction = await runPaneSaveTransaction({
+      targets: writableTargets,
+      cachedSourceFiles: snapshotRawFiles,
+      getTargetName: (target) => target.fileName,
+      getSourceFileName: (file) => file.name,
+      loadSourceFile: async (target) => {
+        const file = await target.handle.getFile();
+        return {
+          name: target.fileName,
+          bytes: new Uint8Array(await file.arrayBuffer()),
+          encoding: target.resolvedEncoding,
+        };
+      },
+      buildWriteItems: (sourceFiles, snapshotTargets) =>
+        buildMultiFileWritePlan(
+          snapshotText,
+          snapshotSegments,
+          snapshotTargets,
+          { sourceFiles },
+        ),
+      requestPermission: (target) =>
+        requestFileHandlePermission(target.handle, "readwrite"),
+      commitGuard: {
+        expectedContext: saveContext,
+        isCurrent: isPaneFileOperationContextCurrent,
+      },
+      write: ({ target, bytes }) =>
+        writeBytesToFileHandle(target.handle, bytes),
+    });
+    if (transaction.status === "permission-denied") {
+      toast.show(
+        `${transaction.target.fileName} の保存権限がありません。`,
+        "error",
+      );
+      return;
     }
-    for (const { target, bytes } of writeItems) {
-      await writeBytesToFileHandle(target.handle, bytes);
+    if (transaction.status === "context-changed") {
+      toast.show(
+        "保存中に表示内容が変更されたため、書き込みを中断しました。",
+        "error",
+      );
+      return;
     }
-    paneBindings[side].rawFiles.length = 0;
-    paneBindings[side].rawFiles.push(
-      ...writeItems.map(({ target, bytes }) => ({
-        name: target.fileName,
-        bytes,
-        encoding: target.resolvedEncoding,
-      })),
-    );
+    if (isPaneFileOperationContextCurrent(saveContext)) {
+      config.rawFiles.length = 0;
+      config.rawFiles.push(
+        ...transaction.writeItems.map(({ target, bytes }) => ({
+          name: target.fileName,
+          bytes,
+          encoding: target.resolvedEncoding,
+        })),
+      );
+    }
     toast.show(
       targets.length === 1
         ? `${targets[0].fileName} を保存しました。`
@@ -2896,39 +3361,91 @@ async function savePaneToFile(side: "left" | "right"): Promise<void> {
   } finally {
     paneSavePending[side] = false;
     updatePaneSaveButton(side);
+    updatePaneReloadButton(side);
   }
 }
 
-async function getPaneSourceFilesForSave(
+type PaneFileOperationContext = {
+  side: "left" | "right";
+  operationGeneration: PaneOperationGenerationToken;
+  workspaceId: string;
+  contentRevision: number;
+  modelVersionId: number | null;
+  selectedEncoding: FileEncoding;
+  segmentsSignature: string;
+  targets: PaneSaveTarget[];
+};
+
+function samePaneSaveTarget(
+  left: PaneSaveTarget | undefined,
+  right: PaneSaveTarget | undefined,
+): boolean {
+  return (
+    left !== undefined &&
+    right !== undefined &&
+    left.handle === right.handle &&
+    left.fileName === right.fileName &&
+    left.resolvedEncoding === right.resolvedEncoding &&
+    left.includeUtf8Bom === right.includeUtf8Bom &&
+    left.lineEnding === right.lineEnding
+  );
+}
+
+function capturePaneFileOperationContext(
   side: "left" | "right",
-  targets: readonly PaneSaveTarget[],
-): Promise<FileBytes[]> {
-  const rawFiles = paneBindings[side].rawFiles;
-  if (
-    rawFiles.length === targets.length &&
-    rawFiles.every((file, index) => file.name === targets[index]?.fileName)
-  ) {
-    return rawFiles;
-  }
-  return Promise.all(
-    targets.map(async (target) => {
-      const file = await target.handle.getFile();
-      const buffer = await file.arrayBuffer();
-      return {
-        name: target.fileName,
-        bytes: new Uint8Array(buffer),
-        encoding: target.resolvedEncoding,
-      };
-    }),
+): PaneFileOperationContext {
+  const config = paneBindings[side];
+  return {
+    side,
+    operationGeneration: capturePaneOperationGeneration(
+      paneOperationGenerations,
+      side,
+    ),
+    workspaceId: workspaceState.selectedId,
+    contentRevision: paneContentRevisions[side],
+    modelVersionId: getEditorAlternativeVersionId(config.editor),
+    selectedEncoding: config.encodingSelect.value as FileEncoding,
+    segmentsSignature: buildSegmentsSignature(config.segments),
+    targets: clonePaneSaveTargets(paneSaveTargetLists[side]),
+  };
+}
+
+function isPaneFileOperationContextCurrent(
+  expected: PaneFileOperationContext,
+): boolean {
+  const config = paneBindings[expected.side];
+  const currentTargets = paneSaveTargetLists[expected.side];
+  return (
+    isPaneOperationGenerationCurrent(
+      paneOperationGenerations,
+      expected.operationGeneration,
+    ) &&
+    workspaceState.selectedId === expected.workspaceId &&
+    paneContentRevisions[expected.side] === expected.contentRevision &&
+    getEditorAlternativeVersionId(config.editor) === expected.modelVersionId &&
+    config.encodingSelect.value === expected.selectedEncoding &&
+    buildSegmentsSignature(config.segments) === expected.segmentsSignature &&
+    currentTargets.length === expected.targets.length &&
+    currentTargets.every((target, index) =>
+      samePaneSaveTarget(target, expected.targets[index]),
+    )
   );
 }
 
 async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
-  if (paneReloadPending[side]) {
+  if (
+    paneReloadPending[side] ||
+    paneSavePending[side] ||
+    paneAppendPending[side]
+  ) {
     return;
   }
   const targets = paneSaveTargetLists[side];
-  if (targets.length === 0 || targets.length !== getPaneFileCount(side)) {
+  const config = paneBindings[side];
+  if (
+    targets.length === 0 ||
+    !canUsePaneSaveTargets(config.editor.getValue(), config.segments, targets)
+  ) {
     toast.show("再読み込みできるファイルがありません。", "error");
     updatePaneReloadButton(side);
     return;
@@ -2937,17 +3454,13 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
   paneReloadPending[side] = true;
   updatePaneReloadButton(side);
   try {
-    for (const target of targets) {
-      const permitted = await requestFileHandlePermission(target.handle, "read");
-      if (!permitted) {
-        toast.show(`${target.fileName} の読み込み権限がありません。`, "error");
-        return;
-      }
-    }
-    const config = paneBindings[side];
     const selectedEncoding = config.encodingSelect.value as FileEncoding;
-    const reloaded = await Promise.all(
-      targets.map((target) =>
+    const reloadContext = capturePaneFileOperationContext(side);
+    const transaction = await runPaneReloadTransaction({
+      targets,
+      requestPermission: (target) =>
+        requestFileHandlePermission(target.handle, "read"),
+      load: (target) =>
         readCurrentFileFromPaneTarget(
           target,
           resolveReloadEncodingForPaneTarget({
@@ -2956,42 +3469,99 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
             target,
           }),
         ),
-      ),
-    );
-    const nextRawFiles: FileBytes[] = reloaded.map((item) => ({
-      name: item.file.name,
-      bytes: item.bytes,
-      encoding: item.target.resolvedEncoding,
-    }));
-    const decoded = buildDecodedFiles(nextRawFiles, selectedEncoding, {
-      preferFileEncoding: true,
+      prepare: (reloaded) => {
+        const nextRawFiles: FileBytes[] = reloaded.map((item) => ({
+          name: item.file.name,
+          bytes: item.bytes,
+          encoding: item.target.resolvedEncoding,
+        }));
+        const decoded = buildDecodedFiles(nextRawFiles, selectedEncoding, {
+          preferFileEncoding: true,
+        });
+        const previousAnchorSnapshot = {
+          text: config.editor.getValue(),
+          segments: config.segments.map((segment) => ({ ...segment })),
+        };
+        const nextAnchorSnapshot = {
+          text: decoded.text,
+          segments: decoded.segments,
+        };
+        const nextLineCounts = getCurrentAnchorLineCounts();
+        if (side === "left") {
+          nextLineCounts.leftLineCount = getNormalizedLineCount(decoded.text);
+        } else {
+          nextLineCounts.rightLineCount = getNormalizedLineCount(decoded.text);
+        }
+        const anchorResult = updateAnchorStateForPaneReload(
+          getCurrentAnchorState(),
+          side,
+          previousAnchorSnapshot,
+          nextAnchorSnapshot,
+          nextLineCounts,
+        );
+        return { anchorResult, decoded, nextRawFiles, reloaded };
+      },
+      commit: (prepared) => {
+        const { decoded, nextRawFiles, reloaded } = prepared;
+        withProgrammaticEdit(side, () => {
+          config.editor.setValue(decoded.text);
+        });
+        config.rawFiles.length = 0;
+        config.rawFiles.push(...nextRawFiles);
+        config.segments.length = 0;
+        config.segments.push(...decoded.segments);
+        prepared.anchorResult = applyRebasedPaneAnchorLifecycleUpdate(
+          prepared.anchorResult,
+          "reload",
+          side,
+        );
+        anchorUndoState = null;
+        clearUndoState = null;
+        updateLineNumbers(config.editor, config.segments);
+        applyIndentOptions(config.editor);
+        commitPaneBoundarySnapshot(side);
+        const fileNames = listLoadedFileNames(config.segments);
+        updateFileCards(side, fileNames);
+        if (
+          !goToLineSelection[side] ||
+          !fileNames.includes(goToLineSelection[side] ?? "")
+        ) {
+          setGoToLineSelection(side, fileNames[0] ?? null);
+        }
+        resetPaneMessage(config.message);
+        clearPaneSummary(storage, side);
+        setPaneSaveTargets(side, reloaded.map((item) => item.target));
+        refreshSyntaxHighlight();
+        recalcDiff();
+        schedulePersistAll();
+      },
+      commitGuard: {
+        expectedContext: reloadContext,
+        isCurrent: isPaneFileOperationContextCurrent,
+      },
     });
-
-    withProgrammaticEdit(side, () => {
-      config.editor.setValue(decoded.text);
-    });
-    config.rawFiles.length = 0;
-    config.rawFiles.push(...nextRawFiles);
-    config.segments.length = 0;
-    config.segments.push(...decoded.segments);
-    updateLineNumbers(config.editor, config.segments);
-    applyIndentOptions(config.editor);
-    commitPaneBoundarySnapshot(side);
-    const fileNames = listLoadedFileNames(config.segments);
-    updateFileCards(side, fileNames);
-    if (!goToLineSelection[side] || !fileNames.includes(goToLineSelection[side] ?? "")) {
-      setGoToLineSelection(side, fileNames[0] ?? null);
+    if (transaction.status === "permission-denied") {
+      toast.show(
+        `${transaction.target.fileName} の読み込み権限がありません。`,
+        "error",
+      );
+      return;
     }
-    resetPaneMessage(config.message);
-    clearPaneSummary(storage, side);
-    setPaneSaveTargets(side, reloaded.map((item) => item.target));
-    refreshSyntaxHighlight();
-    recalcDiff();
-    schedulePersistAll();
+    if (transaction.status === "context-changed") {
+      toast.show(
+        "再読み込み中に表示内容が変更されたため、更新を中断しました。",
+        "error",
+      );
+      return;
+    }
+    const { anchorResult, reloaded } = transaction.prepared;
     toast.show(
-      reloaded.length === 1
-        ? `${reloaded[0].file.name} を再読み込みしました。`
-        : `${reloaded.length}ファイルを再読み込みしました。`,
+      anchorResult.staleAdded > 0
+        ? `再読み込みしました。${anchorResult.staleAdded}件のアンカーを要確認として差分から除外しました。`
+        : reloaded.length === 1
+          ? `${reloaded[0].file.name} を再読み込みしました。`
+          : `${reloaded.length}ファイルを再読み込みしました。`,
+      anchorResult.staleAdded > 0 ? "error" : undefined,
     );
   } catch (error) {
     if (isAbortError(error)) {
@@ -3001,6 +3571,7 @@ async function reloadPaneFromFile(side: "left" | "right"): Promise<void> {
     toast.show("ファイルを再読み込みできませんでした。", "error");
   } finally {
     paneReloadPending[side] = false;
+    settleDeferredPaneAnchorValidation();
     updatePaneReloadButton(side);
   }
 }
@@ -3021,10 +3592,12 @@ async function restorePaneSaveTargetForWorkspace(
       updatePaneReloadButton(side);
       return;
     }
-    const fileNames = listLoadedFileNames(paneBindings[side].segments);
     if (
-      fileNames.length !== targets.length ||
-      fileNames.some((fileName, index) => fileName !== targets[index]?.fileName)
+      !canUsePaneSaveTargets(
+        paneBindings[side].editor.getValue(),
+        paneBindings[side].segments,
+        targets,
+      )
     ) {
       await clearStoredPaneSaveTarget(paneSaveTargetStore, workspaceId, side);
       clearPaneSaveTarget(side, { persist: false });
@@ -3144,7 +3717,7 @@ paneSides.forEach((side) => {
 });
 
 workspaceCreate.addEventListener("click", () => {
-  persistCurrentWorkspaceState();
+  persistCurrentWorkspaceState({ forceAnchorSettlement: true });
   const result = createWorkspace(storage, workspaceState, "Workspace", { textStore });
   if (!result.ok) {
     if (result.reason === "limit") {
@@ -3184,7 +3757,7 @@ workspaceImportFileInput.addEventListener("change", () => {
       toast.show("ワークスペースJSONの形式が違います", "error");
       return;
     }
-    persistCurrentWorkspaceState();
+    persistCurrentWorkspaceState({ forceAnchorSettlement: true });
     const result = importWorkspace(
       storage,
       workspaceState,
@@ -3209,7 +3782,7 @@ workspaceImportFileInput.addEventListener("change", () => {
 
 function exportWorkspaceById(id: string): void {
   if (id === workspaceState.selectedId) {
-    persistCurrentWorkspaceState();
+    persistCurrentWorkspaceState({ forceAnchorSettlement: true });
   }
   const workspace = workspaceState.workspaces.find((item) => item.id === id);
   if (!workspace) {
@@ -3256,7 +3829,7 @@ workspaceList.addEventListener("click", (event) => {
     return;
   }
   if (action.type === "remove") {
-    persistCurrentWorkspaceState();
+    persistCurrentWorkspaceState({ forceAnchorSettlement: true });
     const result = removeWorkspaceWithConfirm(
       storage,
       workspaceState,
@@ -3436,8 +4009,11 @@ function bindFilePicker(
     }
     const encoding = encodingSelect.value as FileEncoding;
     void appendFilesToEditor(files, encoding, editor, messageTarget, segments, rawFiles, side)
-      .then((loaded) => {
-        if (!loaded) {
+      .then((appendCommit) => {
+        if (
+          !appendCommit ||
+          !isTrackedPaneAppendContextCurrent(appendCommit.context)
+        ) {
           return;
         }
         clearPaneSaveTarget(side);
@@ -3472,9 +4048,37 @@ paneEntries.forEach(([side, config]) => {
 paneEntries.forEach(([side, config]) => {
   config.encodingSelect.addEventListener("change", () => {
     const encoding = config.encodingSelect.value as FileEncoding;
-    applyDecodedFiles(side, config.editor, config.segments, config.rawFiles, encoding);
-    updatePaneSaveButton(side);
-    updatePaneReloadButton(side);
+    const result = paneEncodingChangeControllers[side].apply(encoding, {
+      prepare: (nextEncoding) =>
+        preparePaneEncodingChange(
+          side,
+          config.editor,
+          config.segments,
+          config.rawFiles,
+          nextEncoding,
+        ),
+      commit: (prepared) =>
+        commitPaneEncodingChange(
+          side,
+          config.editor,
+          config.segments,
+          prepared,
+        ),
+      restoreSelection: (appliedEncoding) => {
+        config.encodingSelect.value = appliedEncoding;
+      },
+      refreshControls: () => {
+        updatePaneSaveButton(side);
+        updatePaneReloadButton(side);
+      },
+    });
+    if (result.status === "prepare-failed") {
+      console.error(result.error);
+      toast.show(
+        "選択した文字コードでファイルを読み込めませんでした。",
+        "error",
+      );
+    }
   });
 });
 
@@ -3490,6 +4094,10 @@ function getPersistedStateSnapshot(): PersistedState {
     foldEnabled,
     anchorPanelCollapsed: anchorPanel?.classList.contains("is-collapsed") ?? false,
     anchors: manualAnchors.map((anchor) => ({ ...anchor })),
+    staleAnchors: staleManualAnchors.map((item) => ({
+      anchor: { ...item.anchor },
+      reason: item.reason,
+    })),
     leftSegments: leftSegments.map((segment) => ({ ...segment })),
     rightSegments: rightSegments.map((segment) => ({ ...segment })),
   };
@@ -3503,7 +4111,7 @@ persistScheduler = createPersistScheduler({
 
 function flushStateForLifecycle(): void {
   cancelWorkspacePersist();
-  persistCurrentWorkspaceState();
+  persistCurrentWorkspaceState({ forceAnchorSettlement: true });
   persistScheduler?.flush();
   saveInlinePersistedStateSnapshot(storage, getPersistedStateSnapshot());
 }
@@ -3524,7 +4132,7 @@ async function persistPaneSaveTargetsForManualNavigation(): Promise<void> {
 
 async function flushStateForManualNavigation(): Promise<void> {
   cancelWorkspacePersist();
-  persistCurrentWorkspaceState();
+  persistCurrentWorkspaceState({ forceAnchorSettlement: true });
   const snapshot = getPersistedStateSnapshot();
   await Promise.all([
     savePersistedState(storage, snapshot, { textStore }),
@@ -3897,6 +4505,9 @@ if (startupRestore.shouldPersistAnchors) {
 initialWorkspaceAnchors = cloneWorkspaceAnchors(initialWorkspaceAnchors);
 
 let manualAnchors: Anchor[] = initialWorkspaceAnchors.manualAnchors;
+let staleManualAnchors: StaleManualAnchor[] = (
+  initialWorkspaceAnchors.staleManualAnchors ?? []
+).map((item) => ({ anchor: { ...item.anchor }, reason: item.reason }));
 let autoAnchor: Anchor | null = initialWorkspaceAnchors.autoAnchor;
 let suppressedAutoAnchorKey: string | null =
   initialWorkspaceAnchors.suppressedAutoAnchorKey;
@@ -3915,10 +4526,13 @@ let anchorValidationState: {
 } = { invalid: [], valid: [] };
 type AnchorSnapshot = {
   manualAnchors: Anchor[];
+  staleManualAnchors: StaleManualAnchor[];
   suppressedAutoAnchorKey: string | null;
   pendingLeftLineNo: number | null;
   pendingRightLineNo: number | null;
   selectedAnchorKey: string | null;
+  leftContentRevision: number;
+  rightContentRevision: number;
 };
 
 type AnchorUndoState = {
@@ -3949,15 +4563,223 @@ type ClearUndoState = {
 let clearUndoState: ClearUndoState | null = null;
 let suppressClearUndoSync = false;
 
+const anchorEditHistories: Record<
+  "left" | "right",
+  VersionedStateHistory<AnchorSnapshot>
+> = {
+  left: createVersionedStateHistory(
+    getEditorAlternativeVersionId(leftEditor),
+    captureAnchorSnapshot(),
+    cloneAnchorSnapshot,
+  ),
+  right: createVersionedStateHistory(
+    getEditorAlternativeVersionId(rightEditor),
+    captureAnchorSnapshot(),
+    cloneAnchorSnapshot,
+  ),
+};
+
+function beginAnchorEditChange(
+  side: "left" | "right",
+  event: monaco.editor.IModelContentChangedEvent,
+): AnchorSnapshot | null {
+  const editor = getPaneEditor(side);
+  const currentSnapshot = captureAnchorSnapshot();
+  const transition = beginVersionedStateTransition(
+    anchorEditHistories[side],
+    {
+      versionId: getEditorAlternativeVersionId(editor),
+      isUndoing: event.isUndoing,
+      isRedoing: event.isRedoing,
+    },
+    currentSnapshot,
+  );
+  const oppositeSideUnchanged = transition
+    ? side === "left"
+      ? currentSnapshot.rightContentRevision ===
+        transition.from.rightContentRevision
+      : currentSnapshot.leftContentRevision === transition.from.leftContentRevision
+    : false;
+  return transition
+    ? applySideScopedAnchorTransition(currentSnapshot, side, transition, {
+        allowStaleReactivation: oppositeSideUnchanged,
+      }).state
+    : null;
+}
+
+function commitAnchorEditChange(side: "left" | "right"): void {
+  commitVersionedStateChange(
+    anchorEditHistories[side],
+    captureAnchorSnapshot(),
+  );
+}
+
+function resetAnchorEditHistory(side?: "left" | "right"): void {
+  const sides = side ? [side] : (["left", "right"] as const);
+  sides.forEach((targetSide) => {
+    resetVersionedStateHistory(
+      anchorEditHistories[targetSide],
+      getEditorAlternativeVersionId(getPaneEditor(targetSide)),
+      captureAnchorSnapshot(),
+    );
+  });
+}
+
+function replaceCurrentAnchorEditHistoryState(): void {
+  const snapshot = captureAnchorSnapshot();
+  replaceCurrentVersionedState(anchorEditHistories.left, snapshot);
+  replaceCurrentVersionedState(anchorEditHistories.right, snapshot);
+}
+
 function getCurrentAnchorState(): WorkspaceAnchorState {
   return {
     manualAnchors: manualAnchors.map((anchor) => ({ ...anchor })),
+    staleManualAnchors: staleManualAnchors.map((item) => ({
+      anchor: { ...item.anchor },
+      reason: item.reason,
+    })),
     autoAnchor: autoAnchor ? { ...autoAnchor } : null,
     suppressedAutoAnchorKey,
     pendingLeftLineNo,
     pendingRightLineNo,
     selectedAnchorKey,
   };
+}
+
+function getCurrentAnchorLineCounts() {
+  return {
+    leftLineCount:
+      leftEditor.getModel()?.getLineCount() ??
+      getNormalizedLineCount(leftEditor.getValue()),
+    rightLineCount:
+      rightEditor.getModel()?.getLineCount() ??
+      getNormalizedLineCount(rightEditor.getValue()),
+  };
+}
+
+function getPaneSnapshotPendingState(): Record<"left" | "right", boolean> {
+  return {
+    left: paneAppendPending.left || paneReloadPending.left,
+    right: paneAppendPending.right || paneReloadPending.right,
+  };
+}
+
+function isPaneAnchorValidationCoordinating(): boolean {
+  return (
+    paneAnchorValidationCoordinator.validationDeferred ||
+    paneAnchorValidationCoordinator.validationOrigins.length > 0
+  );
+}
+
+function applyTrackedContentAnchorLifecycleUpdate(
+  result: AnchorLifecycleResult,
+): void {
+  const wasDeferred = paneAnchorValidationCoordinator.validationDeferred;
+  paneAnchorValidationCoordinator = recordDeferredAnchorValidationResult(
+    paneAnchorValidationCoordinator,
+    result,
+    paneAnchorValidationCoordinator.source ?? "reload",
+  );
+  if (!wasDeferred && paneAnchorValidationCoordinator.validationDeferred) {
+    cancelPersist();
+  }
+  applyAnchorLifecycleUpdate(result, "edit");
+}
+
+function applyRebasedPaneAnchorLifecycleUpdate(
+  prepared: AnchorLifecycleResult,
+  source: "load" | "reload",
+  side: "left" | "right",
+): AnchorLifecycleResult {
+  const wasDeferred = paneAnchorValidationCoordinator.validationDeferred;
+  const committed = commitPaneSnapshotAnchorTransition({
+    coordinator: paneAnchorValidationCoordinator,
+    currentState: getCurrentAnchorState(),
+    lineCounts: getCurrentAnchorLineCounts(),
+    pending: getPaneSnapshotPendingState(),
+    prepared,
+    side,
+    source,
+  });
+  paneAnchorValidationCoordinator = committed.coordinator;
+  if (!wasDeferred && committed.coordinator.validationDeferred) {
+    cancelPersist();
+  }
+  applyAnchorLifecycleUpdate(committed.result, source);
+  return committed.result;
+}
+
+function settleDeferredPaneAnchorValidation(force = false): void {
+  const settled = settlePaneSnapshotAnchorOperation({
+    coordinator: paneAnchorValidationCoordinator,
+    currentState: getCurrentAnchorState(),
+    lineCounts: getCurrentAnchorLineCounts(),
+    pending: force
+      ? { left: false, right: false }
+      : getPaneSnapshotPendingState(),
+  });
+  paneAnchorValidationCoordinator = settled.coordinator;
+  if (!settled.result) {
+    return;
+  }
+  applyAnchorLifecycleUpdate(settled.result, settled.source ?? "reload");
+  anchorUndoState = null;
+  clearUndoState = null;
+  replaceCurrentAnchorEditHistoryState();
+  recalcDiff();
+  schedulePersistAll();
+}
+
+function abortCoordinatingPaneAnchorBatch(
+  options: { resetHistory?: boolean } = {},
+): boolean {
+  const pending = getPaneSnapshotPendingState();
+  if (
+    !isPaneAnchorValidationCoordinating() &&
+    !pending.left &&
+    !pending.right
+  ) {
+    return false;
+  }
+  paneOperationGenerations = invalidatePaneOperationGenerations(
+    paneOperationGenerations,
+  );
+  settleDeferredPaneAnchorValidation(true);
+  if (options.resetHistory !== false) {
+    resetAnchorEditHistory();
+  }
+  return true;
+}
+
+function applyAnchorLifecycleUpdate(
+  result: AnchorLifecycleResult,
+  source: "edit" | "load" | "reload",
+): void {
+  manualAnchors = result.state.manualAnchors.map((anchor) => ({ ...anchor }));
+  staleManualAnchors = (result.state.staleManualAnchors ?? []).map((item) => ({
+    anchor: { ...item.anchor },
+    reason: item.reason,
+  }));
+  autoAnchor = result.state.autoAnchor ? { ...result.state.autoAnchor } : null;
+  suppressedAutoAnchorKey = result.state.suppressedAutoAnchorKey;
+  pendingLeftLineNo = result.state.pendingLeftLineNo;
+  pendingRightLineNo = result.state.pendingRightLineNo;
+  selectedAnchorKey = result.state.selectedAnchorKey;
+  updatePendingAnchorDecoration();
+
+  if (result.staleAdded > 0) {
+    const operation =
+      source === "reload"
+        ? "再読み込み後"
+        : source === "load"
+          ? "ファイル追加後"
+          : "編集後";
+    setAnchorMessage(
+      `${operation}に対応行を一意に追跡できないアンカーが${result.staleAdded}件あります。要確認として差分から除外しました。`,
+    );
+  } else if (result.pendingCleared) {
+    setAnchorMessage("選択中の対応行を追跡できなかったため解除しました。");
+  }
 }
 
 function isGutterClick(event: monaco.editor.IEditorMouseEvent): boolean {
@@ -3993,6 +4815,12 @@ rightEditor.onMouseDown((event) => {
 function applyAnchorResult(result: AnchorClickResult, side: "left" | "right") {
   anchorUndoState = null;
   manualAnchors = result.manualAnchors;
+  if (result.action === "added" && result.addedAnchor) {
+    const addedKey = anchorKey(result.addedAnchor);
+    staleManualAnchors = staleManualAnchors.filter(
+      (item) => anchorKey(item.anchor) !== addedKey,
+    );
+  }
   pendingLeftLineNo = result.pendingLeftLineNo;
   pendingRightLineNo = result.pendingRightLineNo;
   autoAnchor = result.autoAnchor;
@@ -4023,6 +4851,7 @@ function applyAnchorResult(result: AnchorClickResult, side: "left" | "right") {
   );
   updateAnchorWarning(validation.invalid);
   renderAnchors(validation.invalid, validation.valid);
+  resetAnchorEditHistory();
   schedulePersistAll();
 }
 
@@ -4076,6 +4905,7 @@ function runAnchorAction(
   side: "left" | "right",
   handler: (state: ReturnType<typeof buildAnchorClickState>) => AnchorClickResult,
 ) {
+  abortCoordinatingPaneAnchorBatch();
   const result = handler(buildAnchorClickState(lineNo));
   applyAnchorResult(result, side);
 }
@@ -4223,9 +5053,11 @@ function updatePendingAnchorDecoration() {
 }
 
 function resetAllAnchorsAndDecorations(): void {
+  abortCoordinatingPaneAnchorBatch();
   const next = resetAllAnchors(
     {
       manualAnchors,
+      staleManualAnchors,
       autoAnchor,
       suppressedAutoAnchorKey,
       pendingLeftLineNo,
@@ -4242,6 +5074,7 @@ function resetAllAnchorsAndDecorations(): void {
   );
 
   manualAnchors = next.manualAnchors;
+  staleManualAnchors = next.staleManualAnchors ?? [];
   autoAnchor = next.autoAnchor;
   suppressedAutoAnchorKey = next.suppressedAutoAnchorKey;
   pendingLeftLineNo = next.pendingLeftLineNo;
@@ -4253,27 +5086,43 @@ function resetAllAnchorsAndDecorations(): void {
   rightAnchorDecorationIds = next.rightAnchorDecorationIds;
   leftFocusDecorationIds = next.leftFocusDecorationIds;
   rightFocusDecorationIds = next.rightFocusDecorationIds;
+  resetAnchorEditHistory();
 }
 
 function updateAnchorWarning(invalid: { anchor: Anchor; reasons: string[] }[]) {
-  if (invalid.length === 0) {
+  if (invalid.length === 0 && staleManualAnchors.length === 0) {
     anchorWarning.textContent = "";
     return;
   }
 
-  const message = invalid
+  const invalidMessage = invalid
     .map((item) => {
       const leftInfo = getFileLineInfo(leftSegments, item.anchor.leftLineNo);
       const rightInfo = getFileLineInfo(rightSegments, item.anchor.rightLineNo);
       return `${formatLineWithFile("L", leftInfo)} ↔ ${formatLineWithFile("R", rightInfo)}: ${item.reasons.join(" / ")}`;
     })
     .join(" | ");
-  anchorWarning.textContent = `無効なアンカーがあります: ${message}`;
+  const staleMessage = staleManualAnchors
+    .map(
+      (item) =>
+        `旧L${item.anchor.leftLineNo + 1} ↔ 旧R${item.anchor.rightLineNo + 1}: ${formatStaleAnchorReason(item.reason)}`,
+    )
+    .join(" | ");
+  const message = [invalidMessage, staleMessage].filter(Boolean).join(" | ");
+  anchorWarning.textContent = `無効または要確認のアンカーがあります: ${message}`;
+}
+
+function formatStaleAnchorReason(reason: StaleManualAnchor["reason"]): string {
+  return reason === "reload-unresolved"
+    ? "再読み込み後の対応行を一意に特定できません"
+    : "編集後の対応行を一意に追跡できません";
 }
 
 type AnchorEntry = {
   anchor: Anchor;
-  source: "manual" | "auto";
+  source: "manual" | "auto" | "stale";
+  staleIndex?: number;
+  staleReason?: StaleManualAnchor["reason"];
 };
 
 function renderAnchors(
@@ -4290,6 +5139,14 @@ function renderAnchors(
   }
   manualAnchors.forEach((anchor) => {
     entries.push({ anchor, source: "manual" });
+  });
+  staleManualAnchors.forEach((item, staleIndex) => {
+    entries.push({
+      anchor: item.anchor,
+      source: "stale",
+      staleIndex,
+      staleReason: item.reason,
+    });
   });
   if (entries.length === 0) {
     const empty = document.createElement("li");
@@ -4313,12 +5170,22 @@ function renderAnchors(
       item.classList.add("is-auto");
     }
     const entryKey =
-      entry.source === "auto" ? autoAnchorKey(anchor) : manualAnchorKey(anchor);
+      entry.source === "auto"
+        ? autoAnchorKey(anchor)
+        : entry.source === "stale"
+          ? `stale:${entry.staleIndex ?? -1}:${anchorKey(anchor)}`
+          : manualAnchorKey(anchor);
     if (selectedAnchorKey === entryKey) {
       item.classList.add("is-selected");
     }
-    const leftInfo = getFileLineInfo(leftSegments, anchor.leftLineNo);
-    const rightInfo = getFileLineInfo(rightSegments, anchor.rightLineNo);
+    const leftInfo =
+      entry.source === "stale"
+        ? { fileIndex: null, localLine: anchor.leftLineNo + 1 }
+        : getFileLineInfo(leftSegments, anchor.leftLineNo);
+    const rightInfo =
+      entry.source === "stale"
+        ? { fileIndex: null, localLine: anchor.rightLineNo + 1 }
+        : getFileLineInfo(rightSegments, anchor.rightLineNo);
     const reason = entry.source === "manual" ? invalidMap.get(anchor) : undefined;
 
     const label = document.createElement("span");
@@ -4326,13 +5193,17 @@ function renderAnchors(
     if (entry.source === "auto") {
       label.classList.add("anchor-auto");
     }
-    const createLinePart = (side: "L" | "R", info: FileLineInfo) => {
+    const createLinePart = (
+      side: "L" | "R",
+      info: FileLineInfo,
+      oldPosition = false,
+    ) => {
       const wrapper = document.createElement("span");
       wrapper.className = "anchor-side";
 
       const lineText = document.createElement("span");
       lineText.className = "anchor-line";
-      lineText.textContent = `${side}${info.localLine}`;
+      lineText.textContent = `${oldPosition ? "旧" : ""}${side}${info.localLine}`;
       wrapper.appendChild(lineText);
 
       if (info.fileIndex !== null) {
@@ -4356,14 +5227,20 @@ function renderAnchors(
       label.appendChild(prefix);
     }
 
-    label.appendChild(createLinePart("L", leftInfo));
+    label.appendChild(createLinePart("L", leftInfo, entry.source === "stale"));
     const separator = document.createElement("span");
     separator.className = "anchor-separator";
     separator.textContent = "↔";
     label.appendChild(separator);
-    label.appendChild(createLinePart("R", rightInfo));
+    label.appendChild(createLinePart("R", rightInfo, entry.source === "stale"));
 
-    if (reason) {
+    if (entry.source === "stale" && entry.staleReason) {
+      label.classList.add("anchor-invalid");
+      const reasonText = document.createElement("span");
+      reasonText.className = "anchor-reason";
+      reasonText.textContent = `（要確認: ${formatStaleAnchorReason(entry.staleReason)}）`;
+      label.appendChild(reasonText);
+    } else if (reason) {
       label.classList.add("anchor-invalid");
       const reasonText = document.createElement("span");
       reasonText.className = "anchor-reason";
@@ -4373,9 +5250,11 @@ function renderAnchors(
       label.classList.add("anchor-disabled");
     }
 
-    const canJump = entry.source === "auto" || validSet.has(anchor);
-    anchorEntryKeys.push(entryKey);
-    anchorEntryMap.set(entryKey, { anchor, canJump });
+    const canJump = entry.source !== "stale" && (entry.source === "auto" || validSet.has(anchor));
+    if (entry.source !== "stale") {
+      anchorEntryKeys.push(entryKey);
+      anchorEntryMap.set(entryKey, { anchor, canJump });
+    }
     if (canJump) {
       item.addEventListener("click", (event) => {
         if ((event.target as HTMLElement).closest(".anchor-remove")) {
@@ -4399,6 +5278,11 @@ function renderAnchors(
     removeButton.addEventListener("click", (event) => {
       event.stopPropagation();
       removeButton.blur();
+      const coordinatedOriginalAnchor =
+        paneAnchorValidationCoordinator.validationOrigins.find(
+          (origin) => anchorKey(origin.anchor) === anchorKey(anchor),
+        )?.original ?? null;
+      abortCoordinatingPaneAnchorBatch();
       if (entry.source === "auto") {
         suppressedAutoAnchorKey = autoAnchorKey(anchor);
         autoAnchor = null;
@@ -4407,19 +5291,55 @@ function renderAnchors(
         }
         setAnchorMessage("Auto anchor removed.");
         recalcDiff();
-      } else {
-        const manualIndex = manualAnchors.indexOf(anchor);
-        if (manualIndex === -1) {
+      } else if (entry.source === "stale") {
+        const staleIndex = staleManualAnchors.findIndex(
+          (item) => anchorKey(item.anchor) === anchorKey(anchor),
+        );
+        if (staleIndex < 0 || staleIndex >= staleManualAnchors.length) {
           return;
         }
-        const removed = manualAnchors[manualIndex];
-        manualAnchors = manualAnchors.filter((_, anchorIndex) => anchorIndex !== manualIndex);
-        if (selectedAnchorKey === entryKey) {
-          selectedAnchorKey = null;
+        staleManualAnchors = staleManualAnchors.filter(
+          (_, itemIndex) => itemIndex !== staleIndex,
+        );
+        setAnchorMessage("要確認アンカーを削除しました。");
+      } else {
+        const manualIndex = manualAnchors.findIndex(
+          (item) => anchorKey(item) === anchorKey(anchor),
+        );
+        if (manualIndex === -1) {
+          const canonicalKey = coordinatedOriginalAnchor
+            ? anchorKey(coordinatedOriginalAnchor)
+            : null;
+          const staleMatches = canonicalKey === null
+            ? []
+            : staleManualAnchors
+                .map((item, itemIndex) => ({ item, itemIndex }))
+                .filter(
+                  ({ item }) =>
+                    item.reason === "reload-unresolved" &&
+                    anchorKey(item.anchor) === canonicalKey,
+                );
+          if (staleMatches.length !== 1) {
+            return;
+          }
+          staleManualAnchors = staleManualAnchors.filter(
+            (_, itemIndex) => itemIndex !== staleMatches[0].itemIndex,
+          );
+          setAnchorMessage("要確認アンカーを削除しました。");
+          recalcDiff();
+        } else {
+          const removed = manualAnchors[manualIndex];
+          manualAnchors = manualAnchors.filter(
+            (_, anchorIndex) => anchorIndex !== manualIndex,
+          );
+          if (selectedAnchorKey === entryKey) {
+            selectedAnchorKey = null;
+          }
+          setAnchorMessage(`Anchor removed: ${formatAnchor(removed)}`);
+          recalcDiff();
         }
-        setAnchorMessage(`Anchor removed: ${formatAnchor(removed)}`);
-        recalcDiff();
       }
+      resetAnchorEditHistory();
       const validation = validateAnchors(
         manualAnchors,
         getNormalizedLineCount(leftEditor.getValue()),
@@ -5080,6 +6000,7 @@ function buildPaneClearOptions(
       });
     },
     onBeforeClear: () => {
+      abortCoordinatingPaneAnchorBatch();
       anchorUndoState = null;
       clearUndoState = {
         snapshot: captureAnchorSnapshot(),
@@ -5284,6 +6205,9 @@ bindExportReportButton({
   button: exportReportButton,
   doc: document,
   toast,
+  beforeBuild: () => {
+    abortCoordinatingPaneAnchorBatch({ resetHistory: false });
+  },
   buildHtml: () => {
     const syntaxHighlightEnabled = reportMode === "rich" && highlightToggle.checked;
     const rows = buildReportRowsFromVisualRows(buildVisualRowsForReport(), {
@@ -5305,6 +6229,7 @@ bindExportReportButton({
 });
 
 anchorExportButton.addEventListener("click", () => {
+  abortCoordinatingPaneAnchorBatch({ resetHistory: false });
   const ok = downloadJsonFile(
     buildAnchorTransferPayload(manualAnchors, {
       leftSegments,
@@ -5357,10 +6282,13 @@ anchorImportFileInput.addEventListener("change", () => {
       return;
     }
 
+    abortCoordinatingPaneAnchorBatch();
     manualAnchors = result.anchors.map((anchor) => ({ ...anchor }));
+    staleManualAnchors = [];
     pendingLeftLineNo = null;
     pendingRightLineNo = null;
     selectedAnchorKey = null;
+    resetAnchorEditHistory();
     anchorUndoState = null;
     updatePendingAnchorDecoration();
     leftFocusDecorationIds = leftEditor.deltaDecorations(leftFocusDecorationIds, []);
@@ -5393,6 +6321,7 @@ function clearAllPanes(): void {
   if (!confirmed) {
     return;
   }
+  abortCoordinatingPaneAnchorBatch();
   const targetSide = lastFocusedSide;
   const targetEditor = targetSide === "left" ? leftEditor : rightEditor;
   anchorUndoState = null;

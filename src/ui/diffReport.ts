@@ -664,6 +664,7 @@ export function downloadDiffReportHtml(
 export function exportDiffReport(options: {
   doc: Document;
   toast: ToastLike;
+  beforeBuild?: () => void;
   buildHtml: () => string;
   download?: (
     html: string,
@@ -675,11 +676,13 @@ export function exportDiffReport(options: {
   const {
     doc,
     toast,
+    beforeBuild,
     buildHtml,
     download = downloadDiffReportHtml,
     fileName = "diff-report.html",
   } = options;
 
+  beforeBuild?.();
   const html = buildHtml();
   if (!html) {
     toast.show("出力対象がありません", "error");
@@ -699,6 +702,7 @@ export function bindExportReportButton(options: {
   button: HTMLButtonElement | null;
   doc: Document;
   toast: ToastLike;
+  beforeBuild?: () => void;
   buildHtml: () => string;
   download?: (
     html: string,
@@ -711,6 +715,7 @@ export function bindExportReportButton(options: {
     button,
     doc,
     toast,
+    beforeBuild,
     buildHtml,
     download = downloadDiffReportHtml,
     fileName = "diff-report.html",
@@ -722,6 +727,7 @@ export function bindExportReportButton(options: {
     exportDiffReport({
       doc,
       toast,
+      beforeBuild,
       buildHtml,
       download,
       fileName,
