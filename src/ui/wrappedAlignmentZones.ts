@@ -3,7 +3,7 @@ import type { PairedOp } from "../diffEngine/types";
 export type WrappedAlignmentEditor = {
   getModel: () => { getLineCount: () => number } | null;
   getTopForLineNumber: (lineNumber: number, includeViewZones?: boolean) => number;
-  getBottomForLineNumber: (lineNumber: number) => number;
+  getBottomForLineNumber: (lineNumber: number, includeViewZones?: boolean) => number;
 };
 
 export type WrappedAlignmentZone = {
@@ -18,10 +18,7 @@ function getVisualLineHeight(editor: WrappedAlignmentEditor, lineNumber: number)
     return 0;
   }
   const top = editor.getTopForLineNumber(lineNumber, false);
-  const bottom =
-    lineNumber < lineCount
-      ? editor.getTopForLineNumber(lineNumber + 1, false)
-      : editor.getBottomForLineNumber(lineNumber);
+  const bottom = editor.getBottomForLineNumber(lineNumber, false);
   return Math.max(0, bottom - top);
 }
 
