@@ -29,6 +29,10 @@ function cloneAnchor(anchor: Anchor): Anchor {
 function cloneWorkspaceAnchors(state: WorkspaceAnchorState): WorkspaceAnchorState {
   return {
     manualAnchors: state.manualAnchors.map(cloneAnchor),
+    staleManualAnchors: (state.staleManualAnchors ?? []).map((item) => ({
+      anchor: cloneAnchor(item.anchor),
+      reason: item.reason,
+    })),
     autoAnchor: state.autoAnchor ? cloneAnchor(state.autoAnchor) : null,
     suppressedAutoAnchorKey: state.suppressedAutoAnchorKey,
     pendingLeftLineNo: state.pendingLeftLineNo,
@@ -142,6 +146,10 @@ function sanitizeWorkspaceAnchors(
 ): WorkspaceAnchorState {
   const leftLineCount = getNormalizedLineCount(leftText);
   const rightLineCount = getNormalizedLineCount(rightText);
+  const staleManualAnchors = (state.staleManualAnchors ?? []).map((item) => ({
+    anchor: cloneAnchor(item.anchor),
+    reason: item.reason,
+  }));
   const manualAnchors = validateAnchors(
     state.manualAnchors,
     leftLineCount,
@@ -160,6 +168,7 @@ function sanitizeWorkspaceAnchors(
   }
   return {
     manualAnchors,
+    staleManualAnchors,
     autoAnchor,
     suppressedAutoAnchorKey:
       autoAnchor &&
@@ -230,8 +239,24 @@ export function resolveStartupWorkspaceRestore(params: {
       initialAnchors = {
         ...cloneWorkspaceAnchors(emptyAnchorState),
         manualAnchors: migratedAnchors,
+        staleManualAnchors: initialAnchors.staleManualAnchors,
       };
     }
+  }
+
+  if (
+    selectedWorkspaceLooksUnresolved &&
+    (initialAnchors.staleManualAnchors?.length ?? 0) === 0 &&
+    (persistedState?.staleAnchors?.length ?? 0) > 0
+  ) {
+    const staleManualAnchors = (persistedState?.staleAnchors ?? []).map((item) => ({
+      anchor: cloneAnchor(item.anchor),
+      reason: item.reason,
+    }));
+    initialAnchors = {
+      ...initialAnchors,
+      staleManualAnchors,
+    };
   }
 
   return {

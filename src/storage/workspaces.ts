@@ -8,8 +8,16 @@ import {
   type TextStore,
 } from "./textStore";
 
+export type StaleAnchorReason = "edit-unresolved" | "reload-unresolved";
+
+export type StaleManualAnchor = {
+  anchor: Anchor;
+  reason: StaleAnchorReason;
+};
+
 export type WorkspaceAnchorState = {
   manualAnchors: Anchor[];
+  staleManualAnchors?: StaleManualAnchor[];
   autoAnchor: Anchor | null;
   suppressedAutoAnchorKey: string | null;
   pendingLeftLineNo: number | null;
@@ -144,12 +152,60 @@ function normalizeAnchorList(value: unknown): Anchor[] {
   return anchors;
 }
 
+function normalizeStaleAnchorList(value: unknown): StaleManualAnchor[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const anchors: StaleManualAnchor[] = [];
+  value.forEach((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return;
+    }
+    const record = entry as Record<string, unknown>;
+    const anchor = normalizeAnchor(record.anchor);
+    const reason = record.reason;
+    if (
+      anchor &&
+      (reason === "edit-unresolved" || reason === "reload-unresolved")
+    ) {
+      anchors.push({ anchor, reason });
+    }
+  });
+  return anchors;
+}
+
+function cloneAnchorState(state: WorkspaceAnchorState): WorkspaceAnchorState {
+  return {
+    ...state,
+    manualAnchors: state.manualAnchors.map((anchor) => ({ ...anchor })),
+    staleManualAnchors: (state.staleManualAnchors ?? []).map((item) => ({
+      anchor: { ...item.anchor },
+      reason: item.reason,
+    })),
+    autoAnchor: state.autoAnchor ? { ...state.autoAnchor } : null,
+  };
+}
+
 function normalizeAnchorState(value: unknown): WorkspaceAnchorState {
   const record = value as Record<string, unknown> | null;
+  const staleManualAnchors = normalizeStaleAnchorList(record?.staleManualAnchors);
+  const staleKeys = new Set(
+    staleManualAnchors.map(
+      (item) => `manual:${item.anchor.leftLineNo}:${item.anchor.rightLineNo}`,
+    ),
+  );
   const manualAnchors = normalizeAnchorList(record?.manualAnchors);
+  const manualKeys = new Set(
+    manualAnchors.map(
+      (anchor) => `manual:${anchor.leftLineNo}:${anchor.rightLineNo}`,
+    ),
+  );
   const autoAnchor = normalizeAnchor(record?.autoAnchor);
+  const storedSelectedAnchorKey =
+    typeof record?.selectedAnchorKey === "string" ? record.selectedAnchorKey : null;
   return {
     manualAnchors,
+    staleManualAnchors,
     autoAnchor,
     suppressedAutoAnchorKey:
       typeof record?.suppressedAutoAnchorKey === "string"
@@ -166,7 +222,11 @@ function normalizeAnchorState(value: unknown): WorkspaceAnchorState {
         ? record.pendingRightLineNo
         : null,
     selectedAnchorKey:
-      typeof record?.selectedAnchorKey === "string" ? record.selectedAnchorKey : null,
+      storedSelectedAnchorKey &&
+      staleKeys.has(storedSelectedAnchorKey) &&
+      !manualKeys.has(storedSelectedAnchorKey)
+        ? null
+        : storedSelectedAnchorKey,
   };
 }
 
@@ -250,6 +310,7 @@ function ensureDefaultState(): WorkspacesState {
     rightScrollTop: null,
     anchors: {
       manualAnchors: [],
+      staleManualAnchors: [],
       autoAnchor: null,
       suppressedAutoAnchorKey: null,
       pendingLeftLineNo: null,
@@ -565,6 +626,7 @@ export function createWorkspace(
     rightScrollTop: null,
     anchors: {
       manualAnchors: [],
+      staleManualAnchors: [],
       autoAnchor: null,
       suppressedAutoAnchorKey: null,
       pendingLeftLineNo: null,
@@ -789,7 +851,7 @@ export function setWorkspaceAnchors(
     return { ok: false, reason: "not-found", state };
   }
   const nextWorkspaces = state.workspaces.map((workspace) =>
-    workspace.id === id ? { ...workspace, anchors } : workspace,
+    workspace.id === id ? { ...workspace, anchors: cloneAnchorState(anchors) } : workspace,
   );
   const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
   void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [] });
@@ -820,13 +882,7 @@ export function setWorkspaceSnapshot(
           rightCursor: snapshot.right.cursor ? { ...snapshot.right.cursor } : null,
           leftScrollTop: snapshot.left.scrollTop,
           rightScrollTop: snapshot.right.scrollTop,
-          anchors: {
-            ...snapshot.anchors,
-            manualAnchors: snapshot.anchors.manualAnchors.map((anchor) => ({ ...anchor })),
-            autoAnchor: snapshot.anchors.autoAnchor
-              ? { ...snapshot.anchors.autoAnchor }
-              : null,
-          },
+          anchors: cloneAnchorState(snapshot.anchors),
         }
       : workspace,
   );

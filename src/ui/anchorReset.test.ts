@@ -22,6 +22,12 @@ describe("resetAllAnchors", () => {
 
     const state: AnchorResetState = {
       manualAnchors: [{ leftLineNo: 1, rightLineNo: 2 }],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 8, rightLineNo: 9 },
+          reason: "edit-unresolved",
+        },
+      ],
       autoAnchor: { leftLineNo: 3, rightLineNo: 4 },
       suppressedAutoAnchorKey: "auto:1:2",
       pendingLeftLineNo: 10,
@@ -38,6 +44,7 @@ describe("resetAllAnchors", () => {
     const next = resetAllAnchors(state, editors);
 
     expect(next.manualAnchors).toEqual([]);
+    expect(next.staleManualAnchors).toEqual([]);
     expect(next.autoAnchor).toBeNull();
     expect(next.suppressedAutoAnchorKey).toBeNull();
     expect(next.pendingLeftLineNo).toBeNull();

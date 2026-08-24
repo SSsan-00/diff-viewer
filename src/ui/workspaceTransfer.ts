@@ -3,6 +3,7 @@ import type {
   WorkspaceAnchorState,
   WorkspaceCursor,
   WorkspaceDraft,
+  StaleManualAnchor,
 } from "../storage/workspaces";
 import type { LineSegment } from "../file/lineNumbering";
 
@@ -34,6 +35,10 @@ function cloneCursor(cursor: WorkspaceCursor | null | undefined): WorkspaceCurso
 function cloneAnchors(anchors: WorkspaceAnchorState): WorkspaceAnchorState {
   return {
     manualAnchors: anchors.manualAnchors.map((anchor) => ({ ...anchor })),
+    staleManualAnchors: (anchors.staleManualAnchors ?? []).map((item) => ({
+      anchor: { ...item.anchor },
+      reason: item.reason,
+    })),
     autoAnchor: anchors.autoAnchor ? { ...anchors.autoAnchor } : null,
     suppressedAutoAnchorKey: anchors.suppressedAutoAnchorKey,
     pendingLeftLineNo: anchors.pendingLeftLineNo,
@@ -80,10 +85,31 @@ function normalizeAnchorList(value: unknown): { leftLineNo: number; rightLineNo:
   return anchors;
 }
 
+function normalizeStaleAnchorList(value: unknown): StaleManualAnchor[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const anchors: StaleManualAnchor[] = [];
+  value.forEach((entry) => {
+    if (!isRecord(entry)) {
+      return;
+    }
+    const anchor = normalizeAnchor(entry.anchor);
+    if (
+      anchor &&
+      (entry.reason === "edit-unresolved" || entry.reason === "reload-unresolved")
+    ) {
+      anchors.push({ anchor, reason: entry.reason });
+    }
+  });
+  return anchors;
+}
+
 function normalizeAnchorState(value: unknown): WorkspaceAnchorState {
   const record = isRecord(value) ? value : {};
   return {
     manualAnchors: normalizeAnchorList(record.manualAnchors),
+    staleManualAnchors: normalizeStaleAnchorList(record.staleManualAnchors),
     autoAnchor: normalizeAnchor(record.autoAnchor),
     suppressedAutoAnchorKey: normalizeNullableString(record.suppressedAutoAnchorKey),
     pendingLeftLineNo: normalizeNumberOrNull(record.pendingLeftLineNo),

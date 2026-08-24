@@ -153,4 +153,155 @@ describe("resolveStartupWorkspaceRestore", () => {
     expect(result.initialAnchors.selectedAnchorKey).toBeNull();
     expect(result.shouldPersistAnchors).toBe(true);
   });
+
+  it("keeps stale anchors excluded from validation so users can review them", () => {
+    const workspaceState: WorkspacesState = {
+      selectedId: "current",
+      workspaces: [
+        createWorkspace("current", {
+          leftText: "left",
+          rightText: "right",
+          anchors: {
+            ...emptyAnchors,
+            staleManualAnchors: [
+              {
+                anchor: { leftLineNo: 12, rightLineNo: 14 },
+                reason: "reload-unresolved",
+              },
+            ],
+          },
+        }),
+      ],
+    };
+
+    const result = resolve(workspaceState, null);
+
+    expect(result.initialAnchors.manualAnchors).toEqual([]);
+    expect(result.initialAnchors.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 12, rightLineNo: 14 },
+        reason: "reload-unresolved",
+      },
+    ]);
+    expect(result.shouldPersistAnchors).toBe(false);
+  });
+
+  it("keeps an active anchor when a historical stale anchor has the same coordinates", () => {
+    const workspaceState: WorkspacesState = {
+      selectedId: "current",
+      workspaces: [
+        createWorkspace("current", {
+          leftText: "left",
+          rightText: "right",
+          anchors: {
+            ...emptyAnchors,
+            manualAnchors: [{ leftLineNo: 0, rightLineNo: 0 }],
+            staleManualAnchors: [
+              {
+                anchor: { leftLineNo: 0, rightLineNo: 0 },
+                reason: "edit-unresolved",
+              },
+            ],
+            selectedAnchorKey: "manual:0:0",
+          },
+        }),
+      ],
+    };
+
+    const result = resolve(workspaceState, null);
+
+    expect(result.initialAnchors.manualAnchors).toEqual([
+      { leftLineNo: 0, rightLineNo: 0 },
+    ]);
+    expect(result.initialAnchors.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 0, rightLineNo: 0 },
+        reason: "edit-unresolved",
+      },
+    ]);
+    expect(result.initialAnchors.selectedAnchorKey).toBe("manual:0:0");
+  });
+
+  it("migrates stale anchors from the legacy snapshot without reactivating them", () => {
+    const workspaceState: WorkspacesState = {
+      selectedId: "current",
+      workspaces: [createWorkspace("current")],
+    };
+    const persisted = createPersistedState({
+      staleAnchors: [
+        {
+          anchor: { leftLineNo: 9, rightLineNo: 11 },
+          reason: "edit-unresolved",
+        },
+      ],
+    });
+
+    const result = resolve(workspaceState, persisted);
+
+    expect(result.initialAnchors.manualAnchors).toEqual([
+      { leftLineNo: 0, rightLineNo: 0 },
+    ]);
+    expect(result.initialAnchors.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 9, rightLineNo: 11 },
+        reason: "edit-unresolved",
+      },
+    ]);
+  });
+
+  it("keeps migrated active and historical stale anchors with the same coordinates", () => {
+    const workspaceState: WorkspacesState = {
+      selectedId: "current",
+      workspaces: [createWorkspace("current")],
+    };
+    const persisted = createPersistedState({
+      staleAnchors: [
+        {
+          anchor: { leftLineNo: 0, rightLineNo: 0 },
+          reason: "reload-unresolved",
+        },
+      ],
+    });
+
+    const result = resolve(workspaceState, persisted);
+
+    expect(result.initialAnchors.manualAnchors).toEqual([
+      { leftLineNo: 0, rightLineNo: 0 },
+    ]);
+    expect(result.initialAnchors.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 0, rightLineNo: 0 },
+        reason: "reload-unresolved",
+      },
+    ]);
+  });
+
+  it("preserves workspace stale anchors while migrating legacy active anchors", () => {
+    const staleManualAnchors: NonNullable<
+      WorkspaceAnchorState["staleManualAnchors"]
+    > = [
+      {
+        anchor: { leftLineNo: 9, rightLineNo: 11 },
+        reason: "reload-unresolved",
+      },
+    ];
+    const workspaceState: WorkspacesState = {
+      selectedId: "current",
+      workspaces: [
+        createWorkspace("current", {
+          anchors: {
+            ...emptyAnchors,
+            staleManualAnchors,
+          },
+        }),
+      ],
+    };
+
+    const result = resolve(workspaceState, createPersistedState());
+
+    expect(result.initialAnchors.manualAnchors).toEqual([
+      { leftLineNo: 0, rightLineNo: 0 },
+    ]);
+    expect(result.initialAnchors.staleManualAnchors).toEqual(staleManualAnchors);
+  });
 });

@@ -226,6 +226,12 @@ describe("workspaces storage", () => {
     const state = createState(["Alpha", "Beta"]);
     const result = setWorkspaceAnchors(storage, state, "ws-1", {
       manualAnchors: [{ leftLineNo: 1, rightLineNo: 2 }],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 5 },
+          reason: "reload-unresolved",
+        },
+      ],
       autoAnchor: null,
       suppressedAutoAnchorKey: null,
       pendingLeftLineNo: null,
@@ -238,9 +244,70 @@ describe("workspaces storage", () => {
       const beta = stored.workspaces.find((item) => item.id === "ws-1");
       const alpha = stored.workspaces.find((item) => item.id === "ws-0");
       expect(beta?.anchors.manualAnchors).toHaveLength(1);
+      expect(beta?.anchors.staleManualAnchors).toEqual([
+        {
+          anchor: { leftLineNo: 4, rightLineNo: 5 },
+          reason: "reload-unresolved",
+        },
+      ]);
       expect(beta?.anchors.selectedAnchorKey).toBe("manual:1:2");
       expect(alpha?.anchors.manualAnchors).toHaveLength(0);
+      expect(alpha?.anchors.staleManualAnchors).toEqual([]);
     }
+  });
+
+  it("restores active and historical stale anchors at the same coordinates", async () => {
+    const storage = createStorage();
+    const state = createState(["Alpha"]);
+    state.workspaces[0].anchors = {
+      manualAnchors: [{ leftLineNo: 1, rightLineNo: 2 }],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 1, rightLineNo: 2 },
+          reason: "edit-unresolved",
+        },
+      ],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: "manual:1:2",
+    };
+    await saveWorkspaces(storage, state);
+
+    const restored = await loadWorkspaces(storage);
+
+    expect(restored.workspaces[0].anchors.manualAnchors).toEqual([
+      { leftLineNo: 1, rightLineNo: 2 },
+    ]);
+    expect(restored.workspaces[0].anchors.staleManualAnchors).toHaveLength(1);
+    expect(restored.workspaces[0].anchors.selectedAnchorKey).toBe("manual:1:2");
+  });
+
+  it("clears a persisted selection that only points to a stale anchor", async () => {
+    const storage = createStorage();
+    const state = createState(["Alpha"]);
+    state.workspaces[0].anchors = {
+      manualAnchors: [],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 1, rightLineNo: 2 },
+          reason: "edit-unresolved",
+        },
+      ],
+      autoAnchor: null,
+      suppressedAutoAnchorKey: null,
+      pendingLeftLineNo: null,
+      pendingRightLineNo: null,
+      selectedAnchorKey: "manual:1:2",
+    };
+    await saveWorkspaces(storage, state);
+
+    const restored = await loadWorkspaces(storage);
+
+    expect(restored.workspaces[0].anchors.manualAnchors).toEqual([]);
+    expect(restored.workspaces[0].anchors.staleManualAnchors).toHaveLength(1);
+    expect(restored.workspaces[0].anchors.selectedAnchorKey).toBeNull();
   });
 
   it("updates both panes and anchors with one persistence snapshot", () => {
@@ -270,6 +337,12 @@ describe("workspaces storage", () => {
       },
       anchors: {
         manualAnchors: [{ leftLineNo: 0, rightLineNo: 1 }],
+        staleManualAnchors: [
+          {
+            anchor: { leftLineNo: 7, rightLineNo: 8 },
+            reason: "edit-unresolved",
+          },
+        ],
         autoAnchor: null,
         suppressedAutoAnchorKey: null,
         pendingLeftLineNo: null,
@@ -285,6 +358,12 @@ describe("workspaces storage", () => {
       expect(workspace?.leftText).toBe("left snapshot");
       expect(workspace?.rightText).toBe("right snapshot");
       expect(workspace?.anchors.selectedAnchorKey).toBe("manual:0:1");
+      expect(workspace?.anchors.staleManualAnchors).toEqual([
+        {
+          anchor: { leftLineNo: 7, rightLineNo: 8 },
+          reason: "edit-unresolved",
+        },
+      ]);
     }
   });
 

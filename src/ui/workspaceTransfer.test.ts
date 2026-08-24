@@ -25,6 +25,12 @@ describe("workspace transfer", () => {
     rightScrollTop: 20,
     anchors: {
       manualAnchors: [{ leftLineNo: 0, rightLineNo: 0 }],
+      staleManualAnchors: [
+        {
+          anchor: { leftLineNo: 5, rightLineNo: 6 },
+          reason: "reload-unresolved",
+        },
+      ],
       autoAnchor: null,
       suppressedAutoAnchorKey: null,
       pendingLeftLineNo: null,
@@ -46,6 +52,12 @@ describe("workspace transfer", () => {
       rightSegments: [{ fileName: "right.html" }],
       anchors: {
         manualAnchors: [{ leftLineNo: 0, rightLineNo: 0 }],
+        staleManualAnchors: [
+          {
+            anchor: { leftLineNo: 5, rightLineNo: 6 },
+            reason: "reload-unresolved",
+          },
+        ],
       },
     });
     expect("id" in payload.workspace).toBe(false);
@@ -62,6 +74,25 @@ describe("workspace transfer", () => {
     expect(parsed.workspace.name).toBe("Alpha");
     expect(parsed.workspace.leftSegments[0]?.fileName).toBe("left.html");
     expect(parsed.workspace.rightSegments[0]?.fileName).toBe("right.html");
+    expect(parsed.workspace.anchors.staleManualAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 5, rightLineNo: 6 },
+        reason: "reload-unresolved",
+      },
+    ]);
     expect("saveTargets" in parsed.workspace).toBe(false);
+  });
+
+  it("normalizes missing stale anchors from older version 1 payloads", () => {
+    const payload = buildWorkspaceTransferPayload(workspace);
+    delete (payload.workspace.anchors as Partial<typeof payload.workspace.anchors>)
+      .staleManualAnchors;
+
+    const parsed = parseWorkspaceTransferPayload(payload);
+
+    expect(parsed.ok).toBe(true);
+    if (parsed.ok) {
+      expect(parsed.workspace.anchors.staleManualAnchors).toEqual([]);
+    }
   });
 });

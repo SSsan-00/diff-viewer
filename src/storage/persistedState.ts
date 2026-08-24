@@ -1,6 +1,7 @@
 import type { Anchor } from "../diffEngine/anchors";
 import type { FileEncoding } from "../file/decode";
 import type { LineSegment } from "../file/lineNumbering";
+import type { StaleManualAnchor } from "./workspaces";
 import {
   createUnavailableTextStore,
   type TextStore,
@@ -20,6 +21,7 @@ export type PersistedState = {
   foldEnabled: boolean;
   anchorPanelCollapsed: boolean;
   anchors: Anchor[];
+  staleAnchors?: StaleManualAnchor[];
   leftSegments: LineSegment[];
   rightSegments: LineSegment[];
 };
@@ -68,6 +70,26 @@ function normalizeAnchors(value: unknown): Anchor[] {
     const rightLineNo = Number(entry.rightLineNo);
     if (Number.isFinite(leftLineNo) && Number.isFinite(rightLineNo)) {
       anchors.push({ leftLineNo, rightLineNo });
+    }
+  });
+  return anchors;
+}
+
+function normalizeStaleAnchors(value: unknown): StaleManualAnchor[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  const anchors: StaleManualAnchor[] = [];
+  value.forEach((entry) => {
+    if (!isRecord(entry) || !isRecord(entry.anchor)) {
+      return;
+    }
+    const normalized = normalizeAnchors([entry.anchor])[0];
+    if (
+      normalized &&
+      (entry.reason === "edit-unresolved" || entry.reason === "reload-unresolved")
+    ) {
+      anchors.push({ anchor: normalized, reason: entry.reason });
     }
   });
   return anchors;
@@ -241,6 +263,7 @@ export async function loadPersistedState(
       foldEnabled: toBoolean(parsed.foldEnabled, false),
       anchorPanelCollapsed: toBoolean(parsed.anchorPanelCollapsed, false),
       anchors: normalizeAnchors(parsed.anchors),
+      staleAnchors: normalizeStaleAnchors(parsed.staleAnchors),
       leftSegments: normalizeSegments(parsed.leftSegments),
       rightSegments: normalizeSegments(parsed.rightSegments),
     };

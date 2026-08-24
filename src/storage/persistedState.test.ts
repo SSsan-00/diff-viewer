@@ -46,6 +46,12 @@ function createState(overrides: Partial<PersistedState> = {}): PersistedState {
     foldEnabled: true,
     anchorPanelCollapsed: true,
     anchors: [{ leftLineNo: 0, rightLineNo: 1 }],
+    staleAnchors: [
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 5 },
+        reason: "reload-unresolved",
+      },
+    ],
     leftSegments: [{ startLine: 1, lineCount: 2, fileIndex: 1, fileName: "a.txt" }],
     rightSegments: [{ startLine: 1, lineCount: 3, fileIndex: 1, fileName: "b.txt" }],
     ...overrides,
@@ -82,6 +88,23 @@ describe("persisted state", () => {
     expect(restored?.foldEnabled).toBe(true);
     expect(restored?.anchorPanelCollapsed).toBe(true);
     expect(restored?.anchors.length).toBe(1);
+    expect(restored?.staleAnchors).toEqual([
+      {
+        anchor: { leftLineNo: 4, rightLineNo: 5 },
+        reason: "reload-unresolved",
+      },
+    ]);
+  });
+
+  it("normalizes missing stale anchors from version 1 snapshots", async () => {
+    const storage = createStorage();
+    const legacy = createState();
+    delete (legacy as Partial<PersistedState>).staleAnchors;
+    storage.setItem(STORAGE_KEY, JSON.stringify(legacy));
+
+    const restored = await loadPersistedState(storage);
+
+    expect(restored?.staleAnchors).toEqual([]);
   });
 
   it("keeps cleared pane content after save", async () => {

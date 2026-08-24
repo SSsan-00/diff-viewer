@@ -1,4 +1,5 @@
 import type { Anchor } from "../diffEngine/anchors";
+import type { StaleManualAnchor } from "../storage/workspaces";
 
 type EditorLike = {
   deltaDecorations: (oldDecorations: string[], newDecorations: unknown[]) => string[];
@@ -6,6 +7,7 @@ type EditorLike = {
 
 export type AnchorResetState = {
   manualAnchors: Anchor[];
+  staleManualAnchors?: StaleManualAnchor[];
   autoAnchor: Anchor | null;
   suppressedAutoAnchorKey: string | null;
   pendingLeftLineNo: number | null;
@@ -34,6 +36,7 @@ export function resetAllAnchors(state: AnchorResetState, editors: AnchorResetEdi
 
   return {
     manualAnchors: [],
+    staleManualAnchors: [],
     autoAnchor: null,
     suppressedAutoAnchorKey: null,
     pendingLeftLineNo: null,
