@@ -35,6 +35,7 @@ type PreparedSegmentMapping =
   | {
       status: "ready";
       identical: boolean;
+      lineMappings: readonly (number | undefined)[];
       nextBounds: SegmentBounds;
       nextOccurrences: ReadonlyMap<string, LineOccurrence>;
       nextSegment: LineSegment;
@@ -150,6 +151,205 @@ function buildLineOccurrences(
   return occurrences;
 }
 
+type RelativeLinePair = {
+  nextLineNo: number;
+  previousLineNo: number;
+};
+
+type AlignmentRange = {
+  nextEnd: number;
+  nextStart: number;
+  previousEnd: number;
+  previousStart: number;
+};
+
+function buildUniquePairsForRange(
+  previousLines: readonly string[],
+  nextLines: readonly string[],
+  range: AlignmentRange,
+): RelativeLinePair[] {
+  const previousOccurrences = buildLineOccurrences(previousLines, {
+    start: range.previousStart,
+    end: range.previousEnd,
+  });
+  const nextOccurrences = buildLineOccurrences(nextLines, {
+    start: range.nextStart,
+    end: range.nextEnd,
+  });
+  const pairs: RelativeLinePair[] = [];
+
+  // Map preserves first-insertion order, so the pairs are already ordered by
+  // their previous line number without an additional sort.
+  previousOccurrences.forEach((previousOccurrence, line) => {
+    if (previousOccurrence.count !== 1) {
+      return;
+    }
+    const nextOccurrence = nextOccurrences.get(line);
+    if (!nextOccurrence || nextOccurrence.count !== 1) {
+      return;
+    }
+    pairs.push({
+      previousLineNo: range.previousStart + previousOccurrence.localLineNo,
+      nextLineNo: range.nextStart + nextOccurrence.localLineNo,
+    });
+  });
+  return pairs;
+}
+
+function getUncontestedPairs(
+  pairs: readonly RelativeLinePair[],
+): RelativeLinePair[] {
+  const maximumBefore = new Array<number>(pairs.length);
+  const minimumAfter = new Array<number>(pairs.length);
+  let maximum = Number.NEGATIVE_INFINITY;
+  for (let index = 0; index < pairs.length; index += 1) {
+    maximumBefore[index] = maximum;
+    maximum = Math.max(maximum, pairs[index].nextLineNo);
+  }
+  let minimum = Number.POSITIVE_INFINITY;
+  for (let index = pairs.length - 1; index >= 0; index -= 1) {
+    minimumAfter[index] = minimum;
+    minimum = Math.min(minimum, pairs[index].nextLineNo);
+  }
+  return pairs.filter(
+    (pair, index) =>
+      pair.nextLineNo > maximumBefore[index] &&
+      pair.nextLineNo < minimumAfter[index],
+  );
+}
+
+function buildContextualLineMappings(
+  previousLines: readonly string[],
+  previousBounds: SegmentBounds,
+  nextLines: readonly string[],
+  nextBounds: SegmentBounds,
+): Array<number | undefined> {
+  const previousSegmentLines = previousLines.slice(
+    previousBounds.start,
+    previousBounds.end,
+  );
+  const nextSegmentLines = nextLines.slice(nextBounds.start, nextBounds.end);
+  const mappings = new Array<number | undefined>(previousSegmentLines.length);
+  const totalLineCount = previousSegmentLines.length + nextSegmentLines.length;
+  const scanBudget =
+    totalLineCount * (Math.ceil(Math.log2(totalLineCount + 1)) + 2) * 2;
+  let scannedLineCount = 0;
+  const pending: AlignmentRange[] = [
+    {
+      previousStart: 0,
+      previousEnd: previousSegmentLines.length,
+      nextStart: 0,
+      nextEnd: nextSegmentLines.length,
+    },
+  ];
+
+  while (pending.length > 0) {
+    const range = pending.pop();
+    if (!range) {
+      break;
+    }
+    let previousStart = range.previousStart;
+    let previousEnd = range.previousEnd;
+    let nextStart = range.nextStart;
+    let nextEnd = range.nextEnd;
+    const rangeLineCount =
+      previousEnd - previousStart + (nextEnd - nextStart);
+    if (scannedLineCount + rangeLineCount > scanBudget) {
+      continue;
+    }
+    scannedLineCount += rangeLineCount;
+    const previousRangeOccurrences = buildLineOccurrences(
+      previousSegmentLines,
+      { start: previousStart, end: previousEnd },
+    );
+    const nextRangeOccurrences = buildLineOccurrences(nextSegmentLines, {
+      start: nextStart,
+      end: nextEnd,
+    });
+
+    const hasEqualRangeOccurrenceCount = (line: string): boolean =>
+      previousRangeOccurrences.get(line)?.count ===
+      nextRangeOccurrences.get(line)?.count;
+
+    while (
+      previousStart < previousEnd &&
+      nextStart < nextEnd &&
+      previousSegmentLines[previousStart] === nextSegmentLines[nextStart] &&
+      hasEqualRangeOccurrenceCount(previousSegmentLines[previousStart] ?? "")
+    ) {
+      mappings[previousStart] = nextStart;
+      previousStart += 1;
+      nextStart += 1;
+    }
+    while (
+      previousStart < previousEnd &&
+      nextStart < nextEnd &&
+      previousSegmentLines[previousEnd - 1] === nextSegmentLines[nextEnd - 1] &&
+      hasEqualRangeOccurrenceCount(previousSegmentLines[previousEnd - 1] ?? "")
+    ) {
+      previousEnd -= 1;
+      nextEnd -= 1;
+      mappings[previousEnd] = nextEnd;
+    }
+
+    const previousLength = previousEnd - previousStart;
+    const nextLength = nextEnd - nextStart;
+    if (previousLength === 1 && nextLength === 1) {
+      // The remaining bounded range proves this to be one replacement, even
+      // when the anchored line itself changed.
+      mappings[previousStart] = nextStart;
+      continue;
+    }
+    if (previousLength === 0 || nextLength === 0) {
+      continue;
+    }
+
+    const unresolvedLineCount = previousLength + nextLength;
+    if (scannedLineCount + unresolvedLineCount > scanBudget) {
+      // Exhausting the bounded preparation budget leaves uncertain lines stale
+      // rather than turning a large reload into quadratic work.
+      continue;
+    }
+    scannedLineCount += unresolvedLineCount;
+    const unresolvedRange: AlignmentRange = {
+      previousStart,
+      previousEnd,
+      nextStart,
+      nextEnd,
+    };
+    const pairs = buildUniquePairsForRange(
+      previousSegmentLines,
+      nextSegmentLines,
+      unresolvedRange,
+    );
+    const anchors = getUncontestedPairs(pairs);
+    if (anchors.length === 0) {
+      continue;
+    }
+    let previousCursor = previousStart;
+    let nextCursor = nextStart;
+    anchors.forEach((anchor) => {
+      mappings[anchor.previousLineNo] = anchor.nextLineNo;
+      pending.push({
+        previousStart: previousCursor,
+        previousEnd: anchor.previousLineNo,
+        nextStart: nextCursor,
+        nextEnd: anchor.nextLineNo,
+      });
+      previousCursor = anchor.previousLineNo + 1;
+      nextCursor = anchor.nextLineNo + 1;
+    });
+    pending.push({
+      previousStart: previousCursor,
+      previousEnd,
+      nextStart: nextCursor,
+      nextEnd,
+    });
+  }
+
+  return mappings;
+}
+
 function createAnchorSnapshotLineMapper(
   previous: AnchorReloadPaneSnapshot,
   next: AnchorReloadPaneSnapshot,
@@ -198,6 +398,14 @@ function createAnchorSnapshotLineMapper(
     preparedBySegment.set(previousSegment, {
       status: "ready",
       identical,
+      lineMappings: identical
+        ? []
+        : buildContextualLineMappings(
+            previousLines,
+            previousBounds,
+            nextLines,
+            nextBounds,
+          ),
       nextBounds,
       nextOccurrences: identical
         ? new Map<string, LineOccurrence>()
@@ -241,6 +449,16 @@ function createAnchorSnapshotLineMapper(
 
     if (prepared.identical) {
       const mappedLineNo = prepared.nextBounds.start + previousLocalLineNo;
+      return nextSegmentIndex[mappedLineNo] === prepared.nextSegment
+        ? { status: "mapped", lineNo: mappedLineNo }
+        : { status: "stale", reason: "file-unavailable" };
+    }
+
+    const contextualNextLocalLineNo =
+      prepared.lineMappings[previousLocalLineNo];
+    if (contextualNextLocalLineNo !== undefined) {
+      const mappedLineNo =
+        prepared.nextBounds.start + contextualNextLocalLineNo;
       return nextSegmentIndex[mappedLineNo] === prepared.nextSegment
         ? { status: "mapped", lineNo: mappedLineNo }
         : { status: "stale", reason: "file-unavailable" };

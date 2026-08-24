@@ -56,26 +56,143 @@ describe("relocateAnchorLineForReload", () => {
     });
   });
 
-  it("returns stale when the anchored line was changed or deleted", () => {
+  it("uses unique surrounding context to distinguish repeated lines", () => {
     const previous = buildSnapshot([
-      { name: "a.txt", text: "header\ntarget\ntail" },
+      {
+        name: "a.txt",
+        text: "old start\nrepeat\nmiddle\nrepeat\nold end",
+      },
     ]);
-    const changed = buildSnapshot([
-      { name: "a.txt", text: "header\ntarget changed\ntail" },
+    const next = buildSnapshot([
+      {
+        name: "a.txt",
+        text: "new start\ninserted\nrepeat\nmiddle\nrepeat\nnew end",
+      },
     ]);
-    const deleted = buildSnapshot([{ name: "a.txt", text: "header\ntail" }]);
 
-    expect(relocateAnchorLineForReload(1, previous, changed)).toEqual({
+    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+      status: "mapped",
+      lineNo: 2,
+    });
+    expect(relocateAnchorLineForReload(3, previous, next)).toEqual({
+      status: "mapped",
+      lineNo: 4,
+    });
+  });
+
+  it("maps a changed anchor line only when it is a one-to-one replacement hunk", () => {
+    const previous = buildSnapshot([
+      { name: "a.txt", text: "repeat\ntarget\nrepeat" },
+    ]);
+    const next = buildSnapshot([
+      { name: "a.txt", text: "repeat\ntarget updated\nrepeat" },
+    ]);
+
+    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+      status: "mapped",
+      lineNo: 1,
+    });
+  });
+
+  it("maps a one-to-one replacement after identical duplicate context was consumed", () => {
+    const previous = buildSnapshot([
+      { name: "a.txt", text: "target\nmarker\ntarget" },
+    ]);
+    const next = buildSnapshot([
+      { name: "a.txt", text: "target\nmarker\ntarget updated" },
+    ]);
+
+    expect(relocateAnchorLineForReload(2, previous, next)).toEqual({
+      status: "mapped",
+      lineNo: 2,
+    });
+  });
+
+  it("does not guess within a multi-line replacement hunk", () => {
+    const previous = buildSnapshot([
+      { name: "a.txt", text: "header\none\ntwo\ntail" },
+    ]);
+    const next = buildSnapshot([
+      { name: "a.txt", text: "header\nONE\nTWO\ntail" },
+    ]);
+
+    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
       status: "stale",
       reason: "line-changed-or-deleted",
     });
+    expect(relocateAnchorLineForReload(2, previous, next)).toEqual({
+      status: "stale",
+      reason: "line-changed-or-deleted",
+    });
+  });
+
+  it("keeps repeated lines stale when changed boundaries do not identify them", () => {
+    const previous = buildSnapshot([
+      { name: "a.txt", text: "old\nrepeat\nrepeat\nold tail" },
+    ]);
+    const next = buildSnapshot([
+      { name: "a.txt", text: "new\nrepeat\nrepeat\nnew tail" },
+    ]);
+
+    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+      status: "stale",
+      reason: "ambiguous-line",
+    });
+    expect(relocateAnchorLineForReload(2, previous, next)).toEqual({
+      status: "stale",
+      reason: "ambiguous-line",
+    });
+  });
+
+  it("uses a stable separator to identify the surviving repeated line", () => {
+    const previous = buildSnapshot([
+      { name: "a.txt", text: "old\nrepeat\nmarker\nrepeat\nold tail" },
+    ]);
+    const next = buildSnapshot([
+      { name: "a.txt", text: "new\nmarker\nrepeat\nnew tail" },
+    ]);
+
+    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+      status: "stale",
+      reason: "ambiguous-line",
+    });
+    expect(relocateAnchorLineForReload(3, previous, next)).toEqual({
+      status: "mapped",
+      lineNo: 2,
+    });
+  });
+
+  it("does not use crossing context to identify a repeated line", () => {
+    const previous = buildSnapshot([
+      { name: "a.txt", text: "A\nrepeat\nB\nrepeat\nC" },
+    ]);
+    const next = buildSnapshot([
+      { name: "a.txt", text: "A\nrepeat\nrepeat\nB\nC" },
+    ]);
+
+    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+      status: "mapped",
+      lineNo: 1,
+    });
+    expect(relocateAnchorLineForReload(3, previous, next)).toEqual({
+      status: "stale",
+      reason: "ambiguous-line",
+    });
+  });
+
+  it("returns stale when the anchored line was deleted", () => {
+    const previous = buildSnapshot([
+      { name: "a.txt", text: "header\ntarget\ntail" },
+    ]);
+    const deleted = buildSnapshot([{ name: "a.txt", text: "header\ntail" }]);
+
     expect(relocateAnchorLineForReload(1, previous, deleted)).toEqual({
       status: "stale",
       reason: "line-changed-or-deleted",
     });
   });
 
-  it("returns stale instead of guessing when the anchored line is duplicated", () => {
+  it("does not guess which duplicate was inserted or deleted", () => {
     const previousDuplicate = buildSnapshot([
       { name: "a.txt", text: "header\ntarget\ntarget\ntail" },
     ]);
@@ -93,7 +210,25 @@ describe("relocateAnchorLineForReload", () => {
       status: "stale",
       reason: "ambiguous-line",
     });
+    expect(relocateAnchorLineForReload(2, previousDuplicate, nextUnique)).toEqual({
+      status: "stale",
+      reason: "ambiguous-line",
+    });
     expect(relocateAnchorLineForReload(1, previousUnique, nextDuplicate)).toEqual({
+      status: "stale",
+      reason: "ambiguous-line",
+    });
+  });
+
+  it("does not choose between duplicate candidates without stable context", () => {
+    const previous = buildSnapshot([
+      { name: "a.txt", text: "old header\ntarget\nold tail" },
+    ]);
+    const next = buildSnapshot([
+      { name: "a.txt", text: "new header\ntarget\ntarget\nnew tail" },
+    ]);
+
+    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });

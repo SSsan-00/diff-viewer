@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Anchor } from "../diffEngine/anchors";
 import {
+  prepareContentChanges,
   transformAnchorsForContentChanges,
+  transformAnchorsWithPreparedChanges,
   transformTrackedLine,
+  transformTrackedLineWithPreparedChanges,
   type ContentChangeLike,
+  type ContentChangeTrackingContext,
 } from "./anchorTracking";
 
 function change(
@@ -21,6 +25,13 @@ function change(
       endColumn,
     },
     text,
+  };
+}
+
+function trackingContext(beforeText: string): ContentChangeTrackingContext {
+  const lines = beforeText.split(/\r\n|\r|\n/);
+  return {
+    getBeforeLineContent: (lineNumber) => lines[lineNumber - 1],
   };
 }
 
@@ -83,6 +94,111 @@ describe("transformTrackedLine", () => {
       stale: false,
     });
   });
+
+  it("keeps the tracked line when a newline is inserted exactly at its end", () => {
+    expect(
+      transformTrackedLine(
+        1,
+        [change(2, 7, 2, 7, "\n")],
+        trackingContext("head\ntarget\ntail"),
+      ),
+    ).toEqual({ lineNo: 1, stale: false });
+  });
+
+  it("keeps an end-of-line newline insertion stale without pre-change line context", () => {
+    expect(transformTrackedLine(1, [change(2, 7, 2, 7, "\n")])).toEqual({
+      lineNo: 1,
+      stale: true,
+    });
+  });
+
+  it("moves the tracked line up when only the newline immediately before it is deleted", () => {
+    expect(
+      transformTrackedLine(
+        1,
+        [change(1, 5, 2, 1, "")],
+        trackingContext("head\ntarget\ntail"),
+      ),
+    ).toEqual({ lineNo: 0, stale: false });
+  });
+
+  it("keeps the tracked line when only the newline immediately after it is deleted", () => {
+    expect(
+      transformTrackedLine(
+        1,
+        [change(2, 7, 3, 1, "")],
+        trackingContext("head\ntarget\ntail"),
+      ),
+    ).toEqual({ lineNo: 1, stale: false });
+  });
+
+  it("follows one complete exact copy of the original line inside a multiline replacement", () => {
+    expect(
+      transformTrackedLine(
+        2,
+        [change(2, 1, 5, 1, "target\nother\n")],
+        trackingContext("head\nbefore\ntarget\nafter\ntail"),
+      ),
+    ).toEqual({ lineNo: 1, stale: false });
+  });
+
+  it("combines a uniquely preserved line with independent changes in original coordinates", () => {
+    const changes = [
+      change(2, 1, 5, 1, "target\nother\n"),
+      change(1, 1, 1, 1, "inserted\n"),
+      change(8, 1, 8, 1, "later\n"),
+    ];
+    const context = trackingContext(
+      "head\nbefore\ntarget\nafter\ntail\nmore\nlast\nend",
+    );
+
+    expect(transformTrackedLine(2, changes, context)).toEqual({
+      lineNo: 2,
+      stale: false,
+    });
+    expect(transformTrackedLine(2, [...changes].reverse(), context)).toEqual({
+      lineNo: 2,
+      stale: false,
+    });
+  });
+
+  it.each([
+    {
+      name: "the tracked line is split in its middle",
+      contentChange: change(3, 4, 3, 4, "\n"),
+    },
+    {
+      name: "the tracked line is fully deleted",
+      contentChange: change(3, 1, 4, 1, ""),
+    },
+    {
+      name: "the replacement contains multiple complete copies",
+      contentChange: change(2, 1, 5, 1, "target\ntarget\n"),
+      trackedLineNo: 2,
+      beforeText: "head\nbefore\ntarget\nafter\ntail",
+    },
+    {
+      name: "the replaced source range contains duplicate original lines",
+      contentChange: change(2, 1, 5, 1, "target\nother\n"),
+      trackedLineNo: 1,
+      beforeText: "head\ntarget\ntarget\nafter\ntail",
+    },
+  ])(
+    "keeps structural tracking stale when $name",
+    ({
+      contentChange,
+      trackedLineNo = 2,
+      beforeText = "head\nbefore\ntarget\nafter\ntail",
+    }) => {
+      expect(
+        transformTrackedLine(
+          trackedLineNo,
+          [contentChange],
+          trackingContext(beforeText),
+        ),
+      ).toEqual({ lineNo: trackedLineNo, stale: true });
+    },
+  );
 
   it.each([
     {
@@ -263,5 +379,38 @@ describe("transformAnchorsForContentChanges", () => {
       { anchor: { leftLineNo: 5, rightLineNo: 6 }, stale: false },
     ]);
     expect(textReads).toBe(1);
+  });
+
+  it("prepares structural source and replacement lines once for active and pending tracking", () => {
+    const beforeLines = ["head", "first", "second", "tail"];
+    let beforeLineReads = 0;
+    const context: ContentChangeTrackingContext = {
+      getBeforeLineContent: (lineNumber) => {
+        beforeLineReads += 1;
+        return beforeLines[lineNumber - 1];
+      },
+    };
+    const prepared = prepareContentChanges([
+      change(1, 1, 4, 5, "head\nfirst\nsecond\ntail"),
+    ]);
+
+    expect(
+      transformAnchorsWithPreparedChanges(
+        [
+          { leftLineNo: 1, rightLineNo: 1 },
+          { leftLineNo: 2, rightLineNo: 2 },
+        ],
+        "left",
+        prepared,
+        context,
+      ),
+    ).toEqual([
+      { anchor: { leftLineNo: 1, rightLineNo: 1 }, stale: false },
+      { anchor: { leftLineNo: 2, rightLineNo: 2 }, stale: false },
+    ]);
+    expect(
+      transformTrackedLineWithPreparedChanges(3, prepared, context),
+    ).toEqual({ lineNo: 3, stale: false });
+    expect(beforeLineReads).toBe(beforeLines.length);
   });
 });
