@@ -225,6 +225,95 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "return;", "@:return;")).toBe(true);
   });
 
+  it("aligns PHP tag wrapped if with Razor if and keeps the standalone brace inserted", () => {
+    const left = [
+      '<? if($msg != "") { ?>',
+      '   alert("<?= $msg ?>");',
+      "<? } ?>",
+    ];
+    const right = [
+      '@if(Model.msg != "")',
+      "{",
+      '   @:alert("Html.Raw(Model.msg)");',
+      "}",
+    ];
+
+    expect(toPairedOps(left, right)).toEqual([
+      {
+        type: "replace",
+        leftLine: left[0],
+        rightLine: right[0],
+        leftLineNo: 0,
+        rightLineNo: 0,
+      },
+      {
+        type: "insert",
+        rightLine: right[1],
+        rightLineNo: 1,
+      },
+      {
+        type: "replace",
+        leftLine: left[1],
+        rightLine: right[2],
+        leftLineNo: 1,
+        rightLineNo: 2,
+      },
+      {
+        type: "replace",
+        leftLine: left[2],
+        rightLine: right[3],
+        leftLineNo: 2,
+        rightLineNo: 3,
+      },
+    ]);
+  });
+
+  it("aligns PHP and Razor if wrappers across leading and internal space or tab changes", () => {
+    const left = ['\t<?\tif\t(  $msg\t!=\t"" )\t{\t?>'];
+    const right = ['    @if ( Model.msg  !=\t"" )'];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<?\tif", "@if")).toBe(true);
+    expect(findDelete(ops, "<?\tif")).toBe(false);
+    expect(findInsert(ops, "@if")).toBe(false);
+  });
+
+  it("aligns Razor and long-tag PHP if wrappers in reverse direction", () => {
+    const left = ['@if(Model.msg != "")'];
+    const right = ['<?php if($msg != "") { ?>'];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "@if", "<?php if")).toBe(true);
+    expect(findDelete(ops, "@if")).toBe(false);
+    expect(findInsert(ops, "<?php if")).toBe(false);
+  });
+
+  it("does not align PHP and Razor if wrappers when their conditions differ", () => {
+    const left = ['<? if($msg != "") { ?>'];
+    const right = ['@if(Model.other != "")'];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<? if", "@if")).toBe(false);
+    expect(findDelete(ops, "<? if")).toBe(true);
+    expect(findInsert(ops, "@if")).toBe(true);
+  });
+
+  it.each([
+    ['@while(Model.msg != "")', "@while"],
+    ['@:if(Model.msg != "")', "@:if"],
+    ['if(Model.msg != "")', "if("],
+    ['Model.msg = "";', "Model.msg"],
+    ["msg();", "msg()"],
+  ])("does not align PHP if wrappers with non-target line %s", (rightLine, marker) => {
+    const left = ['<? if($msg != "") { ?>'];
+    const right = [rightLine];
+
+    const ops = toPairedOps(left, right);
+    expect(findReplace(ops, "<? if", marker)).toBe(false);
+    expect(findDelete(ops, "<? if")).toBe(true);
+    expect(findInsert(ops, marker)).toBe(true);
+  });
+
   it("does not strip non @: Razor constructs", () => {
     const left = ["return;"];
     const right = ["@{ var x = 1; }"];

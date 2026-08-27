@@ -5,6 +5,11 @@ import {
   extractIndexTokens,
   scoreLinePair,
 } from "./lineSimilarity";
+import {
+  areEquivalentTemplateIfSignatures,
+  extractTemplateIfSignature,
+  type TemplateIfSignature,
+} from "./templateIf";
 
 function countIndent(line: string): number {
   let count = 0;
@@ -36,6 +41,7 @@ type PreparedPairLine = {
   hasAppendLiteral: boolean;
   hasLineCommentBody: boolean;
   indent: number;
+  templateIfSignature: TemplateIfSignature | null;
   text: string;
   tokens: string[];
   trimmed: string;
@@ -55,6 +61,7 @@ const MAX_INDEX_TOKEN_OCCURRENCES = 24;
 const MAX_CANDIDATES_PER_DELETE = 160;
 const SCORE_THRESHOLD = 4;
 const APPEND_LITERAL_EXACT_SCORE = SCORE_THRESHOLD + 8;
+const TEMPLATE_IF_EXACT_SCORE = APPEND_LITERAL_EXACT_SCORE;
 const EMPTY_MATCH_STATE: MatchState = {
   score: 0,
   pairCount: 0,
@@ -346,6 +353,7 @@ export function buildPairCandidates(
       hasAppendLiteral: appendComparable.hasAppendLiteral,
       hasLineCommentBody: commentComparable.hasLineCommentBody,
       indent: countIndent(text),
+      templateIfSignature: extractTemplateIfSignature(text),
       text,
       tokens,
       trimmed: text.trimStart(),
@@ -367,6 +375,7 @@ export function buildPairCandidates(
       hasAppendLiteral: appendComparable.hasAppendLiteral,
       hasLineCommentBody: commentComparable.hasLineCommentBody,
       indent: countIndent(text),
+      templateIfSignature: extractTemplateIfSignature(text),
       text,
       tokens,
       trimmed: text.trimStart(),
@@ -458,6 +467,21 @@ export function buildPairCandidates(
           });
           continue;
         }
+      }
+      if (
+        areEquivalentTemplateIfSignatures(
+          left.templateIfSignature,
+          right.templateIfSignature,
+        )
+      ) {
+        candidates.push({
+          deleteIndex: d,
+          insertIndex: i,
+          indentDiff: Math.abs(left.indent - right.indent),
+          score: TEMPLATE_IF_EXACT_SCORE,
+          distance,
+        });
+        continue;
       }
       if (
         left.trimmed === right.trimmed &&
