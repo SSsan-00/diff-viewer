@@ -73,6 +73,8 @@
 - `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル/埋め込みCSS/JS/HTMLの補助トークン）。Razor `@:` を比較時に除去し、AppendLine や `+=`/`.=` の文字列中身（空白正規化）を比較に活用する。コメント行は本文を抽出して比較する。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`, `normalizeCommentText`。
 - `src/diffEngine/lineSimilarity.test.ts` 行類似度スコア計算のテスト。
 - `src/diffEngine/lineSimilarityComment.test.ts` コメント行比較のテスト。
+- `src/diffEngine/templateIf.ts` PHPタグ付きの単純な `if` と Razor `@if` を厳格に識別し、同一条件だけを対応候補にする。exports: `extractTemplateIfSignature`, `areEquivalentTemplateIfSignatures`, `areEquivalentPhpRazorIfLines`。
+- `src/diffEngine/templateIf.test.ts` 対象構文、空白揺れ、左右反転、非対象構文の拒否テスト。
 - `src/diffEngine/diffLines.ts` 行レベル差分（Myers + ユニーク行優先）。exports: `diffLinesFromLines`, `diffLines`。
 - `src/diffEngine/diffLines.test.ts` 行差分の基本ケーステスト。
 - `src/diffEngine/diffLinesAlignment.test.ts` 行対応の安定性テスト。
