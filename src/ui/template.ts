@@ -1,4 +1,4 @@
-import highlightIconSvgRaw from "../../reference/light.svg?raw";
+import highlightIconSvgRaw from "./highlight.svg?raw";
 
 const HIGHLIGHT_ICON_SVG = highlightIconSvgRaw
   .replace(/<!--[\s\S]*?-->/g, "")

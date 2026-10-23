@@ -140,6 +140,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 ### src/ui/
 
+- `src/ui/highlight.svg` ハイライト切り替えアイコンのソース。テンプレートからインポートしてHTML内に埋め込む（無視対象の `reference/` に依存しない）。
 - `src/ui/template.ts` アプリの HTML テンプレート定義。保存あり/保存なし画面のテンプレート切替を含む。exports: `createAppTemplate`, `APP_TEMPLATE`。
 - `src/ui/template.test.ts` テンプレート内の UI 配置テスト。
 - `src/ui/paneClear.ts` ペイン別クリアボタンのバインド。exports: `clearPaneState`, `bindPaneClearButton`。

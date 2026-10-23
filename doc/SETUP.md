@@ -53,6 +53,8 @@ pnpm run build:single
 
 各ビルドは埋め込み WASM の準備後に型チェックを実行し、型エラーがあればHTML生成前に停止します。push / pull request 時の CI でも `pnpm run check` と `pnpm run build:single` を実行します。
 
+ビルドに必要なSVGなどの素材は `src/` に含まれます。無視対象の `reference/` は不要で、新規チェックアウトから検査・ビルドできます。
+
 埋め込み WASM だけ更新したい場合:
 
 ```bash
