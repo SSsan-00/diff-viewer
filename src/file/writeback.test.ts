@@ -11,9 +11,7 @@ import {
   readCurrentFileFromPaneTarget,
   resolveReloadEncodingForPaneTarget,
   requestFileHandlePermission,
-  saveTextWithPaneTarget,
   writeBytesToFileHandle,
-  writeTextToFileHandle,
 } from "./writeback";
 
 function toBuffer(bytes: number[]): ArrayBuffer {
@@ -442,7 +440,7 @@ describe("pickFilesWithHandles", () => {
   });
 });
 
-describe("writeTextToFileHandle", () => {
+describe("writeBytesToFileHandle and byte preparation", () => {
   it("builds write bytes without touching the file handle", () => {
     const bytes = buildPaneWriteBytes("あ\nｲ", {
       resolvedEncoding: "shift_jis",
@@ -470,11 +468,11 @@ describe("writeTextToFileHandle", () => {
       },
     };
 
-    await writeTextToFileHandle(handle, "a\nb", {
+    await writeBytesToFileHandle(handle, buildPaneWriteBytes("a\nb", {
       resolvedEncoding: "utf-8",
       includeUtf8Bom: true,
       lineEnding: "\r\n",
-    });
+    }));
 
     expect(written).toEqual([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a, 0x62]);
     expect(closed).toBe(true);
@@ -517,11 +515,11 @@ describe("writeTextToFileHandle", () => {
       },
     };
 
-    await writeTextToFileHandle(handle, "あ\nｲ", {
+    await writeBytesToFileHandle(handle, buildPaneWriteBytes("あ\nｲ", {
       resolvedEncoding: "shift_jis",
       includeUtf8Bom: false,
       lineEnding: "\r\n",
-    });
+    }));
 
     expect(written).toEqual([0x82, 0xa0, 0x0d, 0x0a, 0xb2]);
   });
@@ -542,11 +540,11 @@ describe("writeTextToFileHandle", () => {
       },
     };
 
-    await writeTextToFileHandle(handle, "あ\nい", {
+    await writeBytesToFileHandle(handle, buildPaneWriteBytes("あ\nい", {
       resolvedEncoding: "euc-jp",
       includeUtf8Bom: false,
       lineEnding: "\n",
-    });
+    }));
 
     expect(written).toEqual([0xa4, 0xa2, 0x0a, 0xa4, 0xa4]);
   });
@@ -744,7 +742,7 @@ describe("writeTextToFileHandle", () => {
     ]);
   });
 
-  it("throws when the text cannot be represented in the target encoding", async () => {
+  it("throws when the text cannot be represented in the target encoding", () => {
     let createWritableCalled = false;
     const handle = {
       name: "left.txt",
@@ -761,17 +759,17 @@ describe("writeTextToFileHandle", () => {
       },
     };
 
-    await expect(
-      writeTextToFileHandle(handle, "🙂", {
+    expect(() =>
+      writeBytesToFileHandle(handle, buildPaneWriteBytes("🙂", {
         resolvedEncoding: "shift_jis",
         includeUtf8Bom: false,
         lineEnding: "\n",
-      }),
-    ).rejects.toThrow("shift_jis");
+      })),
+    ).toThrow("shift_jis");
     expect(createWritableCalled).toBe(false);
   });
 
-  it("does not partially write when an unsupported character is present", async () => {
+  it("does not partially write when an unsupported character is present", () => {
     const written: number[][] = [];
     const handle = {
       name: "left.txt",
@@ -787,13 +785,13 @@ describe("writeTextToFileHandle", () => {
       },
     };
 
-    await expect(
-      writeTextToFileHandle(handle, "あ🙂い", {
+    expect(() =>
+      writeBytesToFileHandle(handle, buildPaneWriteBytes("あ🙂い", {
         resolvedEncoding: "shift_jis",
         includeUtf8Bom: false,
         lineEnding: "\n",
-      }),
-    ).rejects.toThrow("shift_jis");
+      })),
+    ).toThrow("shift_jis");
 
     expect(written).toEqual([]);
   });
@@ -821,11 +819,11 @@ describe("writeTextToFileHandle", () => {
     };
 
     await expect(
-      writeTextToFileHandle(handle, "a\nb", {
+      writeBytesToFileHandle(handle, buildPaneWriteBytes("a\nb", {
         resolvedEncoding: "utf-8",
         includeUtf8Bom: false,
         lineEnding: "\n",
-      }),
+      })),
     ).rejects.toThrow("disk full");
 
     expect(written).toEqual([[0x61, 0x0a, 0x62]]);
@@ -850,11 +848,11 @@ describe("writeTextToFileHandle", () => {
     };
 
     await expect(
-      writeTextToFileHandle(handle, "a\nb", {
+      writeBytesToFileHandle(handle, buildPaneWriteBytes("a\nb", {
         resolvedEncoding: "utf-8",
         includeUtf8Bom: false,
         lineEnding: "\n",
-      }),
+      })),
     ).rejects.toThrow("disk full");
 
     expect(closed).toBe(false);
@@ -889,15 +887,13 @@ describe("writeTextToFileHandle", () => {
   });
 });
 
-describe("saveTextWithPaneTarget", () => {
+describe("writeback encoding metadata", () => {
   it("preserves UTF-8 BOM and CRLF on the save-button path", async () => {
     const original = toBuffer([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a, 0x62]);
     const targetMeta = describeDecodedFileForWriteback(original, "auto");
     const written: number[] = [];
 
-    await saveTextWithPaneTarget(
-      {
-        handle: {
+    await writeBytesToFileHandle({
           name: "utf8.txt",
           async createWritable() {
             return {
@@ -909,12 +905,7 @@ describe("saveTextWithPaneTarget", () => {
               },
             };
           },
-        },
-        fileName: "utf8.txt",
-        ...targetMeta,
-      },
-      "a\nb",
-    );
+        }, buildPaneWriteBytes("a\nb", targetMeta));
 
     expect(written).toEqual([0xef, 0xbb, 0xbf, 0x61, 0x0d, 0x0a, 0x62]);
   });
@@ -924,9 +915,7 @@ describe("saveTextWithPaneTarget", () => {
     const targetMeta = describeDecodedFileForWriteback(original, "shift_jis");
     const written: number[] = [];
 
-    await saveTextWithPaneTarget(
-      {
-        handle: {
+    await writeBytesToFileHandle({
           name: "sjis.txt",
           async createWritable() {
             return {
@@ -938,12 +927,7 @@ describe("saveTextWithPaneTarget", () => {
               },
             };
           },
-        },
-        fileName: "sjis.txt",
-        ...targetMeta,
-      },
-      "あ\nｲ",
-    );
+        }, buildPaneWriteBytes("あ\nｲ", targetMeta));
 
     expect(written).toEqual([0x82, 0xa0, 0x0d, 0x0a, 0xb2]);
   });
@@ -953,9 +937,7 @@ describe("saveTextWithPaneTarget", () => {
     const targetMeta = describeDecodedFileForWriteback(original, "euc-jp");
     const written: number[] = [];
 
-    await saveTextWithPaneTarget(
-      {
-        handle: {
+    await writeBytesToFileHandle({
           name: "euc.txt",
           async createWritable() {
             return {
@@ -967,12 +949,7 @@ describe("saveTextWithPaneTarget", () => {
               },
             };
           },
-        },
-        fileName: "euc.txt",
-        ...targetMeta,
-      },
-      "あ\nい",
-    );
+        }, buildPaneWriteBytes("あ\nい", targetMeta));
 
     expect(written).toEqual([0xa4, 0xa2, 0x0a, 0xa4, 0xa4]);
   });
@@ -982,9 +959,7 @@ describe("saveTextWithPaneTarget", () => {
     const sourceText = "あ".repeat(9000);
     const targetMeta = describeDecodedFileForWriteback(toBuffer([0x82, 0xa0]), "shift_jis");
 
-    await saveTextWithPaneTarget(
-      {
-        handle: {
+    await writeBytesToFileHandle({
           name: "large-sjis.txt",
           async createWritable() {
             return {
@@ -996,12 +971,7 @@ describe("saveTextWithPaneTarget", () => {
               },
             };
           },
-        },
-        fileName: "large-sjis.txt",
-        ...targetMeta,
-      },
-      sourceText,
-    );
+        }, buildPaneWriteBytes(sourceText, targetMeta));
 
     expect(written).toHaveLength(sourceText.length * 2);
     expect(written.slice(0, 6)).toEqual([0x82, 0xa0, 0x82, 0xa0, 0x82, 0xa0]);

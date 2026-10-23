@@ -63,16 +63,6 @@ export function extractTemplateIfSignature(
   return null;
 }
 
-export function areEquivalentPhpRazorIfLines(
-  left: string,
-  right: string,
-): boolean {
-  return areEquivalentTemplateIfSignatures(
-    extractTemplateIfSignature(left),
-    extractTemplateIfSignature(right),
-  );
-}
-
 export function areEquivalentTemplateIfSignatures(
   leftSignature: TemplateIfSignature | null,
   rightSignature: TemplateIfSignature | null,

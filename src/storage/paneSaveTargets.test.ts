@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   clearPaneSaveTarget,
-  loadPaneSaveTarget,
   loadPaneSaveTargets,
-  savePaneSaveTarget,
   savePaneSaveTargets,
   type PaneSaveTargetStore,
 } from "./paneSaveTargets";
@@ -49,12 +47,12 @@ describe("pane save target storage", () => {
     const left = createTarget("left.txt");
     const right = createTarget("right.txt");
 
-    await savePaneSaveTarget(store, "workspace-a", "left", left);
-    await savePaneSaveTarget(store, "workspace-a", "right", right);
+    await savePaneSaveTargets(store, "workspace-a", "left", [left]);
+    await savePaneSaveTargets(store, "workspace-a", "right", [right]);
 
-    expect(await loadPaneSaveTarget(store, "workspace-a", "left")).toEqual(left);
-    expect(await loadPaneSaveTarget(store, "workspace-a", "right")).toEqual(right);
-    expect(await loadPaneSaveTarget(store, "workspace-b", "left")).toBeNull();
+    expect(await loadPaneSaveTargets(store, "workspace-a", "left")).toEqual([left]);
+    expect(await loadPaneSaveTargets(store, "workspace-a", "right")).toEqual([right]);
+    expect(await loadPaneSaveTargets(store, "workspace-b", "left")).toEqual([]);
   });
 
   it("clears only the requested workspace pane target", async () => {
@@ -62,12 +60,12 @@ describe("pane save target storage", () => {
     const left = createTarget("left.txt");
     const right = createTarget("right.txt");
 
-    await savePaneSaveTarget(store, "workspace-a", "left", left);
-    await savePaneSaveTarget(store, "workspace-a", "right", right);
+    await savePaneSaveTargets(store, "workspace-a", "left", [left]);
+    await savePaneSaveTargets(store, "workspace-a", "right", [right]);
     await clearPaneSaveTarget(store, "workspace-a", "left");
 
-    expect(await loadPaneSaveTarget(store, "workspace-a", "left")).toBeNull();
-    expect(await loadPaneSaveTarget(store, "workspace-a", "right")).toEqual(right);
+    expect(await loadPaneSaveTargets(store, "workspace-a", "left")).toEqual([]);
+    expect(await loadPaneSaveTargets(store, "workspace-a", "right")).toEqual([right]);
   });
 
   it("stores and restores multiple pane targets in order", async () => {
@@ -81,6 +79,13 @@ describe("pane save target storage", () => {
       first,
       second,
     ]);
-    expect(await loadPaneSaveTarget(store, "workspace-a", "left")).toEqual(first);
+  });
+
+  it("restores legacy single-target records through the current list loader", async () => {
+    const store = createMemoryStore();
+    const first = createTarget("first.txt");
+    store.values.set("workspace-a:left", first);
+
+    expect(await loadPaneSaveTargets(store, "workspace-a", "left")).toEqual([first]);
   });
 });

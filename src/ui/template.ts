@@ -621,5 +621,3 @@ export function createAppTemplate(options: AppTemplateOptions = {}): string {
   </div>
 `;
 }
-
-export const APP_TEMPLATE = createAppTemplate();

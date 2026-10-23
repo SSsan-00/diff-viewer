@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
-import { APP_TEMPLATE, createAppTemplate } from "./template";
+import { createAppTemplate } from "./template";
 
 describe("pane action layout", () => {
   it("renders no-save controls by default", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
     const leftReload = doc.querySelector<HTMLButtonElement>("#left-reload-file");
     const rightReload = doc.querySelector<HTMLButtonElement>("#right-reload-file");
@@ -72,7 +72,7 @@ describe("pane action layout", () => {
   });
 
   it("removes recalc button and adds export report button in toolbar", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const toolbar = doc.querySelector(".toolbar-right");
@@ -104,7 +104,7 @@ describe("pane action layout", () => {
   });
 
   it("renders anchor import/export buttons and the shortened collapse label", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const anchorPanel = doc.querySelector(".anchor-panel");
@@ -128,7 +128,7 @@ describe("pane action layout", () => {
   });
 
   it("renders a toolbar visibility toggle while keeping toolbar controls grouped", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const toolbar = doc.querySelector(".toolbar");
@@ -148,7 +148,7 @@ describe("pane action layout", () => {
   });
 
   it("renders workspace import control next to create", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
     const header = doc.querySelector("#workspace-panel .workspace-panel__header");
 
@@ -160,7 +160,7 @@ describe("pane action layout", () => {
   });
 
   it("places the diff-only toggle in the toolbar and removes pane toggles", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const toolbar = doc.querySelector(".toolbar-right");
@@ -199,7 +199,7 @@ describe("pane action layout", () => {
   });
 
   it("does not render encoding labels but keeps the select", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const leftLabel = doc.querySelector("#left-pane .pane-select-label");
@@ -214,7 +214,7 @@ describe("pane action layout", () => {
   });
 
   it("does not render a wrap toggle in the toolbar", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const toolbarToggle = doc.querySelector("#wrap-toggle");
@@ -225,7 +225,7 @@ describe("pane action layout", () => {
   });
 
   it("renders the diff-only toggle label in the toolbar", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     expect(doc.body.textContent).not.toContain("折り返し");
@@ -235,7 +235,7 @@ describe("pane action layout", () => {
   });
 
   it("renders the header clear button label as 全クリア", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const clearButton = doc.querySelector<HTMLButtonElement>("#clear");
@@ -245,7 +245,7 @@ describe("pane action layout", () => {
   });
 
   it("renders the manual button at the far right of the toolbar", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const toolbar = doc.querySelector(".toolbar-right");
@@ -263,7 +263,7 @@ describe("pane action layout", () => {
   });
 
   it("renders a highlight icon button to the right of the diff-only toggle", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const toolbar = doc.querySelector(".toolbar-right");
@@ -295,7 +295,7 @@ describe("pane action layout", () => {
   });
 
   it("renders the theme toggle as a switch with sun and moon icons", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const themeToggle = doc.querySelector<HTMLInputElement>("#theme-toggle");
@@ -319,7 +319,7 @@ describe("pane action layout", () => {
   });
 
   it("adds a dedicated class to the app title", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const title = doc.querySelector(".title");
@@ -329,7 +329,7 @@ describe("pane action layout", () => {
   });
 
   it("renders file card bars for both panes", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const leftBar = doc.querySelector("#left-file-cards");
@@ -347,7 +347,7 @@ describe("pane action layout", () => {
   });
 
   it("renders a pane divider and keeps widths at the default split on first load", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const editors = doc.querySelector(".editors");
@@ -364,7 +364,7 @@ describe("pane action layout", () => {
   });
 
   it("renders favorite path controls for both panes", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const leftSave = doc.querySelector("#left-save-file");
@@ -417,7 +417,7 @@ describe("pane action layout", () => {
   });
 
   it("renders workspace controls in the toolbar", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const toggle = doc.querySelector("#workspace-toggle");
@@ -434,7 +434,7 @@ describe("pane action layout", () => {
   });
 
   it("does not render favorite panel close buttons", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const leftClose = doc.querySelector("#left-favorite-close");
@@ -445,7 +445,7 @@ describe("pane action layout", () => {
   });
 
   it("renders goto line panels for both panes", () => {
-    const dom = new JSDOM(APP_TEMPLATE);
+    const dom = new JSDOM(createAppTemplate());
     const doc = dom.window.document;
 
     const leftPanel = doc.querySelector("#left-goto-line");

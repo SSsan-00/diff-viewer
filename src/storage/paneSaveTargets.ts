@@ -103,10 +103,6 @@ function normalizePaneSaveTargets(
   return Array.isArray(value) ? value : [value];
 }
 
-export function createUnavailablePaneSaveTargetStore(): PaneSaveTargetStore {
-  return unavailablePaneSaveTargetStore;
-}
-
 export async function loadPaneSaveTargets(
   store: PaneSaveTargetStore,
   workspaceId: string,
@@ -116,26 +112,6 @@ export async function loadPaneSaveTargets(
     return [];
   }
   return normalizePaneSaveTargets(await store.get(getPaneSaveTargetKey(workspaceId, side)));
-}
-
-export function loadPaneSaveTarget(
-  store: PaneSaveTargetStore,
-  workspaceId: string,
-  side: PaneSide,
-): Promise<PaneSaveTarget | null> {
-  if (!store.isAvailable) {
-    return Promise.resolve(null);
-  }
-  return loadPaneSaveTargets(store, workspaceId, side).then((targets) => targets[0] ?? null);
-}
-
-export function savePaneSaveTarget(
-  store: PaneSaveTargetStore,
-  workspaceId: string,
-  side: PaneSide,
-  target: PaneSaveTarget,
-): Promise<void> {
-  return savePaneSaveTargets(store, workspaceId, side, [target]);
 }
 
 export function savePaneSaveTargets(

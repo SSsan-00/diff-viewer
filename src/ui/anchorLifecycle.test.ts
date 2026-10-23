@@ -10,7 +10,7 @@ import {
   updateAnchorStateForPaneReload,
 } from "./anchorLifecycle";
 import {
-  beginVersionedStateChange,
+  beginVersionedStateTransition,
   commitVersionedStateChange,
   createVersionedStateHistory,
 } from "./anchorEditHistory";
@@ -313,11 +313,7 @@ describe("updateAnchorStateForContentChanges", () => {
       before,
       (value) => structuredClone(value),
     );
-    beginVersionedStateChange(
-      history,
-      { versionId: 2, isUndoing: false, isRedoing: false },
-      before,
-    );
+    beginVersionedStateTransition(history, { versionId: 2, isUndoing: false, isRedoing: false }, before);
     const after = updateAnchorStateForContentChanges(
       before,
       "left",
@@ -326,19 +322,11 @@ describe("updateAnchorStateForContentChanges", () => {
     ).state;
     commitVersionedStateChange(history, after);
 
-    const undoState = beginVersionedStateChange(
-      history,
-      { versionId: 1, isUndoing: true, isRedoing: false },
-      after,
-    );
+    const undoState = (beginVersionedStateTransition(history, { versionId: 1, isUndoing: true, isRedoing: false }, after)?.to ?? null);
     expect(undoState).toEqual(before);
     commitVersionedStateChange(history, undoState ?? after);
 
-    const redoState = beginVersionedStateChange(
-      history,
-      { versionId: 2, isUndoing: false, isRedoing: true },
-      undoState ?? before,
-    );
+    const redoState = (beginVersionedStateTransition(history, { versionId: 2, isUndoing: false, isRedoing: true }, undoState ?? before)?.to ?? null);
     expect(redoState).toEqual(after);
     expect(redoState?.manualAnchors).toEqual([]);
     expect(redoState?.staleManualAnchors).toHaveLength(1);

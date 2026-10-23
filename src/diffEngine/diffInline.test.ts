@@ -1,7 +1,5 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
-  createDiffInline,
-  createDiffInlineBatch,
   diffInline,
   diffInlineBatch,
   diffInlineWithAppendLiteral,
@@ -354,9 +352,9 @@ describe("diffInline", () => {
       leftRanges: [{ start: 1, end: 2 }],
       rightRanges: [{ start: 3, end: 4 }],
     }));
-    const diffWithCore = createDiffInline(diffCore);
+    setDiffInlineCore(diffCore);
 
-    expect(diffWithCore("left", "right")).toEqual({
+    expect(diffInline("left", "right")).toEqual({
       leftRanges: [{ start: 1, end: 2 }],
       rightRanges: [{ start: 3, end: 4 }],
     });
@@ -371,9 +369,9 @@ describe("diffInline", () => {
         rightRanges: [{ start: 3, end: 4 }],
       },
     ]);
-    const diffWithBatchCore = createDiffInlineBatch(diffBatchCore);
+    setDiffInlineBatchCore(diffBatchCore);
 
-    expect(diffWithBatchCore([{ leftLine: "left", rightLine: "right" }])).toEqual([
+    expect(diffInlineBatch([{ leftLine: "left", rightLine: "right" }])).toEqual([
       {
         leftRanges: [{ start: 1, end: 2 }],
         rightRanges: [{ start: 3, end: 4 }],

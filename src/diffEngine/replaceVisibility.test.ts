@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { PairedOp } from "./types";
-import {
-  normalizeReplaceOpsForDisplay,
-  prepareReplaceOpsForDisplay,
-} from "./replaceVisibility";
+import { prepareReplaceOpsForDisplay } from "./replaceVisibility";
 
-describe("normalizeReplaceOpsForDisplay", () => {
+describe("prepareReplaceOpsForDisplay", () => {
   it("downgrades identical replace rows to equal", () => {
     const ops: PairedOp[] = [
       {
@@ -17,9 +14,9 @@ describe("normalizeReplaceOpsForDisplay", () => {
       },
     ];
 
-    expect(normalizeReplaceOpsForDisplay(ops, {
+    expect(prepareReplaceOpsForDisplay(ops, {
       ignoreLeadingFileWhitespace: false,
-    })).toEqual([
+    }).ops).toEqual([
       {
         type: "equal",
         leftLine: "same();",
@@ -41,11 +38,11 @@ describe("normalizeReplaceOpsForDisplay", () => {
       },
     ];
 
-    expect(normalizeReplaceOpsForDisplay(ops, {
+    expect(prepareReplaceOpsForDisplay(ops, {
       ignoreLeadingFileWhitespace: true,
       leftLeadingFileWhitespaceEligible: true,
       rightLeadingFileWhitespaceEligible: true,
-    })[0]?.type).toBe("equal");
+    }).ops[0]?.type).toBe("equal");
   });
 
   it("keeps replace rows when visible inline differences remain", () => {
@@ -59,9 +56,9 @@ describe("normalizeReplaceOpsForDisplay", () => {
       },
     ];
 
-    expect(normalizeReplaceOpsForDisplay(ops, {
+    expect(prepareReplaceOpsForDisplay(ops, {
       ignoreLeadingFileWhitespace: false,
-    })[0]?.type).toBe("replace");
+    }).ops[0]?.type).toBe("replace");
   });
 
   it("upgrades aligned equal rows to replace when raw lines have visible inline differences", () => {
@@ -75,9 +72,9 @@ describe("normalizeReplaceOpsForDisplay", () => {
       },
     ];
 
-    expect(normalizeReplaceOpsForDisplay(ops, {
+    expect(prepareReplaceOpsForDisplay(ops, {
       ignoreLeadingFileWhitespace: false,
-    })[0]).toEqual({
+    }).ops[0]).toEqual({
       type: "replace",
       leftLine: "$wbook->close;",
       rightLine: "wbook.close();",
@@ -117,11 +114,11 @@ describe("normalizeReplaceOpsForDisplay", () => {
       },
     ];
 
-    expect(normalizeReplaceOpsForDisplay(ops, {
+    expect(prepareReplaceOpsForDisplay(ops, {
       ignoreLeadingFileWhitespace: true,
       leftLeadingFileWhitespaceEligible: true,
       rightLeadingFileWhitespaceEligible: true,
-    })[0]?.type).toBe("equal");
+    }).ops[0]?.type).toBe("equal");
   });
 
   it("keeps identical AppendLine rows equal without wrapper-only highlights", () => {
@@ -178,9 +175,9 @@ describe("normalizeReplaceOpsForDisplay", () => {
       },
     ];
 
-    expect(normalizeReplaceOpsForDisplay(ops, {
+    expect(prepareReplaceOpsForDisplay(ops, {
       ignoreLeadingFileWhitespace: false,
-    })[0]?.type).toBe("replace");
+    }).ops[0]?.type).toBe("replace");
   });
 
   it("returns reusable inline display data alongside normalized ops", () => {

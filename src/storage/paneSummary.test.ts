@@ -1,53 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { JSDOM } from "jsdom";
-import {
-  clearPaneSummary,
-  loadPaneSummary,
-  savePaneSummary,
-  type PaneSide,
-} from "./paneSummary";
+import { clearPaneSummary } from "./paneSummary";
 
-function createStorage() {
-  const dom = new JSDOM("<!doctype html><html><body></body></html>", {
-    url: "https://example.test",
-  });
-  return dom.window.localStorage;
-}
+describe("legacy pane summary cleanup", () => {
+  it("clears only the requested pane's legacy summary", () => {
+    const storage = new JSDOM("", { url: "https://example.test" }).window.localStorage;
+    const leftKey = "diff-viewer:paneMessageSummary:v1:left";
+    const rightKey = "diff-viewer:paneMessageSummary:v1:right";
+    storage.setItem(leftKey, "a.php");
+    storage.setItem(rightKey, "b.cs");
 
-describe("pane summary storage", () => {
-  it("saves and restores pane summaries", () => {
-    const storage = createStorage();
-    savePaneSummary(storage, "left", "読み込み完了: a.php");
-    savePaneSummary(storage, "right", "読み込み完了: b.cs");
+    clearPaneSummary(storage, "left");
 
-    expect(loadPaneSummary(storage, "left")).toBe("読み込み完了: a.php");
-    expect(loadPaneSummary(storage, "right")).toBe("読み込み完了: b.cs");
+    expect(storage.getItem(leftKey)).toBeNull();
+    expect(storage.getItem(rightKey)).toBe("b.cs");
   });
 
-  it("clears pane summaries", () => {
-    const storage = createStorage();
-    const side: PaneSide = "left";
-    savePaneSummary(storage, side, "読み込み完了: a.php");
-    clearPaneSummary(storage, side);
-
-    expect(loadPaneSummary(storage, side)).toBeNull();
-  });
-
-  it("handles storage errors gracefully", () => {
+  it("handles unavailable storage and removal failures", () => {
+    expect(() => clearPaneSummary(null, "left")).not.toThrow();
     const storage = {
-      getItem: () => {
-        throw new Error("fail");
-      },
-      setItem: () => {
-        throw new Error("fail");
-      },
-      removeItem: () => {
-        throw new Error("fail");
-      },
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => { throw new Error("fail"); },
     };
-
-    expect(loadPaneSummary(storage, "left")).toBeNull();
-    expect(() => savePaneSummary(storage, "left", "読み込み完了: a.php")).not.toThrow();
     expect(() => clearPaneSummary(storage, "left")).not.toThrow();
   });
 });

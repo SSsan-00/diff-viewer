@@ -497,11 +497,3 @@ export function createAnchorAppendLineMapper(
 ): AnchorReloadLineMapper {
   return createAnchorSnapshotLineMapper(previous, next, true);
 }
-
-export function relocateAnchorLineForReload(
-  lineNo: number,
-  previous: AnchorReloadPaneSnapshot,
-  next: AnchorReloadPaneSnapshot,
-): AnchorReloadLineResult {
-  return createAnchorReloadLineMapper(previous, next)(lineNo);
-}

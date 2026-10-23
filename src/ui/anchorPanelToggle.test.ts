@@ -1,10 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { JSDOM } from "jsdom";
-import { APP_TEMPLATE } from "./template";
+import { createAppTemplate } from "./template";
 import { setupAnchorPanelToggle } from "./anchorPanelToggle";
 
 function setupDom() {
-  const dom = new JSDOM(APP_TEMPLATE);
+  const dom = new JSDOM(createAppTemplate());
   const document = dom.window.document;
   setupAnchorPanelToggle(document);
   return document;

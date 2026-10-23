@@ -16,7 +16,6 @@
 │   ├── SPEC.md
 │   └── STRUCTURE.md
 ├── dist/
-├── public/
 ├── rust/
 ├── scripts/
 ├── src/
@@ -71,12 +70,10 @@
 - `src/diffEngine/types.ts` 差分モデルの型定義。exports: `LineOp`, `PairedOp`, `Range`, `InlineDiff`。
 - `src/diffEngine/normalize.ts` 改行正規化（CRLF/CR → LF）。export: `normalizeText`。
 - `src/diffEngine/normalize.test.ts` `normalizeText` のユニットテスト。
-- `src/diffEngine/lineSignature.ts` 行の識別キー抽出（ユニーク行・対応付け補助）。Razor `@:` の比較用正規化を含む。export: `extractLineKey`。
-- `src/diffEngine/lineSignature.test.ts` 識別キー抽出のテスト。
 - `src/diffEngine/lineSimilarity.ts` 行のトークン化/スコア計算（識別子/リテラル/埋め込みCSS/JS/HTMLの補助トークン）。Razor `@:` を比較時に除去し、AppendLine や `+=`/`.=` の文字列中身（空白正規化）を比較に活用する。コメント行は本文を抽出して比較する。exports: `buildLineFeatures`, `scoreLinePair`, `extractIndexTokens`, `normalizeCommentText`。
 - `src/diffEngine/lineSimilarity.test.ts` 行類似度スコア計算のテスト。
 - `src/diffEngine/lineSimilarityComment.test.ts` コメント行比較のテスト。
-- `src/diffEngine/templateIf.ts` PHPタグ付きの単純な `if` と Razor `@if` を厳格に識別し、同一条件だけを対応候補にする。exports: `extractTemplateIfSignature`, `areEquivalentTemplateIfSignatures`, `areEquivalentPhpRazorIfLines`。
+- `src/diffEngine/templateIf.ts` PHPタグ付きの単純な `if` と Razor `@if` を厳格に識別し、同一条件だけを対応候補にする。exports: `extractTemplateIfSignature`, `areEquivalentTemplateIfSignatures`。
 - `src/diffEngine/templateIf.test.ts` 対象構文、空白揺れ、左右反転、非対象構文の拒否テスト。
 - `src/diffEngine/arrayIf.ts` 配列参照と引数なし `.s()` の単純な空文字列比較を厳格に識別する。export: `extractArrayIfSignature`。
 - `src/diffEngine/diffLines.ts` 行レベル差分（Myers + ユニーク行優先）。exports: `diffLinesFromLines`, `diffLines`。
@@ -125,7 +122,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/file/segmentAppend.test.ts` 末尾改行の正規化テスト。
 - `src/file/segmentIndex.ts` 連結セグメントから「ファイル名 → 先頭行/セグメント/グローバル行」を解決。exports: `buildFileStartLineIndex`, `getFileStartLine`, `getFileSegment`, `getGlobalLineFromLocal`。
 - `src/file/segmentIndex.test.ts` ファイル先頭行インデックスのテスト。
-- `src/file/loadMessages.ts` 読み込み完了メッセージの整形（ファイル名列挙）。exports: `formatLoadSuccessLabel`, `listLoadedFileNames`。
+- `src/file/loadMessages.ts` 読み込み完了メッセージの整形（ファイル名列挙）。export: `listLoadedFileNames`。
 - `src/file/loadMessages.test.ts` メッセージ生成のテスト。
 - `src/file/loadErrors.ts` 読み込みエラー整形とログ判定。exports: `isInitializationReferenceError`, `formatFileLoadError`, `shouldLogFileLoadError`。
 - `src/file/loadErrors.test.ts` エラー整形のテスト。
@@ -133,7 +130,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/file/postLoad.test.ts` post-load 実行のテスト。
 - `src/file/language.ts` ファイル名から Monaco の言語IDを推定し、ペイン単位の言語を決定。exports: `detectLanguageFromFileName`, `inferPaneLanguage`。
 - `src/file/language.test.ts` 拡張子→言語推定のテスト。
-- `src/file/writeback.ts` File System Access API 経由の読み取り/保存ハンドル取得、再読み込み、文字コード/改行/BOMを維持した単一/複数ファイル書き戻しを担当。exports: `pickFilesWithHandles`, `collectDroppedFiles`, `getPaneWriteAvailability`, `readCurrentFileFromPaneTarget`, `saveTextWithPaneTarget` ほか。
+- `src/file/writeback.ts` File System Access API 経由の読み取り/保存ハンドル取得、再読み込み、文字コード/改行/BOMを維持した単一/複数ファイル書き戻しを担当。exports: `pickFilesWithHandles`, `collectDroppedFiles`, `getPaneWriteAvailability`, `readCurrentFileFromPaneTarget`, `writeBytesToFileHandle` ほか。
 - `src/file/writeback.test.ts` 保存可否、読み取り専用ハンドルでの再読み込み、UTF-8/Shift_JIS/EUC-JP の安全な書き戻し、破損防止のテスト。
 - `src/file/multiFileEditModel.ts` 連結表示された複数ファイルの境界判定、unmanaged領域を除いたファイル別テキスト抽出、ペイン全体と保存ハンドルの対応検証、複数ファイル保存の事前エンコード検証を担当。exports: `areChangesWithinSingleFileSegments`, `isFullySegmentedText`, `canUsePaneSaveTargets`, `extractSegmentTexts`, `buildMultiFileWritePlan`。
 - `src/file/multiFileEditModel.test.ts` 境界をまたぐ編集の拒否、ファイル別抽出、保存前エンコード検証のテスト。
@@ -159,8 +156,6 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/editorFind.test.ts` Find ショートカットのテスト。
 - `src/ui/goToLine.ts` Ctrl/Cmd+G のファイル単位行ジャンプUIを開くショートカット判定。export: `handleGoToLineShortcut`。
 - `src/ui/goToLine.test.ts` Ctrl/Cmd+G ショートカットのテスト。
-- `src/ui/wordWrapToggle.ts` 折り返しの適用処理（UIトグル用、現在は未配線）。export: `bindWordWrapToggle`。
-- `src/ui/wordWrapToggle.test.ts` 折り返し切替のテスト。
 - `src/ui/wordWrapShortcut.ts` Alt+Z の折り返しショートカット（UI無しの操作経路）。export: `bindWordWrapShortcut`。
 - `src/ui/wordWrapShortcut.test.ts` Alt+Z ショートカットのテスト。
 - `src/ui/syntaxHighlightToggle.ts` シンタックスハイライトの ON/OFF を切替。export: `bindSyntaxHighlightToggle`。
@@ -209,8 +204,6 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/favoritePanel.test.ts` パス登録パネル開閉のテスト。
 - `src/ui/workspacePanel.ts` ワークスペースUIパネルの開閉制御。export: `createWorkspacePanelController`。
 - `src/ui/workspacePanel.test.ts` ワークスペースパネル開閉のテスト。
-- `src/ui/workspaceShortcut.ts` Alt+N のトグルショートカット判定。export: `handleWorkspaceShortcut`。
-- `src/ui/workspaceShortcut.test.ts` ワークスペースショートカットのテスト。
 - `src/ui/themeShortcut.ts` Alt+T のテーマトグルショートカット判定。export: `handleThemeShortcut`。
 - `src/ui/themeShortcut.test.ts` テーマショートカットのテスト。
 - `src/ui/highlightShortcut.ts` Alt+H のハイライトトグルショートカット判定。export: `handleHighlightShortcut`。
@@ -226,7 +219,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/vimDefinition.ts` `gd` 用の軽量な定義候補探索とジャンプ補助。exports: `findDefinitionLine`, `goToLikelyDefinition`。
 - `src/ui/workspaceNavigation.ts` ワークスペース一覧の↑/↓移動ロジック。exports: `handleWorkspaceNavigation`, `getNextWorkspaceId`。
 - `src/ui/workspaceNavigation.test.ts` ワークスペースナビゲーションのテスト。
-- `src/ui/workspaceContent.ts` ワークスペース切替時のエディタ内容保存/復元を補助する。exports: `applyWorkspaceSwitch`, `applyWorkspaceSwitchWithHooks`。
+- `src/ui/workspaceContent.ts` ワークスペース切替時のエディタ内容保存/復元を補助する。export: `applyWorkspaceSwitchWithAnchors`。
 - `src/ui/workspaceContent.test.ts` ワークスペース切替のテキスト保存/復元とフック順序のテスト。
 - `src/ui/workspaceSwitchFlow.ts` ワークスペース切替の一連フロー（保存→復元→フック）をまとめる。export: `runWorkspaceSwitch`。
 - `src/ui/workspaceSwitchFlow.test.ts` 切替フローの順序とアンカー分離のテスト。
@@ -256,9 +249,9 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/ui/anchorDecorations.test.ts` アンカー装飾のテスト。
 - `src/ui/anchorNavigation.ts` アンカー一覧の↑/↓移動ロジック。exports: `getNextAnchorKey`, `resolveAnchorMoveDelta`。
 - `src/ui/anchorNavigation.test.ts` アンカーナビゲーションのテスト。
-- `src/ui/anchorTracking.ts` Monaco の変更範囲と必要時だけ参照する変更前行内容から通常編集後のアンカー行を追跡し、行末改行・隣接改行削除・複数行変更内の一意な完全行を判定する純粋ロジック。exports: `prepareContentChanges`, `transformTrackedLine`, `transformAnchorsForContentChanges` ほか。
+- `src/ui/anchorTracking.ts` Monaco の変更範囲と必要時だけ参照する変更前行内容から通常編集後のアンカー行を追跡し、行末改行・隣接改行削除・複数行変更内の一意な完全行を判定する純粋ロジック。exports: `prepareContentChanges`, `transformTrackedLineWithPreparedChanges`, `transformAnchorsWithPreparedChanges` ほか。
 - `src/ui/anchorTracking.test.ts` 行挿入・削除・分割・結合・複数変更・一意な完全行の生存時のアンカー追跡テスト。
-- `src/ui/anchorReload.ts` 同一ファイル内で一意行と単調な前後文脈を使い再読み込み後の対応表を有界走査で準備し、安全な1行対1行変更も保守的に再配置する純粋ロジック。ファイル追加時は物理的に不変な unmanaged 行も同じ絶対行へ維持する。exports: `createAnchorReloadLineMapper`, `createAnchorAppendLineMapper`, `relocateAnchorLineForReload`。
+- `src/ui/anchorReload.ts` 同一ファイル内で一意行と単調な前後文脈を使い再読み込み後の対応表を有界走査で準備し、安全な1行対1行変更も保守的に再配置する純粋ロジック。ファイル追加時は物理的に不変な unmanaged 行も同じ絶対行へ維持する。exports: `createAnchorReloadLineMapper`, `createAnchorAppendLineMapper`。
 - `src/ui/anchorReload.test.ts` 再読み込み時の挿入・削除・文脈付き重複・1行変更・交差文脈・複数ファイル境界と、追加時の unmanaged 行追跡のテスト。
 - `src/ui/anchorEncoding.ts` 文字コード変更時にファイル識別子と file-local 行を使い、行数不変の同一ファイルだけを内容非依存で追跡する純粋ロジック。export: `createAnchorEncodingLineMapper`。
 - `src/ui/anchorEncoding.test.ts` 全文の見え方が変わる再デコード、ファイル絶対位置の変化、行数・識別子・segment異常時の保守的判定テスト。
@@ -295,7 +288,7 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 
 - `src/storage/favoritePaths.ts` パス登録の永続化（左右別 + ワークスペース別キー・上限10件・ロード時補正・旧キー移行）。exports: `loadFavoritePaths`, `addFavoritePath`, `removeFavoritePath`, `moveFavoritePath` ほか。
 - `src/storage/favoritePaths.test.ts` パス登録保存のテスト。
-- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト/segments/選択/カーソル/スクロール・アンカー状態）。要確認アンカーの片側追跡座標も正規化して保持する。本文は IndexedDB を主ストアとし、小さい本文は localStorage に復元用フォールバックも残す。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `selectWorkspace`, `setWorkspaceTexts`, `setWorkspacePaneState`, `setWorkspaceAnchors`。
+- `src/storage/workspaces.ts` ワークスペースの永続化（一覧/順序/選択・上限10件・名前25文字・左右テキスト/segments/選択/カーソル/スクロール・アンカー状態）。要確認アンカーの片側追跡座標も正規化して保持する。本文は IndexedDB を主ストアとし、小さい本文は localStorage に復元用フォールバックも残す。exports: `loadWorkspaces`, `createWorkspace`, `renameWorkspace`, `deleteWorkspace`, `reorderWorkspaces`, `setWorkspaceSnapshot`, `setWorkspacePaneState`, `setWorkspaceAnchors`。
 - `src/storage/workspaces.test.ts` ワークスペース保存のテスト。
 - `src/storage/persistedState.ts` UI状態の localStorage 保存/復元と本文の IndexedDB 保存、復元用フォールバック、スケジューラ。exports: `STORAGE_KEY`, `STORAGE_VERSION`, `loadPersistedState`, `savePersistedState`, `clearPersistedState`, `createPersistScheduler`。
 - `src/storage/persistedState.test.ts` 永続化のテスト。
@@ -303,8 +296,8 @@ segments 管理（ファイル分割・行番号・連結）は `decodedFiles.ts
 - `src/storage/startupRestore.test.ts` 復元優先順位、legacyアンカー移行、要確認追跡座標、segment範囲・重複検証のテスト。
 - `src/storage/paneSaveTargets.ts` 再読み込み/保存用ハンドルをワークスペース/ペイン別に IndexedDB 保存する。単一/複数ファイルに対応。exports: `loadPaneSaveTargets`, `savePaneSaveTargets`, `clearPaneSaveTarget`, `createIndexedDbPaneSaveTargetStore`。
 - `src/storage/paneSaveTargets.test.ts` ペイン再読み込み/保存用ハンドルの保存/復元/削除テスト。
-- `src/storage/paneSummary.ts` 読み込み完了サマリの保存/復元。exports: `loadPaneSummary`, `savePaneSummary`, `clearPaneSummary`。
-- `src/storage/paneSummary.test.ts` サマリ保存/復元のテスト。
+- `src/storage/paneSummary.ts` 旧読み込み完了サマリの削除。export: `clearPaneSummary`。
+- `src/storage/paneSummary.test.ts` 旧サマリ削除のテスト。
 
 ### src/scrollSync/
 

@@ -255,16 +255,6 @@ export function beginVersionedStateTransition<State>(
   };
 }
 
-export function beginVersionedStateChange<State>(
-  history: VersionedStateHistory<State>,
-  change: VersionedStateChange,
-  stateBeforeChange: State,
-): State | null {
-  return (
-    beginVersionedStateTransition(history, change, stateBeforeChange)?.to ?? null
-  );
-}
-
 export function commitVersionedStateChange<State>(
   history: VersionedStateHistory<State>,
   stateAfterChange: State,

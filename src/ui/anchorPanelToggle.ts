@@ -51,14 +51,3 @@ export function setupAnchorPanelToggle(
     options.onToggle?.(collapsed);
   });
 }
-
-export function setAnchorPanelCollapsed(
-  root: ParentNode,
-  collapsed: boolean,
-): void {
-  const elements = getAnchorToggleElements(root);
-  if (!elements) {
-    return;
-  }
-  applyCollapsedState(elements, collapsed);
-}

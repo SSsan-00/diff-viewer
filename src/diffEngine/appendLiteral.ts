@@ -195,7 +195,3 @@ export function extractAppendLiteralInlineMap(line: string): AppendLiteralInline
     payloadRange: { start: payloadStart, end: payloadEnd },
   };
 }
-
-export function toAppendLiteralOrLine(line: string): string {
-  return extractAppendLiteral(line) ?? line;
-}

@@ -1,7 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
   createLineNumberFormatter,
-  getLineSegment,
   getLineSegmentInfo,
   updateSegmentsForChanges,
   type LineSegment,
@@ -52,9 +51,9 @@ describe("line number formatter", () => {
       { startLine: 3, lineCount: 4, fileIndex: 2, fileName: "beta.txt" },
     ];
 
-    const segment = getLineSegment(segments, 5);
+    const segment = getLineSegmentInfo(segments, 5);
     expect(segment?.fileName).toBe("beta.txt");
-    expect(getLineSegment(segments, 10)).toBeNull();
+    expect(getLineSegmentInfo(segments, 10)).toBeNull();
   });
 
   it("updates segment line counts when edits add lines", () => {

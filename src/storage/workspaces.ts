@@ -790,20 +790,6 @@ export function deleteWorkspace(
   return { ok: true, state: nextState };
 }
 
-export function selectWorkspace(
-  storage: Storage | null,
-  state: WorkspacesState,
-  id: string,
-  options?: WorkspaceStorageOptions,
-): WorkspaceResult {
-  if (!state.workspaces.some((workspace) => workspace.id === id)) {
-    return { ok: false, reason: "not-found", state };
-  }
-  const nextState: WorkspacesState = { ...state, selectedId: id };
-  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [] });
-  return { ok: true, state: nextState };
-}
-
 export function reorderWorkspaces(
   storage: Storage | null,
   state: WorkspacesState,
@@ -828,26 +814,6 @@ export function reorderWorkspaces(
     selectedId: state.selectedId,
   };
   void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [] });
-  return { ok: true, state: nextState };
-}
-
-export function setWorkspaceTexts(
-  storage: Storage | null,
-  state: WorkspacesState,
-  id: string,
-  leftText: string,
-  rightText: string,
-  options?: WorkspaceStorageOptions,
-): WorkspaceResult {
-  const index = state.workspaces.findIndex((workspace) => workspace.id === id);
-  if (index === -1) {
-    return { ok: false, reason: "not-found", state };
-  }
-  const nextWorkspaces = state.workspaces.map((workspace) =>
-    workspace.id === id ? { ...workspace, leftText, rightText } : workspace,
-  );
-  const nextState: WorkspacesState = { ...state, workspaces: nextWorkspaces };
-  void saveWorkspaces(storage, nextState, { ...options, dirtyWorkspaceIds: [id] });
   return { ok: true, state: nextState };
 }
 

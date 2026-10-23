@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildDecodedFiles, type DecodedFilesResult } from "../file/decodedFiles";
 import {
   createAnchorAppendLineMapper,
-  relocateAnchorLineForReload,
+  createAnchorReloadLineMapper,
   type AnchorReloadPaneSnapshot,
 } from "./anchorReload";
 
@@ -19,12 +19,12 @@ function buildSnapshot(
   return decoded;
 }
 
-describe("relocateAnchorLineForReload", () => {
+describe("createAnchorReloadLineMapper", () => {
   it("keeps the same file-local line when the file body is unchanged", () => {
     const previous = buildSnapshot([{ name: "a.txt", text: "same\nsame\ntail" }]);
     const next = buildSnapshot([{ name: "a.txt", text: "same\nsame\ntail" }]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "mapped",
       lineNo: 1,
     });
@@ -38,7 +38,7 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "header\ninserted\ntarget\ntail" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "mapped",
       lineNo: 2,
     });
@@ -50,7 +50,7 @@ describe("relocateAnchorLineForReload", () => {
     ]);
     const next = buildSnapshot([{ name: "a.txt", text: "header\ntarget\ntail" }]);
 
-    expect(relocateAnchorLineForReload(2, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(2)).toEqual({
       status: "mapped",
       lineNo: 1,
     });
@@ -70,11 +70,11 @@ describe("relocateAnchorLineForReload", () => {
       },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "mapped",
       lineNo: 2,
     });
-    expect(relocateAnchorLineForReload(3, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(3)).toEqual({
       status: "mapped",
       lineNo: 4,
     });
@@ -88,7 +88,7 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "repeat\ntarget updated\nrepeat" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "mapped",
       lineNo: 1,
     });
@@ -102,7 +102,7 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "target\nmarker\ntarget updated" },
     ]);
 
-    expect(relocateAnchorLineForReload(2, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(2)).toEqual({
       status: "mapped",
       lineNo: 2,
     });
@@ -116,11 +116,11 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "header\nONE\nTWO\ntail" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "stale",
       reason: "line-changed-or-deleted",
     });
-    expect(relocateAnchorLineForReload(2, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(2)).toEqual({
       status: "stale",
       reason: "line-changed-or-deleted",
     });
@@ -134,11 +134,11 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "new\nrepeat\nrepeat\nnew tail" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });
-    expect(relocateAnchorLineForReload(2, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(2)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });
@@ -152,11 +152,11 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "new\nmarker\nrepeat\nnew tail" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });
-    expect(relocateAnchorLineForReload(3, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(3)).toEqual({
       status: "mapped",
       lineNo: 2,
     });
@@ -170,11 +170,11 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "A\nrepeat\nrepeat\nB\nC" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "mapped",
       lineNo: 1,
     });
-    expect(relocateAnchorLineForReload(3, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(3)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });
@@ -186,7 +186,7 @@ describe("relocateAnchorLineForReload", () => {
     ]);
     const deleted = buildSnapshot([{ name: "a.txt", text: "header\ntail" }]);
 
-    expect(relocateAnchorLineForReload(1, previous, deleted)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, deleted)(1)).toEqual({
       status: "stale",
       reason: "line-changed-or-deleted",
     });
@@ -206,15 +206,15 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "header\ntarget\ntarget\ntail" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previousDuplicate, nextUnique)).toEqual({
+    expect(createAnchorReloadLineMapper(previousDuplicate, nextUnique)(1)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });
-    expect(relocateAnchorLineForReload(2, previousDuplicate, nextUnique)).toEqual({
+    expect(createAnchorReloadLineMapper(previousDuplicate, nextUnique)(2)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });
-    expect(relocateAnchorLineForReload(1, previousUnique, nextDuplicate)).toEqual({
+    expect(createAnchorReloadLineMapper(previousUnique, nextDuplicate)(1)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });
@@ -228,7 +228,7 @@ describe("relocateAnchorLineForReload", () => {
       { name: "a.txt", text: "new header\ntarget\ntarget\nnew tail" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "stale",
       reason: "ambiguous-line",
     });
@@ -244,7 +244,7 @@ describe("relocateAnchorLineForReload", () => {
       { name: "b.txt", text: "target\nB2" },
     ]);
 
-    expect(relocateAnchorLineForReload(1, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(1)).toEqual({
       status: "stale",
       reason: "line-changed-or-deleted",
     });
@@ -260,7 +260,7 @@ describe("relocateAnchorLineForReload", () => {
       { name: "b.txt", text: "B1\ntarget\nB3" },
     ]);
 
-    expect(relocateAnchorLineForReload(2, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(2)).toEqual({
       status: "mapped",
       lineNo: 4,
     });
@@ -276,7 +276,7 @@ describe("relocateAnchorLineForReload", () => {
       { name: "b.txt", text: "B1\ntarget\nB3" },
     ]);
 
-    expect(relocateAnchorLineForReload(4, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(4)).toEqual({
       status: "mapped",
       lineNo: 2,
     });
@@ -286,7 +286,7 @@ describe("relocateAnchorLineForReload", () => {
     const previous = buildSnapshot([{ name: "a.txt", text: "target" }]);
     const next = buildSnapshot([{ name: "b.txt", text: "target" }]);
 
-    expect(relocateAnchorLineForReload(0, previous, next)).toEqual({
+    expect(createAnchorReloadLineMapper(previous, next)(0)).toEqual({
       status: "stale",
       reason: "file-unavailable",
     });

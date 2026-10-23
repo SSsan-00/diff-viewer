@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { diffLinesFromLines, prepareDiffLinesInputFromLines } from "./diffLines";
 import { diffInline, diffInlineWithAppendLiteral } from "./diffInline";
-import { toAppendLiteralOrLine } from "./appendLiteral";
+import { extractAppendLiteral } from "./appendLiteral";
 import { pairReplace } from "./pairReplace";
 import { prepareReplaceOpsForDisplay } from "./replaceVisibility";
 import { diffWithAnchors, type Anchor } from "./anchors";
@@ -1117,7 +1117,7 @@ describe("semantic alignment across languages", () => {
     expect(findReplace(ops, "</body>", "AppendLine(\"</body>\"")).toBe(true);
     expect(findInsert(ops, "StringBuilder")).toBe(true);
 
-    const inline = diffInline(left[20], toAppendLiteralOrLine(right[21]));
+    const inline = diffInline(left[20], (extractAppendLiteral(right[21]) ?? right[21]));
     expect(inline.leftRanges.length + inline.rightRanges.length).toBe(0);
   });
 

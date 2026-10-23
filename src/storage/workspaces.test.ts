@@ -14,8 +14,6 @@ import {
   setWorkspacePaneState,
   setWorkspaceAnchors,
   setWorkspaceSnapshot,
-  setWorkspaceTexts,
-  selectWorkspace,
   WORKSPACE_LIMIT,
   WORKSPACE_NAME_LIMIT,
   type WorkspacesState,
@@ -161,7 +159,7 @@ describe("workspaces storage", () => {
     }
   });
 
-  it("renames and selects workspaces", () => {
+  it("renames workspaces", () => {
     const storage = createStorage();
     const state = createState(["Alpha", "Beta"]);
     const renamed = renameWorkspace(storage, state, "ws-1", "Gamma");
@@ -171,17 +169,16 @@ describe("workspaces storage", () => {
         renamed.state.workspaces.find((item) => item.id === "ws-1")?.name,
       ).toBe("Gamma");
     }
-    const selected = selectWorkspace(storage, state, "ws-1");
-    expect(selected.ok).toBe(true);
-    if (selected.ok) {
-      expect(selected.state.selectedId).toBe("ws-1");
-    }
   });
 
   it("stores pane texts per workspace", async () => {
     const storage = createStorage();
     const state = createState(["Alpha", "Beta"]);
-    const updated = setWorkspaceTexts(storage, state, "ws-0", "left-a", "right-a");
+    const updated = setWorkspaceSnapshot(storage, state, "ws-0", {
+      left: { text: "left-a", segments: [], activeFile: null, cursor: null, scrollTop: null },
+      right: { text: "right-a", segments: [], activeFile: null, cursor: null, scrollTop: null },
+      anchors: state.workspaces[0].anchors,
+    });
     expect(updated.ok).toBe(true);
     if (updated.ok) {
       const stored = await loadWorkspaces(storage);
@@ -566,12 +563,15 @@ describe("workspaces storage", () => {
     staleTextStore.texts.set("diffViewer.workspaces:text:ws-0:left", "stale left");
     staleTextStore.texts.set("diffViewer.workspaces:text:ws-0:right", "stale right");
 
-    const updated = setWorkspaceTexts(
+    const updated = setWorkspaceSnapshot(
       storage,
       state,
       "ws-0",
-      "fresh left",
-      "fresh right",
+      {
+        left: { text: "fresh left", segments: [], activeFile: null, cursor: null, scrollTop: null },
+        right: { text: "fresh right", segments: [], activeFile: null, cursor: null, scrollTop: null },
+        anchors: state.workspaces[0].anchors,
+      },
       { textStore: fallbackTextStore },
     );
 

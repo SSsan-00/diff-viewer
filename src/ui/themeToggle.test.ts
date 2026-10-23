@@ -1,10 +1,10 @@
 import { describe, it, expect, vi } from "vitest";
 import { JSDOM } from "jsdom";
-import { APP_TEMPLATE } from "./template";
+import { createAppTemplate } from "./template";
 import { setupThemeToggle } from "./themeToggle";
 
 function setupDom() {
-  const dom = new JSDOM(APP_TEMPLATE);
+  const dom = new JSDOM(createAppTemplate());
   return dom.window.document;
 }
 

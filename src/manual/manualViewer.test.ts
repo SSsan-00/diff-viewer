@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import { JSDOM } from "jsdom";
 import {
   decodeManualHtmlForEmbedding,
-  encodeManualHtmlForEmbedding,
   getEmbeddedManualHtml,
   prepareManualHtmlForSandbox,
   renderManualViewer,
@@ -31,11 +30,10 @@ describe("manual viewer", () => {
     expect(getEmbeddedManualHtml(dom.window.document)).toBeNull();
   });
 
-  it("escapes closing script tags for safe embedding and decodes them for srcdoc", () => {
+  it("decodes escaped closing script tags for srcdoc", () => {
     const html = "<html><body></script><p>after</p></body></html>";
 
-    expect(encodeManualHtmlForEmbedding(html)).not.toContain("</script>");
-    expect(decodeManualHtmlForEmbedding(encodeManualHtmlForEmbedding(html))).toBe(html);
+    expect(decodeManualHtmlForEmbedding("<html><body><\\/script><p>after</p></body></html>")).toBe(html);
   });
 
   it("removes manual scripts and installs sandbox-safe in-page navigation", () => {

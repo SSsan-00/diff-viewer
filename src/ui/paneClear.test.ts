@@ -1,12 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
 import { JSDOM } from "jsdom";
-import { APP_TEMPLATE } from "./template";
-import { bindPaneClearButton, clearEditorModel, clearEditorsForUndo } from "./paneClear";
+import { createAppTemplate } from "./template";
+import { bindPaneClearButton, clearEditorModel } from "./paneClear";
 import type { LineSegment } from "../file/lineNumbering";
 import type { editor } from "monaco-editor";
 
 function setupDocument(): Document {
-  return new JSDOM(APP_TEMPLATE).window.document;
+  return new JSDOM(createAppTemplate()).window.document;
 }
 
 describe("pane clear buttons", () => {
@@ -185,17 +185,6 @@ describe("pane clear buttons", () => {
     expect(updateLeft).toHaveBeenCalledTimes(1);
   });
 
-  it("clears multiple editors and focuses the target", () => {
-    const focusLeft = vi.fn();
-    const leftEditor = Object.assign(createEditor("left"), { focus: focusLeft });
-    const rightEditor = createEditor("right");
-
-    clearEditorsForUndo([leftEditor, rightEditor], leftEditor);
-
-    expect(leftEditor.value).toBe("");
-    expect(rightEditor.value).toBe("");
-    expect(focusLeft).toHaveBeenCalledTimes(1);
-  });
 });
 
 function createEditor(initial: string) {

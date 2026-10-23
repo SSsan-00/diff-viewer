@@ -99,6 +99,7 @@ export function prepareContentChanges(
         text,
       };
     })
+    // Monaco ranges use pre-change coordinates; process edits from bottom to top.
     .sort(comparePreparedChangesDescending);
 }
 
@@ -164,41 +165,12 @@ function transformTrackedLineWithOrderedChanges(
   return { lineNo: nextLineNo, stale: false };
 }
 
-export function transformTrackedLine(
-  lineNo: number,
-  changes: readonly ContentChangeLike[],
-  context?: ContentChangeTrackingContext,
-): TrackedLineResult {
-  // Monaco reports every range in the pre-change model. Processing from the
-  // bottom keeps an already-shifted tracked line comparable with the remaining
-  // original-coordinate ranges.
-  return transformTrackedLineWithPreparedChanges(
-    lineNo,
-    prepareContentChanges(changes),
-    context,
-  );
-}
-
 export function transformTrackedLineWithPreparedChanges(
   lineNo: number,
   changes: PreparedContentChanges,
   context?: ContentChangeTrackingContext,
 ): TrackedLineResult {
   return transformTrackedLineWithOrderedChanges(lineNo, changes, context);
-}
-
-export function transformAnchorsForContentChanges(
-  anchors: readonly Anchor[],
-  side: AnchorSide,
-  changes: readonly ContentChangeLike[],
-  context?: ContentChangeTrackingContext,
-): TrackedAnchorResult[] {
-  return transformAnchorsWithPreparedChanges(
-    anchors,
-    side,
-    prepareContentChanges(changes),
-    context,
-  );
 }
 
 export function transformAnchorsWithPreparedChanges(

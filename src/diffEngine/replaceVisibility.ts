@@ -116,10 +116,3 @@ export function prepareReplaceOpsForDisplay(
     ops: normalizedOps,
   };
 }
-
-export function normalizeReplaceOpsForDisplay(
-  ops: readonly PairedOp[],
-  options: ReplaceVisibilityOptions,
-): PairedOp[] {
-  return prepareReplaceOpsForDisplay(ops, options).ops;
-}

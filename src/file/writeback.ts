@@ -54,10 +54,6 @@ export type PaneWriteTarget = {
   lineEnding: FileLineEnding;
 };
 
-export type WritablePaneWriteTarget = Omit<PaneWriteTarget, "handle"> & {
-  handle: WritableFileHandle;
-};
-
 export type PaneSaveTarget = Omit<PaneWriteTarget, "handle"> & {
   handle: ReadableFileHandle;
 };
@@ -719,15 +715,6 @@ export function buildPaneWriteBytesPreservingSource(
   return concatBytes(chunks);
 }
 
-export async function writeTextToFileHandle(
-  handle: WritableFileHandle,
-  text: string,
-  options: WriteEncodingOptions,
-): Promise<void> {
-  const bytes = buildPaneWriteBytes(text, options);
-  await writeBytesToFileHandle(handle, bytes);
-}
-
 export async function writeBytesToFileHandle(
   handle: WritableFileHandle,
   bytes: Uint8Array,
@@ -744,17 +731,6 @@ export async function writeBytesToFileHandle(
     }
     throw error;
   }
-}
-
-export async function saveTextWithPaneTarget(
-  target: WritablePaneWriteTarget,
-  text: string,
-): Promise<void> {
-  await writeTextToFileHandle(target.handle, text, {
-    resolvedEncoding: target.resolvedEncoding,
-    includeUtf8Bom: target.includeUtf8Bom,
-    lineEnding: target.lineEnding,
-  });
 }
 
 export async function readCurrentFileFromPaneTarget(

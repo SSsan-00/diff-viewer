@@ -36,13 +36,6 @@ function findSegment(segments: LineSegment[], lineNumber: number): LineSegment |
   return null;
 }
 
-export function getLineSegment(
-  segments: LineSegment[],
-  lineNumber: number,
-): LineSegment | null {
-  return findSegment(segments, lineNumber);
-}
-
 function findSegmentIndex(segments: LineSegment[], lineNumber: number): number {
   for (let index = 0; index < segments.length; index += 1) {
     const segment = segments[index];

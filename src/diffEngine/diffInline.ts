@@ -340,18 +340,6 @@ let activeDiffInlineCore: DiffInlineCore = diffInlineTypeScript;
 let activeDiffInlineBatchCore: DiffInlineBatchCore = (inputs) =>
   inputs.map((input) => activeDiffInlineCore(input.leftLine, input.rightLine));
 
-export function createDiffInline(
-  diffCore: DiffInlineCore = diffInlineTypeScript,
-): DiffInlineCore {
-  return (leftLine, rightLine) => diffCore(leftLine, rightLine);
-}
-
-export function createDiffInlineBatch(
-  diffBatchCore: DiffInlineBatchCore = activeDiffInlineBatchCore,
-): DiffInlineBatchCore {
-  return (inputs) => diffBatchCore(inputs);
-}
-
 export function setDiffInlineCore(diffCore: DiffInlineCore | null): void {
   activeDiffInlineCore = diffCore ?? diffInlineTypeScript;
 }

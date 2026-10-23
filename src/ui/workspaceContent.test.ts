@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyWorkspaceSwitch, applyWorkspaceSwitchWithHooks } from "./workspaceContent";
+import { applyWorkspaceSwitchWithAnchors } from "./workspaceContent";
 import type { WorkspacesState } from "../storage/workspaces";
 
-describe("applyWorkspaceSwitch", () => {
+describe("applyWorkspaceSwitchWithAnchors", () => {
   it("captures current editor values and applies the next workspace text", () => {
     const state: WorkspacesState = {
       selectedId: "ws-a",
@@ -40,7 +40,7 @@ describe("applyWorkspaceSwitch", () => {
     const left = { getValue: vi.fn(() => "left-current"), setValue: vi.fn() };
     const right = { getValue: vi.fn(() => "right-current"), setValue: vi.fn() };
 
-    const nextState = applyWorkspaceSwitch(state, "ws-b", { left, right });
+    const nextState = applyWorkspaceSwitchWithAnchors(state, "ws-b", { left, right }, state.workspaces[0].anchors);
 
     expect(left.getValue).toHaveBeenCalledTimes(1);
     expect(right.getValue).toHaveBeenCalledTimes(1);
@@ -106,7 +106,7 @@ describe("applyWorkspaceSwitch", () => {
       }),
     };
 
-    applyWorkspaceSwitchWithHooks(state, "ws-b", { left, right }, {
+    applyWorkspaceSwitchWithAnchors(state, "ws-b", { left, right }, state.workspaces[0].anchors, {
       onAfterRestore: () => calls.push("after-restore"),
     });
 
@@ -151,7 +151,7 @@ describe("applyWorkspaceSwitch", () => {
     const left = { getValue: vi.fn(() => "left-current"), setValue: vi.fn() };
     const right = { getValue: vi.fn(() => "right-current"), setValue: vi.fn() };
 
-    const nextState = applyWorkspaceSwitch(state, "ws-b", { left, right });
+    const nextState = applyWorkspaceSwitchWithAnchors(state, "ws-b", { left, right }, state.workspaces[0].anchors);
     const alpha = nextState.workspaces.find((workspace) => workspace.id === "ws-a");
     const beta = nextState.workspaces.find((workspace) => workspace.id === "ws-b");
 

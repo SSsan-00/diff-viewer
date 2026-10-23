@@ -897,7 +897,7 @@ Myers の結果は基本的に `insert`/`delete` の列として得られるた�
 - **ユニットテスト**: 行内差分（2文字列→ハイライト範囲）
 - **DOMテスト**: トグル操作でスクロール連動が切り替わる
 - **配布物検査テスト**: `dist/index.html` / `dist/index.min.html` に禁止文字列/SourceMap/modulepreload polyfill が含まれないこと（置換なし）
-- **E2E は後回し**（まず Vitest + Testing Library で十分）
+- **E2E は後回し**（まず Vitest + JSDOM で検証する）
 
 ### 12.3 最初に書くべきテスト（MVPの最短ルート）
 

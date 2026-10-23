@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   applySideScopedAnchorTransition,
-  beginVersionedStateChange,
   beginVersionedStateTransition,
   commitVersionedStateChange,
   createVersionedStateHistory,
@@ -87,11 +86,7 @@ describe("versioned anchor edit history", () => {
     });
     const history = createVersionedStateHistory(100, before, cloneAnchorState);
 
-    beginVersionedStateChange(
-      history,
-      { versionId: 101, isUndoing: false, isRedoing: false },
-      before,
-    );
+    beginVersionedStateTransition(history, { versionId: 101, isUndoing: false, isRedoing: false }, before);
     commitVersionedStateChange(history, provisional);
     replaceCurrentVersionedState(history, settled);
 
@@ -121,29 +116,17 @@ describe("versioned anchor edit history", () => {
     const history = createVersionedStateHistory(10, before, cloneState);
 
     expect(
-      beginVersionedStateChange(
-        history,
-        { versionId: 11, isUndoing: false, isRedoing: false },
-        before,
-      ),
+      (beginVersionedStateTransition(history, { versionId: 11, isUndoing: false, isRedoing: false }, before)?.to ?? null),
     ).toBeNull();
     commitVersionedStateChange(history, after);
 
     expect(
-      beginVersionedStateChange(
-        history,
-        { versionId: 10, isUndoing: true, isRedoing: false },
-        after,
-      ),
+      (beginVersionedStateTransition(history, { versionId: 10, isUndoing: true, isRedoing: false }, after)?.to ?? null),
     ).toEqual(before);
     commitVersionedStateChange(history, before);
 
     expect(
-      beginVersionedStateChange(
-        history,
-        { versionId: 11, isUndoing: false, isRedoing: true },
-        before,
-      ),
+      (beginVersionedStateTransition(history, { versionId: 11, isUndoing: false, isRedoing: true }, before)?.to ?? null),
     ).toEqual(after);
   });
 
@@ -153,33 +136,17 @@ describe("versioned anchor edit history", () => {
     const second: State = { active: [5], stale: [], pending: null };
     const history = createVersionedStateHistory(20, initial, cloneState);
 
-    beginVersionedStateChange(
-      history,
-      { versionId: 21, isUndoing: false, isRedoing: false },
-      initial,
-    );
+    beginVersionedStateTransition(history, { versionId: 21, isUndoing: false, isRedoing: false }, initial);
     commitVersionedStateChange(history, first);
-    beginVersionedStateChange(
-      history,
-      { versionId: 22, isUndoing: false, isRedoing: false },
-      first,
-    );
+    beginVersionedStateTransition(history, { versionId: 22, isUndoing: false, isRedoing: false }, first);
     commitVersionedStateChange(history, second);
 
     expect(
-      beginVersionedStateChange(
-        history,
-        { versionId: 21, isUndoing: true, isRedoing: false },
-        second,
-      ),
+      (beginVersionedStateTransition(history, { versionId: 21, isUndoing: true, isRedoing: false }, second)?.to ?? null),
     ).toEqual(first);
     commitVersionedStateChange(history, first);
     expect(
-      beginVersionedStateChange(
-        history,
-        { versionId: 20, isUndoing: true, isRedoing: false },
-        first,
-      ),
+      (beginVersionedStateTransition(history, { versionId: 20, isUndoing: true, isRedoing: false }, first)?.to ?? null),
     ).toEqual(initial);
   });
 
@@ -189,20 +156,12 @@ describe("versioned anchor edit history", () => {
     const afterManualAction: State = { active: [7], stale: [], pending: null };
     const history = createVersionedStateHistory(30, initial, cloneState);
 
-    beginVersionedStateChange(
-      history,
-      { versionId: 31, isUndoing: false, isRedoing: false },
-      initial,
-    );
+    beginVersionedStateTransition(history, { versionId: 31, isUndoing: false, isRedoing: false }, initial);
     commitVersionedStateChange(history, afterEdit);
     resetVersionedStateHistory(history, 31, afterManualAction);
 
     expect(
-      beginVersionedStateChange(
-        history,
-        { versionId: 30, isUndoing: true, isRedoing: false },
-        afterManualAction,
-      ),
+      (beginVersionedStateTransition(history, { versionId: 30, isUndoing: true, isRedoing: false }, afterManualAction)?.to ?? null),
     ).toBeNull();
   });
 
@@ -211,20 +170,12 @@ describe("versioned anchor edit history", () => {
     const history = createVersionedStateHistory(40, initial, cloneState);
     initial.active[0] = 99;
 
-    const restored = beginVersionedStateChange(
-      history,
-      { versionId: 40, isUndoing: true, isRedoing: false },
-      initial,
-    );
+    const restored = (beginVersionedStateTransition(history, { versionId: 40, isUndoing: true, isRedoing: false }, initial)?.to ?? null);
     expect(restored).toEqual({ active: [2], stale: [], pending: null });
     restored?.active.push(8);
 
     expect(
-      beginVersionedStateChange(
-        history,
-        { versionId: 40, isUndoing: false, isRedoing: true },
-        initial,
-      ),
+      (beginVersionedStateTransition(history, { versionId: 40, isUndoing: false, isRedoing: true }, initial)?.to ?? null),
     ).toEqual({ active: [2], stale: [], pending: null });
   });
 

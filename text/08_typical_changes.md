@@ -17,7 +17,7 @@
 
 ## 3) 差分ロジックを改善したい
 - 入口: `src/diffEngine/` の純粋関数
-- 行対応やスコアリング: `src/diffEngine/lineSignature.ts` / `src/diffEngine/lineSimilarity.ts`
+- 行対応やスコアリング: `src/diffEngine/pairReplace.ts` / `src/diffEngine/lineSimilarity.ts`
 - 追加テスト: `src/diffEngine/*.test.ts`
 
 ## 4) 保存する状態を増やしたい

@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { JSDOM } from "jsdom";
-import { APP_TEMPLATE } from "./ui/template";
+import { createAppTemplate } from "./ui/template";
 
 function loadDocument(): Document {
-  return new JSDOM(APP_TEMPLATE).window.document;
+  return new JSDOM(createAppTemplate()).window.document;
 }
 
 describe("layout template", () => {

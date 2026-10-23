@@ -8,10 +8,6 @@ type ManualViewerOptions = {
   backLabel: string;
 };
 
-export function encodeManualHtmlForEmbedding(html: string): string {
-  return html.replace(/<\/script/gi, "<\\/script");
-}
-
 export function decodeManualHtmlForEmbedding(html: string): string {
   return html.replace(/<\\\/script/gi, "</script");
 }
