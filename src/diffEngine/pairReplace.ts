@@ -1,5 +1,6 @@
 import type { LineOp, PairedOp } from "./types";
 import { extractAppendLiteral } from "./appendLiteral";
+import { extractArrayIfSignature, type ArrayIfSignature } from "./arrayIf";
 import {
   buildLineFeatures,
   extractIndexTokens,
@@ -32,6 +33,7 @@ export type PairCandidate = {
 };
 
 type PreparedPairLine = {
+  arrayIfSignature: ArrayIfSignature | null;
   appendComparableKey: string | null;
   appendCoreComparableKey: string | null;
   commentBodyKey: string | null;
@@ -344,6 +346,7 @@ export function buildPairCandidates(
     const commentComparable = buildCommentComparable(text);
     const tokens = extractIndexTokens(feature);
     return {
+      arrayIfSignature: extractArrayIfSignature(text),
       appendComparableKey: appendComparable.key,
       appendCoreComparableKey: appendComparable.coreKey,
       commentBodyKey: commentComparable.bodyKey,
@@ -366,6 +369,7 @@ export function buildPairCandidates(
     const commentComparable = buildCommentComparable(text);
     const tokens = extractIndexTokens(feature);
     return {
+      arrayIfSignature: extractArrayIfSignature(text),
       appendComparableKey: appendComparable.key,
       appendCoreComparableKey: appendComparable.coreKey,
       commentBodyKey: commentComparable.bodyKey,
@@ -472,7 +476,11 @@ export function buildPairCandidates(
         areEquivalentTemplateIfSignatures(
           left.templateIfSignature,
           right.templateIfSignature,
-        )
+        ) ||
+        (left.arrayIfSignature &&
+          right.arrayIfSignature &&
+          left.arrayIfSignature.dialect !== right.arrayIfSignature.dialect &&
+          left.arrayIfSignature.key === right.arrayIfSignature.key)
       ) {
         candidates.push({
           deleteIndex: d,

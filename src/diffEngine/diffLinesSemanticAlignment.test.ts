@@ -3,6 +3,7 @@ import { diffLinesFromLines, prepareDiffLinesInputFromLines } from "./diffLines"
 import { diffInline, diffInlineWithAppendLiteral } from "./diffInline";
 import { toAppendLiteralOrLine } from "./appendLiteral";
 import { pairReplace } from "./pairReplace";
+import { prepareReplaceOpsForDisplay } from "./replaceVisibility";
 import { diffWithAnchors, type Anchor } from "./anchors";
 import type { PairedOp } from "./types";
 
@@ -266,6 +267,101 @@ describe("semantic alignment across languages", () => {
         rightLineNo: 3,
       },
     ]);
+  });
+
+  it.each([
+    [`if ($search['seldate_from'] != "")`, 'if (search["seldate_from"].s() != "")'],
+    ['if ($search["seldate_from"] != "")', 'if (search["seldate_from"].s() != "")'],
+    [`\tif\t( $search [ 'seldate_from' ] !=\t"" ) {`, '  if ( search [ "seldate_from" ] . s ( ) != "" )'],
+  ])("aligns array empty-string checks without hiding the conversion: %s", (php, converted) => {
+    for (const [left, right] of [[php, converted], [converted, php]]) {
+      expect(toPairedOps([left], [right])).toEqual([
+        {
+          type: "replace",
+          leftLine: left,
+          rightLine: right,
+          leftLineNo: 0,
+          rightLineNo: 0,
+        },
+      ]);
+    }
+  });
+
+  it.each([
+    'if (search["seldate_to"].s() != "")',
+    'if (other["seldate_from"].s() != "")',
+    'if (search["SELDATE_FROM"].s() != "")',
+    'if (search["seldate_from"].s() == "")',
+    'if (search["seldate_from"].s() != "value")',
+    'if (search["seldate_from"].s() !== "")',
+    'if (search["seldate_from"].s() != "" && enabled)',
+    'if (search["seldate_from"].s(value) != "")',
+    'if (search["seldate_from"].t() != "")',
+    'while (search["seldate_from"].s() != "")',
+    'if (search["seldate_from"].s() != "") // note',
+    'if (search["seldate_from"].s() != "") return;',
+  ])("does not broaden array-check pairing to a different condition: %s", (converted) => {
+    const php = `if ($search['seldate_from'] != "")`;
+    for (const [left, right] of [[php, converted], [converted, php]]) {
+      const ops = toPairedOps([left], [right]);
+      expect(findReplace(ops, left, right)).toBe(false);
+      expect(findDelete(ops, left)).toBe(true);
+      expect(findInsert(ops, right)).toBe(true);
+    }
+  });
+
+  it.each([
+    `if ($search['seldate_from'] != "" && $enabled)`,
+    `if ($search['seldate_from'] != "") // note`,
+    `if ($search['seldate_from'] != "value")`,
+    `if ($search['seldate_from'] == "")`,
+    `if ($search['seldate_' . 'from'] != "")`,
+    `if ($search[$key] != "")`,
+    `if ($search['seldate_from"] != "")`,
+  ])("does not treat an unsupported PHP condition as an empty-string check: %s", (php) => {
+    const converted = 'if (search["seldate_from"].s() != "")';
+    for (const [left, right] of [[php, converted], [converted, php]]) {
+      expect(findReplace(toPairedOps([left], [right]), left, right)).toBe(false);
+    }
+  });
+
+  it("keeps array conversion differences visible after display normalization", () => {
+    const ops = toPairedOps(
+      [`if ($search['seldate_from'] != "")`],
+      ['if (search["seldate_from"].s() != "")'],
+    );
+    const prepared = prepareReplaceOpsForDisplay(ops, { ignoreLeadingFileWhitespace: true });
+
+    expect(prepared.ops).toEqual(ops);
+    expect(prepared.ops[0].type).toBe("replace");
+    expect(prepared.displayDiffs[0]?.hasVisibleDiff).toBe(true);
+  });
+
+  it("keeps neighboring array keys aligned across an inserted condition and separate braces", () => {
+    const left = [
+      `if ($search['seldate_from'] != "")`,
+      `if ($search['seldate_to'] != "")`,
+      "done();",
+    ];
+    const right = [
+      'if (search["unrelated"].s() != "")',
+      'if (search["seldate_from"].s() != "")',
+      "{",
+      'if (search["seldate_to"].s() != "")',
+      "done();",
+    ];
+    const expected: PairedOp[] = [
+      { type: "insert", rightLine: right[0], rightLineNo: 0 },
+      { type: "replace", leftLine: left[0], rightLine: right[1], leftLineNo: 0, rightLineNo: 1 },
+      { type: "insert", rightLine: right[2], rightLineNo: 2 },
+      { type: "replace", leftLine: left[1], rightLine: right[3], leftLineNo: 1, rightLineNo: 3 },
+      { type: "equal", leftLine: left[2], rightLine: right[4], leftLineNo: 2, rightLineNo: 4 },
+    ];
+
+    expect(toPairedOps(left, right)).toEqual(expected);
+    expect(diffWithAnchors(left.join("\n"), right.join("\n"), [
+      { leftLineNo: 2, rightLineNo: 4 },
+    ])).toEqual(expected);
   });
 
   it("aligns PHP and Razor if wrappers across leading and internal space or tab changes", () => {

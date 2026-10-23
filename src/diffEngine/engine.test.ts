@@ -89,6 +89,21 @@ describe("createDiffEngine", () => {
     expect(diffInline(left, right)).toEqual(baseline);
   });
 
+  it.each(["ts", "wasm"] as const)("pairs array empty-string checks with the %s engine", async (mode) => {
+    const engine = await createDiffEngine({ mode });
+    const left = `if ($search['seldate_from'] != "")`;
+    const right = 'if (search["seldate_from"].s() != "")';
+    const expected: PairedOp[] = [
+      { type: "replace", leftLine: left, rightLine: right, leftLineNo: 0, rightLineNo: 0 },
+    ];
+
+    expect(engine.getStatus().activeMode).toBe(mode);
+    expect(pairReplace(engine.diffLines(left, right))).toEqual(expected);
+    expect(engine.diffWithAnchors(left + "\ndone();", right + "\ndone();", [
+      { leftLineNo: 1, rightLineNo: 1 },
+    ])[0]).toEqual(expected[0]);
+  });
+
   it("keeps embedded wasm append-literal batch diff output aligned with the TypeScript implementation", async () => {
     const inputs = [
       {
