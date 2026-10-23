@@ -29,7 +29,7 @@ describe("full clear lifecycle", () => {
     const source = readMainSource();
     const buildPaneClearOptions = extractFunction(source, "buildPaneClearOptions");
 
-    expect(buildPaneClearOptions).toContain("clearEditor: (editor) => {");
+    expect(buildPaneClearOptions).toMatch(/clearEditor: \(editor(?::[^)]+)?\) => \{/);
     expect(buildPaneClearOptions).toContain("withProgrammaticEdit(side");
     expect(buildPaneClearOptions).toContain("clearEditorModel(editor);");
   });

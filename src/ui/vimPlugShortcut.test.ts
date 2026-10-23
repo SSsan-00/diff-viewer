@@ -7,7 +7,7 @@ import {
   handleVimPlugShortcut,
 } from "./vimPlugShortcut";
 
-function prefix(window: Window): KeyboardEvent {
+function prefix(window: Pick<typeof globalThis, "KeyboardEvent">): KeyboardEvent {
   return new window.KeyboardEvent("keydown", {
     key: "v",
     code: "KeyV",
@@ -18,7 +18,7 @@ function prefix(window: Window): KeyboardEvent {
   });
 }
 
-function key(window: Window, value: string, code = ""): KeyboardEvent {
+function key(window: Pick<typeof globalThis, "KeyboardEvent">, value: string, code = ""): KeyboardEvent {
   return new window.KeyboardEvent("keydown", {
     key: value,
     code,

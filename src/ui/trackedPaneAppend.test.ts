@@ -236,7 +236,7 @@ describe("runTrackedPaneAppendTransaction", () => {
     ["segments", { segmentsSignature: "segments-b" }],
     ["save targets", { saveTargetsRevision: 3 }],
   ])("does not commit after %s changes while a file is loading", async (_, change) => {
-    let finishLoad: ((value: string) => void) | null = null;
+    let finishLoad!: (value: string) => void;
     const loaded = new Promise<string>((resolve) => {
       finishLoad = resolve;
     });
@@ -255,7 +255,7 @@ describe("runTrackedPaneAppendTransaction", () => {
     });
 
     currentContext = { ...currentContext, ...change };
-    finishLoad?.("loaded");
+    finishLoad("loaded");
 
     await expect(transaction).resolves.toEqual({
       status: "context-changed",

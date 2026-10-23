@@ -74,8 +74,8 @@ describe("workspace transfer", () => {
       return;
     }
     expect(parsed.workspace.name).toBe("Alpha");
-    expect(parsed.workspace.leftSegments[0]?.fileName).toBe("left.html");
-    expect(parsed.workspace.rightSegments[0]?.fileName).toBe("right.html");
+    expect(parsed.workspace.leftSegments?.[0]?.fileName).toBe("left.html");
+    expect(parsed.workspace.rightSegments?.[0]?.fileName).toBe("right.html");
     expect(parsed.workspace.anchors.staleManualAnchors).toEqual([
       {
         anchor: { leftLineNo: 5, rightLineNo: 6 },

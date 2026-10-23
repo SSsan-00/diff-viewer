@@ -12,7 +12,7 @@ import {
   EMBEDDED_DIFF_WASM_STATUS,
 } from "./embeddedDiffWasm";
 import { pairReplace } from "./pairReplace";
-import type { DiffLinesOptions, DiffEngineBindings, DiffEngineMode } from "./engine";
+import type { DiffLinesOptions, DiffEngineBindings } from "./engine";
 import { createDiffEngine, loadEmbeddedWasmDiffEngine } from "./engine";
 import type { LineOp, PairedOp } from "./types";
 

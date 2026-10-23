@@ -2,7 +2,7 @@ import type { Anchor } from "../diffEngine/anchors";
 import type { StaleManualAnchor } from "../storage/workspaces";
 
 type EditorLike = {
-  deltaDecorations: (oldDecorations: string[], newDecorations: unknown[]) => string[];
+  deltaDecorations: (oldDecorations: string[], newDecorations: []) => string[];
 };
 
 export type AnchorResetState = {

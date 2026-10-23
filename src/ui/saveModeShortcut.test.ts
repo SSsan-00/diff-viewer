@@ -7,7 +7,7 @@ import {
   handleSaveModeShortcut,
 } from "./saveModeShortcut";
 
-function keydown(window: Window, key: string, code = `Digit${key}`): KeyboardEvent {
+function keydown(window: Pick<typeof globalThis, "KeyboardEvent">, key: string, code = `Digit${key}`): KeyboardEvent {
   return new window.KeyboardEvent("keydown", {
     key,
     code,

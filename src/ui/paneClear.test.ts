@@ -3,6 +3,7 @@ import { JSDOM } from "jsdom";
 import { APP_TEMPLATE } from "./template";
 import { bindPaneClearButton, clearEditorModel, clearEditorsForUndo } from "./paneClear";
 import type { LineSegment } from "../file/lineNumbering";
+import type { editor } from "monaco-editor";
 
 function setupDocument(): Document {
   return new JSDOM(APP_TEMPLATE).window.document;
@@ -115,14 +116,13 @@ describe("pane clear buttons", () => {
   });
 
   it("prefers editor executeEdits to preserve undo stack", () => {
-    const editor = createEditor("filled");
-    const executeEdits = vi.fn((_, edits: Array<{ range: object; text: string }>) => {
+    const baseEditor = createEditor("filled");
+    const executeEdits = vi.fn((_source: string, edits: editor.IIdentifiedSingleEditOperation[]) => {
       const next = edits[0]?.text ?? "";
-      editor.value = next;
+      baseEditor.value = next;
     });
     const pushUndoStop = vi.fn();
-    editor.executeEdits = executeEdits;
-    editor.pushUndoStop = pushUndoStop;
+    const editor = Object.assign(baseEditor, { executeEdits, pushUndoStop });
 
     clearEditorModel(editor);
 
@@ -186,10 +186,9 @@ describe("pane clear buttons", () => {
   });
 
   it("clears multiple editors and focuses the target", () => {
-    const leftEditor = createEditor("left");
-    const rightEditor = createEditor("right");
     const focusLeft = vi.fn();
-    leftEditor.focus = focusLeft;
+    const leftEditor = Object.assign(createEditor("left"), { focus: focusLeft });
+    const rightEditor = createEditor("right");
 
     clearEditorsForUndo([leftEditor, rightEditor], leftEditor);
 
@@ -201,11 +200,11 @@ describe("pane clear buttons", () => {
 
 function createEditor(initial: string) {
   const model = {
-    range: { start: 1, end: 2 },
+    range: { startLineNumber: 1, startColumn: 1, endLineNumber: 1, endColumn: initial.length + 1 },
     getFullModelRange() {
       return model.range;
     },
-    applyEdits(edits: Array<{ range: object; text: string }>) {
+    applyEdits(edits: editor.IIdentifiedSingleEditOperation[]) {
       const next = edits[0]?.text ?? "";
       editor.value = next;
     },

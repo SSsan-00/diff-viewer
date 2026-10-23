@@ -11,6 +11,16 @@ function toBytes(bytes: number[]): Uint8Array {
 }
 
 describe("buildDecodedFiles", () => {
+  it.each([new ArrayBuffer(5), new SharedArrayBuffer(5)])("decodes only the byte view, including shared backing buffers", (buffer) => {
+    const bytes = new Uint8Array(buffer);
+    bytes.set([0xff, 0x61, 0x62, 0x63, 0xff]);
+
+    const result = buildDecodedFiles([{ name: "view.txt", bytes: bytes.subarray(1, 4) }], "utf-8");
+
+    expect(result.text).toBe("abc");
+    expect(bytes).toEqual(new Uint8Array([0xff, 0x61, 0x62, 0x63, 0xff]));
+  });
+
   it("re-decodes the same bytes with different encodings", () => {
     const files: FileBytes[] = [
       { name: "sample.txt", bytes: toBytes([0x82, 0xa0]) },

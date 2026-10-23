@@ -55,10 +55,6 @@ export function removeAnchorByRight(
   return { next, removed };
 }
 
-function splitNormalizedLines(text: string): string[] {
-  return normalizeText(text).split("\n");
-}
-
 function addReason(
   issues: Map<Anchor, Set<string>>,
   anchor: Anchor,

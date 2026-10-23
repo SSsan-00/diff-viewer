@@ -304,7 +304,7 @@ describe("buildDiffReportHtml", () => {
 describe("downloadDiffReportHtml", () => {
   it("creates and revokes object url for downloadable html", async () => {
     const dom = new JSDOM(`<body></body>`);
-    const createObjectURL = vi.fn(() => "blob:report");
+    const createObjectURL = vi.fn((_blob: Blob) => "blob:report");
     const revokeObjectURL = vi.fn();
     const click = vi.fn();
 

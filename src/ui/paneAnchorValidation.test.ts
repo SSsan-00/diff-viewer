@@ -337,7 +337,7 @@ describe("pane anchor validation coordinator", () => {
       lineCounts: { leftLineCount: 4, rightLineCount: 5 },
       pending,
     }).coordinator;
-    expect(current.staleManualAnchors[0]?.anchor).toEqual({
+    expect(current.staleManualAnchors?.[0]?.anchor).toEqual({
       leftLineNo: 2,
       rightLineNo: 2,
     });
@@ -365,7 +365,7 @@ describe("pane anchor validation coordinator", () => {
       side: "left",
       source: "reload",
     });
-    expect(later.result.state.staleManualAnchors[0]?.anchor).toEqual({
+    expect(later.result.state.staleManualAnchors?.[0]?.anchor).toEqual({
       leftLineNo: 2,
       rightLineNo: 3,
     });
@@ -584,7 +584,7 @@ describe("pane anchor validation coordinator", () => {
       side: "left",
       source: "reload",
     });
-    expect(later.result.state.staleManualAnchors[0]?.anchor).toEqual({
+    expect(later.result.state.staleManualAnchors?.[0]?.anchor).toEqual({
       leftLineNo: 2,
       rightLineNo: 3,
     });

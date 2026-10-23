@@ -25,6 +25,18 @@ pnpm run dev
 
 ## テスト
 ```bash
+pnpm run check
+```
+
+`check` は型チェックと全テストを順に実行します。型チェックのみの場合:
+
+```bash
+pnpm run typecheck
+```
+
+テストを監視モードで実行する場合:
+
+```bash
 pnpm test
 ```
 
@@ -38,6 +50,8 @@ pnpm run test:rust
 ```bash
 pnpm run build:single
 ```
+
+各ビルドは埋め込み WASM の準備後に型チェックを実行し、型エラーがあればHTML生成前に停止します。push / pull request 時の CI でも `pnpm run check` と `pnpm run build:single` を実行します。
 
 埋め込み WASM だけ更新したい場合:
 

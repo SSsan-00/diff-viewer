@@ -767,7 +767,11 @@ export function deleteWorkspace(
   state: WorkspacesState,
   id: string,
   options?: WorkspaceStorageOptions,
-): WorkspaceResult {
+): { ok: true; state: WorkspacesState } | {
+  ok: false;
+  reason: "last" | "not-found";
+  state: WorkspacesState;
+} {
   if (state.workspaces.length <= 1) {
     return { ok: false, reason: "last", state };
   }

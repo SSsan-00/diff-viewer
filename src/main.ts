@@ -57,8 +57,6 @@ import { pairFilesWithHandlesInDisplayOrder, reorderRazorPairs } from "./file/fi
 import { buildFoldRanges, findFoldContainingRow, type FoldRange } from "./diffEngine/folding";
 import {
   addAnchor,
-  removeAnchorByLeft,
-  removeAnchorByRight,
   validateAnchors,
   type Anchor,
 } from "./diffEngine/anchors";
@@ -148,7 +146,6 @@ import {
   setWorkspaceAnchors,
   setWorkspacePaneState,
   setWorkspaceSnapshot,
-  setWorkspaceTexts,
   WORKSPACE_LIMIT,
   WORKSPACE_NAME_LIMIT,
   type Workspace,
@@ -192,7 +189,6 @@ import {
   renderWorkspaces,
 } from "./ui/workspaces";
 import { createWorkspacePanelController } from "./ui/workspacePanel";
-import { handleWorkspaceShortcut } from "./ui/workspaceShortcut";
 import { removeWorkspaceWithConfirm } from "./ui/workspaceRemoval";
 import { getWorkspaceTitle } from "./ui/workspaceTitle";
 import { handleWorkspaceNavigation } from "./ui/workspaceNavigation";
@@ -911,7 +907,7 @@ function applyWorkspaceAnchors(anchors: WorkspaceAnchorState) {
 
 function applyWorkspaceState(
   nextState: WorkspacesState,
-  options?: { focusInput?: boolean },
+  options?: { focusInput?: boolean; focusItemId?: string | null },
 ) {
   const previousSelectedId = workspaceState.selectedId;
   if (nextState.selectedId !== previousSelectedId) {
@@ -1342,8 +1338,6 @@ const seedLeft = persistedState?.leftText || leftSample;
 const seedRight = persistedState?.rightText || rightSample;
 const leftInitial = startupRestore.leftPane.text || seedLeft;
 const rightInitial = startupRestore.rightPane.text || seedRight;
-const leftInitialSegments = cloneSegments(startupRestore.leftPane.segments);
-const rightInitialSegments = cloneSegments(startupRestore.rightPane.segments);
 
 if (selectedWorkspace) {
   if (startupRestore.shouldPersistLeftPane) {
@@ -1384,8 +1378,7 @@ const rightEditor = monaco.editor.create(
   createEditorOptions(rightInitial),
 );
 
-const INDENT_OPTIONS: monaco.editor.ITextModelUpdateOptions &
-  monaco.editor.IEditorOptions = {
+const INDENT_OPTIONS: monaco.editor.IGlobalEditorOptions = {
   tabSize: 4,
   insertSpaces: true,
   detectIndentation: false,
@@ -2259,7 +2252,7 @@ function jumpToGlobalLine(
   lineNumber: number,
 ): void {
   editor.setPosition({ lineNumber, column: 1 });
-  if ("revealLineInCenter" in editor) {
+  if (typeof editor.revealLineInCenter === "function") {
     editor.revealLineInCenter(lineNumber);
   } else {
     editor.revealLine(lineNumber);
@@ -2314,11 +2307,9 @@ function jumpToFileStart(
   const line = Math.min(Math.max(startLine, 1), model.getLineCount());
   const anchorLine = Math.max(1, line - 1);
   editor.setPosition({ lineNumber: line, column: 1 });
-  if ("getTopForLineNumber" in editor && "setScrollTop" in editor) {
+  if (typeof editor.getTopForLineNumber === "function" && typeof editor.setScrollTop === "function") {
     const top = editor.getTopForLineNumber(anchorLine);
     editor.setScrollTop(top);
-  } else if ("revealLineAtTop" in editor) {
-    editor.revealLineAtTop(anchorLine);
   } else {
     editor.revealLine(anchorLine);
   }
@@ -3669,8 +3660,8 @@ if (pendingWorkspaceToggle) {
 function createFavoriteController(
   side: "left" | "right",
   elements: {
-    panel: HTMLElement;
-    overlay: HTMLElement;
+    panel: HTMLDivElement;
+    overlay: HTMLDivElement;
     addButton: HTMLButtonElement;
     cancelButton: HTMLButtonElement;
     input: HTMLInputElement;
@@ -6061,7 +6052,7 @@ function buildPaneClearOptions(
     editor: config.editor,
     segments: config.segments,
     updateLineNumbers,
-    clearEditor: (editor) => {
+    clearEditor: (editor: monaco.editor.IStandaloneCodeEditor) => {
       withProgrammaticEdit(side, () => {
         clearEditorModel(editor);
       });

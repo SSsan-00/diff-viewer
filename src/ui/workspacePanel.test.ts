@@ -22,7 +22,7 @@ function setupDom() {
 describe("workspace panel controller", () => {
   it("opens and closes via toggle and overlay", () => {
     const { doc, panel, overlay, toggleButton } = setupDom();
-    const controller = createWorkspacePanelController({
+    createWorkspacePanelController({
       panel,
       overlay,
       toggleButton,

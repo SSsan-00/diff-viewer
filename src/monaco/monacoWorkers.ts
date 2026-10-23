@@ -2,7 +2,7 @@ import editorWorker from "monaco-editor/esm/vs/editor/editor.worker.js?worker&in
 
 export function setupMonacoWorkers(): void {
   self.MonacoEnvironment = {
-    getWorker(_moduleId, label) {
+    getWorker(_moduleId, _label) {
       return new editorWorker();
     },
   };

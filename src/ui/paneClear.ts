@@ -1,21 +1,22 @@
 import type { LineSegment } from "../file/lineNumbering";
+import type { editor, IRange, Selection } from "monaco-editor";
 
 type EditorLike = {
   setValue: (value: string) => void;
   focus?: () => void;
   executeEdits?: (
     source: string,
-    edits: Array<{ range: object; text: string }>,
-    endCursorState?: object[] | null,
+    edits: editor.IIdentifiedSingleEditOperation[],
+    endCursorState?: editor.ICursorStateComputer | Selection[],
   ) => void;
   pushUndoStop?: () => void;
   getModel?: () => {
-    getFullModelRange?: () => object;
-    applyEdits?: (edits: Array<{ range: object; text: string }>) => void;
+    getFullModelRange?: () => IRange;
+    applyEdits?: (edits: editor.IIdentifiedSingleEditOperation[]) => void;
     pushEditOperations?: (
-      beforeCursorState: object[],
-      edits: Array<{ range: object; text: string }>,
-      cursorStateComputer: () => object[] | null,
+      beforeCursorState: Selection[],
+      edits: editor.IIdentifiedSingleEditOperation[],
+      cursorStateComputer: editor.ICursorStateComputer,
     ) => void;
     pushStackElement?: () => void;
   } | null;

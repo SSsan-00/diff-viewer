@@ -891,6 +891,8 @@ Myers の結果は基本的に `insert`/`delete` の列として得られるた�
 
 ### 12.2 テスト階層
 
+- **型チェック**: `pnpm run typecheck` で `src` 配下の実装・テストを検査する。既存の `strict` / 未使用検出などを無効化して通過させない
+- `pnpm run check` は型チェックと全テストを実行する。push / pull request 時の CI では `check` と配布物検証を含む `build:single` の両方を必須チェックとして実行する
 - **ユニットテスト**: 差分エンジン（入力→差分モデル）
 - **ユニットテスト**: 行内差分（2文字列→ハイライト範囲）
 - **DOMテスト**: トグル操作でスクロール連動が切り替わる
@@ -943,6 +945,7 @@ Myers の結果は基本的に `insert`/`delete` の列として得られるた�
 
 1. `pnpm install`（ロック固定運用）
 2. `pnpm run build`（または単一HTML生成用の build コマンド）
+   - 各ビルドは埋め込み WASM の準備後に型チェックを行い、型エラーがあればHTML生成を開始しない
 3. `dist/index.html` / `dist/index.min.html` が生成されていること
 4. `dist/index.html` / `dist/index.min.html` を `file://` 直開きで主要機能が動くこと
 5. **禁止文字列検査（3.2）に合格**していること

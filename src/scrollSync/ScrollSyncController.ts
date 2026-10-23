@@ -18,12 +18,16 @@ export class ScrollSyncController {
   private pendingSourceScroll: { source: "left" | "right"; event: ScrollChangeEvent } | null =
     null;
   private scheduleNextFrame: ScheduleNextFrame;
+  private left: ScrollAdapter;
+  private right: ScrollAdapter;
 
   constructor(
-    private left: ScrollAdapter,
-    private right: ScrollAdapter,
+    left: ScrollAdapter,
+    right: ScrollAdapter,
     scheduleNextFrame: ScheduleNextFrame = (callback) => requestAnimationFrame(callback),
   ) {
+    this.left = left;
+    this.right = right;
     this.scheduleNextFrame = scheduleNextFrame;
     this.left.onDidScrollChange((event) => this.handleScroll("left", event));
     this.right.onDidScrollChange((event) => this.handleScroll("right", event));

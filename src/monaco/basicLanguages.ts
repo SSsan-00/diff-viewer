@@ -17,7 +17,11 @@ import {
 } from "monaco-editor/esm/vs/basic-languages/typescript/typescript.js";
 
 export function registerBasicLanguages(): void {
-  const registerLanguage = (id: string, conf: object, language: object) => {
+  const registerLanguage = (
+    id: string,
+    conf: monaco.languages.LanguageConfiguration,
+    language: monaco.languages.IMonarchLanguage,
+  ) => {
     monaco.languages.register({ id });
     monaco.languages.setLanguageConfiguration(id, conf);
     monaco.languages.setMonarchTokensProvider(id, language);

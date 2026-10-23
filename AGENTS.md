@@ -55,6 +55,11 @@
   - `dist/index.html` / `dist/index.min.html` を検証
 - `pnpm run test`
 - `pnpm run test:run`
+- `pnpm run typecheck`
+  - `src` 配下の実装・テストを型チェックする
+- `pnpm run check`
+  - 型チェックと全テストを実行する（変更後は必須）
+  - 各ビルドと push / pull request 時の CI でも型チェックを実行する
 
 ---
 
@@ -160,3 +165,4 @@
 - **必ず**
   ```sh
   pnpm run verify:dist
+  ```

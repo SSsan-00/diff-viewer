@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { PaneWriteHandle } from "./writeback";
 import {
   buildPaneWriteBytes,
   buildPaneWriteBytesPreservingSource,
@@ -198,17 +199,18 @@ describe("getPaneWriteAvailability", () => {
   });
 
   it("disables save for readable handles that cannot create a writable stream", () => {
+    const handle = {
+      name: "read-only.txt",
+      async getFile() {
+        return new File(["a"], "read-only.txt");
+      },
+    };
     const availability = getPaneWriteAvailability({
       hasFileSystemAccess: true,
       fileCount: 1,
       selectedEncoding: "auto",
       target: {
-        handle: {
-          name: "read-only.txt",
-          async getFile() {
-            return new File(["a"], "read-only.txt");
-          },
-        },
+        handle,
         fileName: "read-only.txt",
         resolvedEncoding: "utf-8",
         includeUtf8Bom: false,
@@ -224,13 +226,13 @@ describe("getPaneWriteAvailability", () => {
 describe("requestFileHandlePermission", () => {
   it("requests readwrite permission when the restored handle is only promptable", async () => {
     const calls: string[] = [];
-    const handle = {
-      async queryPermission(descriptor: { mode?: string }) {
-        calls.push(`query:${descriptor.mode}`);
+    const handle: PaneWriteHandle = {
+      async queryPermission(descriptor) {
+        calls.push(`query:${descriptor?.mode}`);
         return "prompt" as PermissionState;
       },
-      async requestPermission(descriptor: { mode?: string }) {
-        calls.push(`request:${descriptor.mode}`);
+      async requestPermission(descriptor) {
+        calls.push(`request:${descriptor?.mode}`);
         return "granted" as PermissionState;
       },
     };
@@ -241,13 +243,13 @@ describe("requestFileHandlePermission", () => {
 
   it("does not request permission when it is already granted", async () => {
     const calls: string[] = [];
-    const handle = {
-      async queryPermission(descriptor: { mode?: string }) {
-        calls.push(`query:${descriptor.mode}`);
+    const handle: PaneWriteHandle = {
+      async queryPermission(descriptor) {
+        calls.push(`query:${descriptor?.mode}`);
         return "granted" as PermissionState;
       },
-      async requestPermission(descriptor: { mode?: string }) {
-        calls.push(`request:${descriptor.mode}`);
+      async requestPermission(descriptor) {
+        calls.push(`request:${descriptor?.mode}`);
         return "denied" as PermissionState;
       },
     };
@@ -383,9 +385,7 @@ describe("collectDroppedFiles", () => {
       },
     };
     const calls: string[] = [];
-    let resolveFirst:
-      | ((value: typeof firstHandle) => void)
-      | null = null;
+    let resolveFirst!: (value: typeof firstHandle) => void;
 
     const droppedPromise = collectDroppedFiles({
       items: [
@@ -412,7 +412,7 @@ describe("collectDroppedFiles", () => {
     });
 
     expect(calls).toEqual(["first", "second"]);
-    resolveFirst?.(firstHandle);
+    resolveFirst(firstHandle);
 
     await expect(droppedPromise).resolves.toEqual([
       { file: first, handle: firstHandle },

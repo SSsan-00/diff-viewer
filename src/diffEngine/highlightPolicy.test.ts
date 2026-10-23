@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { Anchor } from "./anchors";
 import type { PairedOp } from "./types";
-import { shouldShowDiffHighlight } from "./highlightPolicy";
+import { buildManualAnchorHighlightKeys, shouldShowDiffHighlight } from "./highlightPolicy";
 
 describe("shouldShowDiffHighlight", () => {
-  const manualAnchors: Anchor[] = [{ leftLineNo: 2, rightLineNo: 4 }];
+  const manualAnchors: readonly Anchor[] = [{ leftLineNo: 2, rightLineNo: 4 }];
 
   it("allows all visible diff rows in normal mode", () => {
     const op: PairedOp = {
@@ -51,5 +51,15 @@ describe("shouldShowDiffHighlight", () => {
     expect(shouldShowDiffHighlight(op, "manual-anchor-only", manualAnchors)).toBe(
       false,
     );
+  });
+
+  it("accepts precomputed readonly anchor keys as well as anchor arrays", () => {
+    const keys = buildManualAnchorHighlightKeys(manualAnchors);
+    expect(shouldShowDiffHighlight({
+      type: "replace", leftLineNo: 2, rightLineNo: 4,
+    }, "manual-anchor-only", keys)).toBe(true);
+    expect(shouldShowDiffHighlight({
+      type: "replace", leftLineNo: 2, rightLineNo: 5,
+    }, "manual-anchor-only", keys)).toBe(false);
   });
 });

@@ -26,8 +26,8 @@ export function shouldShowDiffHighlight(
   if (mode === "normal") {
     return true;
   }
-  const manualAnchorKeys = Array.isArray(manualAnchorKeysOrAnchors)
-    ? buildManualAnchorHighlightKeys(manualAnchorKeysOrAnchors)
-    : manualAnchorKeysOrAnchors;
+  const manualAnchorKeys = "has" in manualAnchorKeysOrAnchors
+    ? manualAnchorKeysOrAnchors
+    : buildManualAnchorHighlightKeys(manualAnchorKeysOrAnchors);
   return manualAnchorKeys.has(anchorKey(op.leftLineNo, op.rightLineNo));
 }

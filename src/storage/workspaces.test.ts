@@ -350,13 +350,16 @@ describe("workspaces storage", () => {
 
   it("updates both panes and anchors with one persistence snapshot", () => {
     let writes = 0;
-    const storage = {
+    const storage: Storage = {
+      length: 0,
+      clear: () => undefined,
+      key: () => null,
       getItem: () => null,
       setItem: () => {
         writes += 1;
       },
       removeItem: () => undefined,
-    } as Storage;
+    };
     const state = createState(["Alpha"]);
     const result = setWorkspaceSnapshot(storage, state, "ws-0", {
       left: {
@@ -439,13 +442,16 @@ describe("workspaces storage", () => {
   });
 
   it("does not throw when workspace persistence fails", () => {
-    const storage = {
+    const storage: Storage = {
+      length: 0,
+      clear: () => undefined,
+      key: () => null,
       getItem: () => null,
       setItem: () => {
         throw new Error("quota");
       },
       removeItem: () => undefined,
-    } as Storage;
+    };
 
     expect(() => loadWorkspaces(storage)).not.toThrow();
 

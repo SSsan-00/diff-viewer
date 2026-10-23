@@ -189,6 +189,10 @@ pnpm install
 
 > CI や再現性重視の場合は `pnpm install --frozen-lockfile` を推奨します。
 
+変更後は `pnpm run check` で型チェックと全テストを実行します。型チェックのみの場合は `pnpm run typecheck` を使います。`src` 配下の実装・テストを既存の厳格な設定で検査し、各ビルドも型エラーがあれば停止します。
+
+push / pull request 時の CI では、ロック固定インストール、`check`、`build:single`（配布物検証を含む）を実行します。
+
 ### 2) Build a single HTML file
 
 ```bash

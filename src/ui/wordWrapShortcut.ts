@@ -1,5 +1,7 @@
+import type { editor } from "monaco-editor";
+
 type WordWrapEditor = {
-  updateOptions: (options: { wordWrap: "on" | "off" }) => void;
+  updateOptions: (options: editor.IEditorOptions) => void;
   layout: () => void;
 };
 
@@ -11,7 +13,7 @@ type WordWrapShortcutOptions = {
   setEnabled: (next: boolean) => void;
   onAfterToggle?: () => void;
   requestFrame?: FrameRequest;
-  keyTarget?: Document | Window;
+  keyTarget?: Pick<Document, "addEventListener">;
 };
 
 export function bindWordWrapShortcut(options: WordWrapShortcutOptions): void {

@@ -54,7 +54,9 @@ export function findClosestVisibleLine(
   return best;
 }
 
-export function focusEditorAtTop(editor: VisibleRangeProvider & PositionSetter): void {
+export function focusEditorAtTop(
+  editor: Pick<VisibleRangeProvider, "getVisibleRanges"> & PositionSetter,
+): void {
   const visible = editor.getVisibleRanges();
   const lineNumber = visible[0]?.startLineNumber ?? 1;
   editor.setPosition({ lineNumber, column: 1 });

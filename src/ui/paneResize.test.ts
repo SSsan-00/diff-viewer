@@ -2,10 +2,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { bindPaneResize } from "./paneResize";
 
-type TestEditor = {
-  layout: ReturnType<typeof vi.fn>;
-};
-
 function defineRect(
   element: HTMLElement,
   rect: Partial<DOMRect>,

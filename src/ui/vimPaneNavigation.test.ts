@@ -7,7 +7,7 @@ import {
   type VimEditorMode,
 } from "./vimPaneNavigation";
 
-function event(window: Window, key: string, options: KeyboardEventInit = {}) {
+function event(window: Pick<typeof globalThis, "KeyboardEvent">, key: string, options: KeyboardEventInit = {}) {
   return new window.KeyboardEvent("keydown", {
     key,
     code: key.length === 1 ? `Key${key.toUpperCase()}` : "",

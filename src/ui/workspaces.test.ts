@@ -190,7 +190,7 @@ describe("workspaces ui helpers", () => {
       { selectedId: "two", editingId: null, focusedId: null },
     );
 
-    const selected = container.querySelectorAll(".workspace-item--selected");
+    const selected = container.querySelectorAll<HTMLElement>(".workspace-item--selected");
     expect(selected.length).toBe(1);
     expect(selected[0]?.dataset.id).toBe("two");
   });
@@ -234,7 +234,7 @@ describe("workspaces ui helpers", () => {
       { selectedId: "one", editingId: null, focusedId: "two" },
     );
 
-    const focused = container.querySelectorAll(".workspace-item--focused");
+    const focused = container.querySelectorAll<HTMLElement>(".workspace-item--focused");
     expect(focused.length).toBe(1);
     expect(focused[0]?.dataset.id).toBe("two");
   });

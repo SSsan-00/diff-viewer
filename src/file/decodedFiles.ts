@@ -76,10 +76,7 @@ export function appendDecodedFiles(
   files.forEach((file, index) => {
     normalizeLastSegmentForAppend(segments, text);
 
-    const buffer = file.bytes.buffer.slice(
-      file.bytes.byteOffset,
-      file.bytes.byteOffset + file.bytes.byteLength,
-    );
+    const buffer = file.bytes.slice().buffer;
     const decodedEncoding =
       options?.preferFileEncoding === true ? file.encoding ?? encoding : encoding;
     const decoded = normalizeText(decodeArrayBuffer(buffer, decodedEncoding));

@@ -5,6 +5,7 @@
 ```
 .
 ├── AGENTS.md
+├── .github/workflows/ci.yml
 ├── README.md
 ├── doc/
 │   ├── BACKLOG.md
@@ -40,6 +41,8 @@
 ## src/ 主要ファイル一覧
 
 注記: 役割の理解に必要な主要ファイルに絞って記載する。全量の列挙は更新コストが高く、実装との差分が生じやすいため採用しない。
+
+`.github/workflows/ci.yml` は push / pull request 時に型チェック・全テスト・単一HTMLビルドと配布物検証を実行する。`src/types/monaco-basic-languages.d.ts` は直接インポートするMonaco言語定義の型を補う。
 
 ### src/
 

@@ -1,5 +1,7 @@
+import type { editor } from "monaco-editor";
+
 type WordWrapEditor = {
-  updateOptions: (options: { wordWrap: "on" | "off" }) => void;
+  updateOptions: (options: editor.IEditorOptions) => void;
   layout: () => void;
 };
 
