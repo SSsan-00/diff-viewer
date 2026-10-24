@@ -133513,6 +133513,9 @@ function jaccardSimilarity(left, right) {
 }
 
 function scoreLinePair(left, right) {
+    if (left.category === right.category && left.category !== "other" && left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
+        return null;
+    }
     const strongLeftIds = filterStrongIdentifiers(left.identifiers);
     const strongRightIds = filterStrongIdentifiers(right.identifiers);
     const idOverlap = intersectCount(strongLeftIds, strongRightIds);
@@ -133528,9 +133531,6 @@ function scoreLinePair(left, right) {
     const elseOverlap = left.identifiers.includes("else_line") && right.identifiers.includes("else_line");
     const hasDateFormat = left.identifiers.includes("dateformat") || right.identifiers.includes("dateformat");
     const hasBaseOverlap = idOverlap > 0 || literalOverlap > 0 || codefragOverlap || braceOverlap || elseOverlap || initOverlap || dateFormatArgOverlap || commentOverlap;
-    if (left.category === right.category && left.category !== "other" && left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
-        return null;
-    }
     if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
         if (!hasBaseOverlap) {
             return null;
@@ -134692,7 +134692,7 @@ function snapInlineRangesToGraphemeBoundaries(value, ranges) {
     if (ranges.length === 0 || value.length === 0) {
         return [];
     }
-    const boundaries = buildGraphemeBoundaries(value);
+    const boundaries = /[^\x20-\x7e\t]/.test(value) ? buildGraphemeBoundaries(value) : null;
     const snapped = [];
     for (const range2 of ranges) {
         const rawStart = Math.max(0, Math.min(value.length, range2.start));
@@ -134700,8 +134700,8 @@ function snapInlineRangesToGraphemeBoundaries(value, ranges) {
         if (rawEnd <= rawStart) {
             continue;
         }
-        const start = findBoundaryAtOrBefore(boundaries, rawStart);
-        const end = findBoundaryAtOrAfter(boundaries, rawEnd);
+        const start = boundaries ? findBoundaryAtOrBefore(boundaries, rawStart) : Math.floor(rawStart);
+        const end = boundaries ? findBoundaryAtOrAfter(boundaries, rawEnd) : Math.ceil(rawEnd);
         if (end <= start) {
             continue;
         }

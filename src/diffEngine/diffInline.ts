@@ -234,7 +234,8 @@ export function snapInlineRangesToGraphemeBoundaries(
   if (ranges.length === 0 || value.length === 0) {
     return [];
   }
-  const boundaries = buildGraphemeBoundaries(value);
+  // Printable ASCII and tabs each occupy one UTF-16 unit and one grapheme.
+  const boundaries = /[^\x20-\x7e\t]/.test(value) ? buildGraphemeBoundaries(value) : null;
   const snapped: Range[] = [];
   for (const range of ranges) {
     const rawStart = Math.max(0, Math.min(value.length, range.start));
@@ -242,8 +243,8 @@ export function snapInlineRangesToGraphemeBoundaries(
     if (rawEnd <= rawStart) {
       continue;
     }
-    const start = findBoundaryAtOrBefore(boundaries, rawStart);
-    const end = findBoundaryAtOrAfter(boundaries, rawEnd);
+    const start = boundaries ? findBoundaryAtOrBefore(boundaries, rawStart) : Math.floor(rawStart);
+    const end = boundaries ? findBoundaryAtOrAfter(boundaries, rawEnd) : Math.ceil(rawEnd);
     if (end <= start) {
       continue;
     }

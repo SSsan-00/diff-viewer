@@ -6,6 +6,7 @@ import {
   diffInlineWithAppendLiteralBatch,
   setDiffInlineBatchCore,
   setDiffInlineCore,
+  snapInlineRangesToGraphemeBoundaries,
 } from "./diffInline";
 
 afterEach(() => {
@@ -30,6 +31,31 @@ describe("diffInline", () => {
       leftRanges: [{ start: 1, end: 3 }],
       rightRanges: [{ start: 1, end: 3 }],
     });
+  });
+
+  it("clamps, rounds and merges ASCII ranges without changing the input", () => {
+    const ranges = [
+      { start: -2, end: 1.5 },
+      { start: 2, end: 3 },
+      { start: 3, end: 3 },
+      { start: 4.5, end: 10 },
+    ];
+    const original = ranges.map((range) => ({ ...range }));
+
+    expect(snapInlineRangesToGraphemeBoundaries("a\tbcde", ranges)).toEqual([
+      { start: 0, end: 3 },
+      { start: 4, end: 6 },
+    ]);
+    expect(ranges).toEqual(original);
+  });
+
+  it.each([
+    ["a\r\nb", { start: 2, end: 3 }, { start: 1, end: 3 }],
+    ["か\u3099く", { start: 1, end: 2 }, { start: 0, end: 2 }],
+    ["a\u0301b", { start: 0, end: 1 }, { start: 0, end: 2 }],
+    ["a👩‍💻b", { start: 3, end: 4 }, { start: 1, end: 6 }],
+  ])("preserves grapheme boundaries in %j", (value, range, expected) => {
+    expect(snapInlineRangesToGraphemeBoundaries(value, [range])).toEqual([expected]);
   });
 
   it("normalizes ranges returned by an injected core to grapheme boundaries", () => {

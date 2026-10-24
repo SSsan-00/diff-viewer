@@ -54,4 +54,18 @@ describe("buildLineFeatures", () => {
 
     expect(repeated).toBe(unique);
   });
+
+  it("rejects different assignment targets even when their values overlap", () => {
+    expect(scoreLinePair(
+      buildLineFeatures('const first = render("shared", 1);'),
+      buildLineFeatures('const second = render("shared", 1);'),
+    )).toBeNull();
+  });
+
+  it("keeps shared identifiers eligible across different categories", () => {
+    expect(scoreLinePair(
+      buildLineFeatures("const result = render(value);"),
+      buildLineFeatures("render(value);"),
+    )).toBeGreaterThan(0);
+  });
 });

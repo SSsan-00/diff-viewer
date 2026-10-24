@@ -767,6 +767,16 @@ function jaccardSimilarity(left: string[], right: string[]): number {
 }
 
 export function scoreLinePair(left: LineFeatures, right: LineFeatures): number | null {
+  if (
+    left.category === right.category &&
+    left.category !== "other" &&
+    left.primaryId &&
+    right.primaryId &&
+    left.primaryId !== right.primaryId
+  ) {
+    return null;
+  }
+
   const strongLeftIds = filterStrongIdentifiers(left.identifiers);
   const strongRightIds = filterStrongIdentifiers(right.identifiers);
   const idOverlap = intersectCount(strongLeftIds, strongRightIds);
@@ -811,16 +821,6 @@ export function scoreLinePair(left: LineFeatures, right: LineFeatures): number |
     initOverlap ||
     dateFormatArgOverlap ||
     commentOverlap;
-
-  if (
-    left.category === right.category &&
-    left.category !== "other" &&
-    left.primaryId &&
-    right.primaryId &&
-    left.primaryId !== right.primaryId
-  ) {
-    return null;
-  }
 
   if (left.primaryId && right.primaryId && left.primaryId !== right.primaryId) {
     if (!hasBaseOverlap) {
