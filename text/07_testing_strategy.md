@@ -20,7 +20,7 @@
   - `src/ui/favoritePaths.test.ts`
   - `src/ui/workspacePanel.test.ts`
 - 配布物の検証
-  - `src/distGate.test.ts`
+  - `scripts/dist-rules.test.ts`
   - `src/distLayout.test.ts`
 
 ## TypeScript 初心者向けポイント
@@ -33,3 +33,9 @@
 - 型エラーは `tsconfig` ではなくテストコード側の `as` が原因のことが多い
 
 次に読む: `text/08_typical_changes.md`
+
+## 検証の重複を避ける
+
+- 配布物の禁止ルールは `scripts/dist-rules.mjs` に集約し、テストと配布前検証で共用する。
+- 接続処理はソース文字列の有無ではなく、実際の関数を実行して結果を確認する。`src/testing/mainFunctions.ts` は main の対象関数だけを抽出・実行し、Monaco の全体起動を避ける。
+- パラメータ化したケースは入力を実際に変える。ハイライト範囲は具体的な期待位置を使い、空配列同士の比較だけで成功させない。

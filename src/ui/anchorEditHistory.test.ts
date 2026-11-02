@@ -536,8 +536,8 @@ describe("side-scoped anchor history restoration", () => {
     expect(restored.state.selectedAnchorKey).toBe("manual:8:4");
   });
 
-  it.each(["deleted", "split", "ambiguous"])(
-    "keeps an anchor stale when its opposite logical line becomes %s",
+  it(
+    "keeps an anchor stale when its opposite logical line cannot be resolved",
     () => {
       const active = anchorState(4, 6);
       const stale = anchorState(4, 6, {

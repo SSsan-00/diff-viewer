@@ -42,7 +42,9 @@ it("finds attribute spaces after embedded expressions", () => {
     const left = `<input value="${expression}a  b">`;
     const right = `<input value="${expression}a b">`;
     const inline = diffInlineWithAppendLiteral(left,right);
-    expect(extractHtmlAttributeSpaceDiffRangesPair(left,right,inline.leftRanges,inline.rightRanges).left).toEqual(inline.leftRanges);
+    const expected = [{ start: left.indexOf("a  b") + 2, end: left.indexOf("a  b") + 3 }];
+    expect(inline.leftRanges).toEqual(expected);
+    expect(extractHtmlAttributeSpaceDiffRangesPair(left,right,inline.leftRanges,inline.rightRanges).left).toEqual(expected);
   }
 });
 

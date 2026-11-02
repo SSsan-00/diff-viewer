@@ -1,46 +1,29 @@
-import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { expect, it, vi } from "vitest";
+import { loadMainFunctions } from "./testing/mainFunctions";
+import { runWorkspaceSwitch } from "./ui/workspaceSwitchFlow";
 
-function readMainSource(): string {
-  return readFileSync(resolve(process.cwd(), "src/main.ts"), "utf8");
-}
-
-function extractFunction(source: string, name: string): string {
-  const start = source.indexOf(`function ${name}`);
-  expect(start).toBeGreaterThanOrEqual(0);
-  const nextFunction = source.indexOf("\nfunction ", start + 1);
-  return source.slice(start, nextFunction === -1 ? undefined : nextFunction);
-}
-
-describe("workspace save target lifecycle", () => {
-  it("keeps stored file handles while restoring workspace pane state", () => {
-    const source = readMainSource();
-    const helper = extractFunction(
-      source,
-      "clearPaneSourceStateForWorkspaceRestore",
-    );
-
-    expect(helper).toContain(
-      'clearPaneSourceState("left", { persistSaveTarget: false });',
-    );
-    expect(helper).toContain(
-      'clearPaneSourceState("right", { persistSaveTarget: false });',
-    );
-  });
-
-  it("restores file handles after a manual workspace switch", () => {
-    const source = readMainSource();
-    const switchBlock = source.slice(
-      source.indexOf("function switchWorkspaceById"),
-      source.indexOf("function handleWorkspaceRename"),
-    );
-
-    expect(switchBlock).toContain("clearPaneSourceStateForWorkspaceRestore();");
-    expect(switchBlock).toContain(
-      "void restorePaneSaveTargetsForWorkspace(workspaceState.selectedId);",
-    );
-    expect(switchBlock).not.toContain('clearPaneSourceState("left");');
-    expect(switchBlock).not.toContain('clearPaneSourceState("right");');
-  });
+it("switches workspace content and restores handles without deleting saved targets", () => {
+  const stored = new Map([["old", "old-handle"], ["next", "next-handle"]]);
+  const clearPaneSaveTarget = vi.fn((_side, options) => { if (options.persist !== false) stored.clear(); });
+  const restorePaneSaveTargetsForWorkspace = vi.fn();
+  const editors = () => { let text = "old"; return { getValue: () => text, setValue: (value: string) => { text = value; } }; };
+  const anchors = { manualAnchors: [], autoAnchor: null, pendingLeftLineNo: null, pendingRightLineNo: null, selectedAnchorKey: null, suppressedAutoAnchorKey: null };
+  const context = {
+    workspaceState: { selectedId: "old", workspaces: ["old", "next"].map((id) => ({ id, name: id, leftText: id, rightText: id, anchors })) },
+    storage: {}, textStore: {}, leftEditor: editors(), rightEditor: editors(), leftMessage: {}, rightMessage: {},
+    anchorUndoState: {}, runWorkspaceSwitch,
+    withProgrammaticEdit: (_side: string, action: () => void) => action(),
+    setWorkspacePaneState: (_storage: unknown, state: unknown) => ({ ok: true, state }),
+    collectWorkspacePaneSnapshot: () => ({}), getCurrentAnchorState: () => anchors, getWorkspacePaneSnapshot: () => ({}),
+    clearPaneSaveTarget, restorePaneSaveTargetsForWorkspace,
+    ...Object.fromEntries(["abortCoordinatingPaneAnchorBatch", "applyWorkspacePaneSnapshot", "refreshSyntaxHighlight", "resetPaneMessage", "clearPaneSummary", "applyWorkspaceAnchors", "schedulePersist", "saveWorkspaces", "renderWorkspacePanel", "loadFavoriteListsForWorkspace", "scheduleWorkspacePersist", "clearPaneRawFiles", "commitPaneBoundarySnapshot"].map((name) => [name, vi.fn()])),
+    recalcScheduler: { runNow: vi.fn() },
+  };
+  const functions = loadMainFunctions(["clearPaneSourceState", "clearPaneSourceStateForWorkspaceRestore", "switchWorkspaceById"], context);
+  functions.switchWorkspaceById("next");
+  expect(context.workspaceState.selectedId).toBe("next");
+  expect([context.leftEditor.getValue(), context.rightEditor.getValue()]).toEqual(["next", "next"]);
+  expect(clearPaneSaveTarget.mock.calls).toEqual([["left", { persist: false }], ["right", { persist: false }]]);
+  expect([...stored.values()]).toEqual(["old-handle", "next-handle"]);
+  expect(restorePaneSaveTargetsForWorkspace).toHaveBeenCalledWith("next");
 });

@@ -50,8 +50,8 @@
 - `src/appMode.test.ts` 保存あり/保存なし、manual、diff engine モード解決のテスト。
 - `src/style.css` 画面全体のレイアウト/配色/差分ハイライト/アンカー/境界表示のスタイル。ワークスペース/パス登録UIのパネルも定義する。`src/main.ts` から読み込む。
 - `src/licenses.ts` 依存ライセンス本文データ。export: `THIRD_PARTY_LICENSES`（`src/main.ts` から参照）。
-- `src/smoke.test.ts` Vitest の起動確認用スモークテスト。
-- `src/distGate.test.ts` 配布物ゲート（禁止文字列/SourceMap/modulepreload）の検査テスト。
+- `scripts/dist-rules.mjs` 配布物の禁止文字列/SourceMap/modulepreload判定を一元管理。`verify-dist.mjs` と `dist-rules.test.ts` から利用する。
+- `src/testing/mainFunctions.ts` Monacoを起動せず実際のmain関数を依存注入して実行するテスト専用ヘルパー。
 - `src/distLayout.test.ts` テンプレート構造（ペイン/ツールバー/ドロップUI）の回帰テスト。
 - `src/distReadableStyle.test.ts` 可読版/最適化版の CSS 一致とデータ URL 維持のテスト。
 - `src/styleFileBoundary.test.ts` ファイル境界 CSS が大文字化しないことのテスト。
