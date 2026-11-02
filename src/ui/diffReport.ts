@@ -1,3 +1,4 @@
+import { CursorColumns } from "monaco-editor/esm/vs/editor/common/core/cursorColumns.js";
 import type { CopyVisualRow } from "./paneSourceCopy";
 import type { ToastVariant } from "./toast";
 import type { Range } from "../diffEngine/types";
@@ -15,6 +16,10 @@ type ObjectUrlApi = {
   createObjectURL: (blob: Blob) => string;
   revokeObjectURL: (url: string) => void;
 };
+
+const reportGraphemeSegmenter = typeof Intl.Segmenter === "function"
+  ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+  : null;
 
 const FILE_BOUNDARY_PREFIX_PATTERN = /^File\s+\d+:\s*/;
 
@@ -227,21 +232,21 @@ function escapeHtmlWithPreservedWhitespace(
 ): { endColumn: number; html: string } {
   let escaped = "";
   let column = startColumn;
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
+  const segments = reportGraphemeSegmenter
+    ? Array.from(reportGraphemeSegmenter.segment(text), (part) => part.segment)
+    : Array.from(text);
+  for (const char of segments) {
     if (char === " ") {
       escaped += "&nbsp;";
       column += 1;
-      continue;
-    }
-    if (char === "\t") {
+    } else if (char === "\t") {
       const width = 4 - (column % 4);
       escaped += "&nbsp;".repeat(width);
       column += width;
-      continue;
+    } else {
+      escaped += escapeHtml(char);
+      column += CursorColumns.visibleColumnFromColumn(char, char.length + 1, 4);
     }
-    escaped += escapeHtml(char);
-    column += 1;
   }
   return { endColumn: column, html: escaped };
 }

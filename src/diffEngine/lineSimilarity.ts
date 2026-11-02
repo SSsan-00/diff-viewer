@@ -651,7 +651,7 @@ export function buildLineFeatures(line: string): LineFeatures {
   const templateSignature = normalizeTemplateLine(featureLine);
   if (templateSignature) {
     identifiers.push(`template:${templateSignature}`);
-    const signature = appendLiteral ?? extractLiterals(featureLine)[0] ?? featureLine;
+    const signature = featureLine;
     const htmlSignature = extractHtmlSignature(signature);
     if (htmlSignature.tag) {
       identifiers.push(`htmltag:${htmlSignature.tag}`);

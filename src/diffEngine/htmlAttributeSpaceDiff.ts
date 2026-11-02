@@ -1,3 +1,4 @@
+import { maskTemplateExpressions } from "./htmlStructure";
 export type InlineRange = { start: number; end: number };
 
 type AttributeRange = { start: number; end: number; name: string };
@@ -48,6 +49,7 @@ function isTargetAttribute(name: string): boolean {
 
 function extractAttributeValueRanges(line: string): AttributeRange[] {
   const ranges: AttributeRange[] = [];
+  line = maskTemplateExpressions(line);
   const tagRanges = findTagRanges(line);
 
   for (const tag of tagRanges) {

@@ -1,8 +1,10 @@
+import { htmlPairKey } from "./htmlStructure";
 import type { LineOp, PairedOp } from "./types";
 import { extractAppendLiteral } from "./appendLiteral";
 import { extractArrayIfSignature, type ArrayIfSignature } from "./arrayIf";
 import {
   buildLineFeatures,
+  normalizeCommentText,
   extractIndexTokens,
   scoreLinePair,
 } from "./lineSimilarity";
@@ -44,6 +46,8 @@ type PreparedPairLine = {
   hasLineCommentBody: boolean;
   indent: number;
   templateIfSignature: TemplateIfSignature | null;
+  htmlKey: string | null;
+  commentText: string | null;
   text: string;
   tokens: string[];
   trimmed: string;
@@ -346,6 +350,8 @@ export function buildPairCandidates(
     const commentComparable = buildCommentComparable(text);
     const tokens = extractIndexTokens(feature);
     return {
+      htmlKey: htmlPairKey(text),
+      commentText: normalizeCommentText(text),
       arrayIfSignature: extractArrayIfSignature(text),
       appendComparableKey: appendComparable.key,
       appendCoreComparableKey: appendComparable.coreKey,
@@ -369,6 +375,8 @@ export function buildPairCandidates(
     const commentComparable = buildCommentComparable(text);
     const tokens = extractIndexTokens(feature);
     return {
+      htmlKey: htmlPairKey(text),
+      commentText: normalizeCommentText(text),
       arrayIfSignature: extractArrayIfSignature(text),
       appendComparableKey: appendComparable.key,
       appendCoreComparableKey: appendComparable.coreKey,
@@ -399,6 +407,14 @@ export function buildPairCandidates(
     deletePrepared.forEach(addCommentBodyTokens);
     insertPrepared.forEach(addCommentBodyTokens);
   }
+  for (const entry of [...deletePrepared, ...insertPrepared]) {
+    if (entry.htmlKey) entry.tokens.push(`htmlpair:${entry.htmlKey}`);
+    if (entry.arrayIfSignature) entry.tokens.push(`arrayif:${entry.arrayIfSignature.key}`);
+    if (entry.commentText) {
+      // Prefix buckets keep distant comments searchable without enumerating every prefix.
+      entry.tokens.push(`commentprefix:${entry.commentText.slice(0, 3)}`);
+    }
+  }
   const insertIndex = buildIndexMap(insertPrepared);
 
   for (let d = 0; d < deletes.length; d += 1) {
@@ -413,6 +429,15 @@ export function buildPairCandidates(
     for (const i of candidateIndices) {
       const right = insertPrepared[i];
       const distance = Math.abs(d - i);
+      const commentPrefix = left.commentText && right.commentText &&
+        left.commentText !== right.commentText &&
+        (left.commentText.startsWith(right.commentText) || right.commentText.startsWith(left.commentText)) &&
+        /[\p{L}\p{N}]/u.test(left.commentText) && /[\p{L}\p{N}]/u.test(right.commentText);
+      if ((left.htmlKey && left.htmlKey === right.htmlKey) || commentPrefix) {
+        candidates.push({ deleteIndex: d, insertIndex: i, indentDiff: Math.abs(left.indent - right.indent),
+          score: commentPrefix ? SCORE_THRESHOLD + 1 : TEMPLATE_IF_EXACT_SCORE, distance });
+        continue;
+      }
       if (
         left.text !== right.text &&
         hasMatchingAppendPayload(left, right)
