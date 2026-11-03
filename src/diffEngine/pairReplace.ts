@@ -1,7 +1,7 @@
 import { htmlPairKey } from "./htmlStructure";
 import type { LineOp, PairedOp } from "./types";
 import { extractAppendLiteral } from "./appendLiteral";
-import { extractArrayIfSignature, type ArrayIfSignature } from "./arrayIf";
+import { extractControlStatementSignature, type ControlStatementSignature } from "./controlStatement";
 import {
   buildLineFeatures,
   normalizeCommentText,
@@ -35,7 +35,7 @@ export type PairCandidate = {
 };
 
 type PreparedPairLine = {
-  arrayIfSignature: ArrayIfSignature | null;
+  controlStatementSignature: ControlStatementSignature | null;
   appendComparableKey: string | null;
   appendCoreComparableKey: string | null;
   commentBodyKey: string | null;
@@ -352,7 +352,7 @@ export function buildPairCandidates(
     return {
       htmlKey: htmlPairKey(text),
       commentText: normalizeCommentText(text),
-      arrayIfSignature: extractArrayIfSignature(text),
+      controlStatementSignature: extractControlStatementSignature(text),
       appendComparableKey: appendComparable.key,
       appendCoreComparableKey: appendComparable.coreKey,
       commentBodyKey: commentComparable.bodyKey,
@@ -377,7 +377,7 @@ export function buildPairCandidates(
     return {
       htmlKey: htmlPairKey(text),
       commentText: normalizeCommentText(text),
-      arrayIfSignature: extractArrayIfSignature(text),
+      controlStatementSignature: extractControlStatementSignature(text),
       appendComparableKey: appendComparable.key,
       appendCoreComparableKey: appendComparable.coreKey,
       commentBodyKey: commentComparable.bodyKey,
@@ -409,7 +409,7 @@ export function buildPairCandidates(
   }
   for (const entry of [...deletePrepared, ...insertPrepared]) {
     if (entry.htmlKey) entry.tokens.push(`htmlpair:${entry.htmlKey}`);
-    if (entry.arrayIfSignature) entry.tokens.push(`arrayif:${entry.arrayIfSignature.key}`);
+    if (entry.controlStatementSignature) entry.tokens.push(`control:${entry.controlStatementSignature.key}`);
     if (entry.commentText) {
       // Prefix buckets keep distant comments searchable without enumerating every prefix.
       entry.tokens.push(`commentprefix:${entry.commentText.slice(0, 3)}`);
@@ -502,10 +502,10 @@ export function buildPairCandidates(
           left.templateIfSignature,
           right.templateIfSignature,
         ) ||
-        (left.arrayIfSignature &&
-          right.arrayIfSignature &&
-          left.arrayIfSignature.dialect !== right.arrayIfSignature.dialect &&
-          left.arrayIfSignature.key === right.arrayIfSignature.key)
+        (left.controlStatementSignature &&
+          right.controlStatementSignature &&
+          left.controlStatementSignature.dialect !== right.controlStatementSignature.dialect &&
+          left.controlStatementSignature.key === right.controlStatementSignature.key)
       ) {
         candidates.push({
           deleteIndex: d,

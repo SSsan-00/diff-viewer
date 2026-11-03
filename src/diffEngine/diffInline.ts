@@ -475,12 +475,16 @@ function mapInlineDiffWithAppendLiteral(
     prepared.leftMap,
     prepared.rightLine,
     prepared.rightMap,
+    prepared.leftOriginalPrefixOffset,
+    prepared.rightOriginalPrefixOffset,
   );
   const rightWrapperRanges = resolveWrapperRanges(
     prepared.rightLine,
     prepared.rightMap,
     prepared.leftLine,
     prepared.leftMap,
+    prepared.rightOriginalPrefixOffset,
+    prepared.leftOriginalPrefixOffset,
   );
   const leftMapped = combineRanges(
     mapRanges(offsetRanges(inline.leftRanges, prepared.leftPrefixOffset), prepared.leftMap),
@@ -501,6 +505,8 @@ function resolveWrapperRanges(
   currentMap: RangeMap,
   otherLine: string,
   otherMap: RangeMap,
+  currentPrefixOffset: number,
+  otherPrefixOffset: number,
 ): Range[] {
   if (currentMap.wrapperRanges.length === 0) {
     return [];
@@ -508,7 +514,7 @@ function resolveWrapperRanges(
   if (otherMap.wrapperRanges.length === 0) {
     return currentMap.wrapperRanges;
   }
-  if (extractWrapperText(currentLine, currentMap) !== extractWrapperText(otherLine, otherMap)) {
+  if (extractWrapperText(currentLine, currentMap).slice(currentPrefixOffset) !== extractWrapperText(otherLine, otherMap).slice(otherPrefixOffset)) {
     return currentMap.wrapperRanges;
   }
   return [];

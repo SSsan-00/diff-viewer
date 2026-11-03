@@ -1,8 +1,9 @@
+import { prepareReplaceOpsForDisplay } from "./replaceVisibility";
 import { afterEach, expect, it } from "vitest";
 import { createDiffEngine } from "./engine";
 import { pairReplace } from "./pairReplace";
-import { extractArrayIfSignature } from "./arrayIf";
-import { diffInlineWithAppendLiteral, setDiffInlineCore, setDiffInlineBatchCore } from "./diffInline";
+import { extractControlStatementSignature } from "./controlStatement";
+import { diffInlineWithAppendLiteral, diffInlineWithAppendLiteralBatch, setDiffInlineCore, setDiffInlineBatchCore } from "./diffInline";
 import { extractHtmlAttributeSpaceDiffRangesPair } from "./htmlAttributeSpaceDiff";
 import { buildDiffReportHtml } from "../ui/diffReport";
 
@@ -29,7 +30,7 @@ it.each(["ts", "wasm"] as const)("pairs converted conditions, templates and comm
 });
 
 it("preserves condition structure and rejects unsupported syntax", () => {
-  const key = (condition: string) => extractArrayIfSignature(`if (${condition})`);
+  const key = (condition: string) => extractControlStatementSignature(`if (${condition})`);
   expect(key('$a["x"].s() != "1" && $b["y"] == 2')).toBeNull();
   expect(key('a["x"].t() != "1"')).toBeNull();
   expect(key('a["x"].s(value) != "1"')).toBeNull();
@@ -70,4 +71,43 @@ it("does not promote middle-only comment overlap or empty comment markers", asyn
     // Check the dedicated prefix rule: these lines have no matching leading body.
     expect(pairReplace(engine.diffLines(left,right)).some((op) => op.type === "replace")).toBe(false);
   }
+});
+
+it.each(["ts", "wasm"] as const)("pairs converted control statements and preserves their raw highlights with %s", async (mode) => {
+  const engine = await createDiffEngine({mode});
+  expect(engine.getStatus().activeMode).toBe(mode);
+  const pairs = [
+    ['<? for($i = 1; $I <= 10; $I++) { ?>', '@for(int i = 1; I <= 10; I++)'],
+    [`switch($data['foo'])`, 'switch(data["foo"].s())'],
+    [`if($data['foo'] != $data['bar']) $data['hoge'] = "1";`, 'if(data["foo"].s() != data["bar"].s()) data["hoge"] = "1";'],
+    [`if($data['foo' . $i] != "")`, 'if(data["foo" + i].s() != "")'],
+    [`for($I = 0; $I < $data['cnt']; $I++)`, 'for(int I = 0; I < data["cnt"].i(); I++)'],
+  ];
+  for (const reverse of [false,true]) {
+    const left = pairs.map((p) => p[reverse ? 1 : 0]);
+    const right = pairs.map((p) => p[reverse ? 0 : 1]);
+    const shifted = [...Array.from({length:60},(_,i) => `unrelated${i}();`),...right,'done();'];
+    const ops = pairReplace(engine.diffLines([...left,'done();'].join('\n'),shifted.join('\n')));
+    expect(ops.filter((op) => op.type === 'replace').map((op) => [op.leftLineNo,op.rightLineNo])).toEqual(left.map((_,i) => [i,i+60]));
+    expect(engine.diffWithAnchors([...left,'done();'].join('\n'),shifted.join('\n'),[{leftLineNo:5,rightLineNo:65}]).filter((op) => op.type === 'replace')).toHaveLength(5);
+    const inputs = left.map((leftLine,i) => ({leftLine,rightLine:right[i]}));
+    expect(diffInlineWithAppendLiteralBatch(inputs)).toEqual(inputs.map((p) => diffInlineWithAppendLiteral(p.leftLine,p.rightLine)));
+  }
+  const indented = prepareReplaceOpsForDisplay([{type:'equal',leftLine:'    sb.AppendLine("abc");',rightLine:'sb.AppendLine("abc");',leftLineNo:0,rightLineNo:0}],{ignoreLeadingFileWhitespace:true});
+  expect(indented.ops[0].type).toBe('equal');
+  expect(indented.displayDiffs[0]?.inline).toEqual({leftRanges:[],rightRanges:[]});
+  const l='sb.AppendLine($@"{Get("}")} tail old");', r='sb.AppendLine($@"{Get("}")} tail new");';
+  expect(diffInlineWithAppendLiteral(l,r)).toEqual({leftRanges:[{start:l.indexOf('old'),end:l.indexOf('old')+3}],rightRanges:[{start:r.indexOf('new'),end:r.indexOf('new')+3}]});
+  const a='sb.AppendLine(@"<input name=""foo"" value=""a  b > c"">");', b='sb.AppendLine(@"<input name=""foo"" value=""a b > c"">");';
+  const inline=diffInlineWithAppendLiteral(a,b);
+  expect(extractHtmlAttributeSpaceDiffRangesPair(a,b,inline.leftRanges,inline.rightRanges)).toEqual({left:[{start:a.indexOf('a  b')+2,end:a.indexOf('a  b')+3}],right:[]});
+});
+
+it("keeps control operands, loop updates and dynamic keys distinct", () => {
+  const key = (line: string) => extractControlStatementSignature(line)?.key;
+  const base='for(int I = 0; I < data["cnt"].i(); I++)';
+  for(const other of [base.replace('0','1'),base.replace('<','<='),base.replace('cnt','other'),base.replace('I++','I--'),base.replace('int I','int i')]) expect(key(other)).not.toBe(key(base));
+  expect(key('if(data["foo" + i].s() != "")')).not.toBe(key('if(data["foo" + j].s() != "")'));
+  expect(key('switch(data["foo"].s())')).not.toBe(key('switch(data["bar"].s())'));
+  for(const invalid of [base.replace('.i()','.I()'),base.replace('.i()','.i(1)'), 'if(data["foo" + i + j].s() != "")', 'switch(data["foo"].s()) trailing()', '<? for($i = 0; $i < 10; $i++) {']) expect(key(invalid)).toBeUndefined();
 });

@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import { extractArrayIfSignature } from "./arrayIf";
+import { extractControlStatementSignature } from "./controlStatement";
 import { createDiffEngine } from "./engine";
 import { pairReplace } from "./pairReplace";
 import { diffInlineWithAppendLiteral, setDiffInlineCore, setDiffInlineBatchCore } from "./diffInline";
@@ -7,7 +7,7 @@ import { prepareReplaceOpsForDisplay } from "./replaceVisibility";
 
 const php = `if($wdata['cfutan_flg'] != "1" && $wdata['cfutan_flg'] != 1) $wdata['cfutan_flg'] = 0;`;
 const converted = 'if (wdata["cfutan_flg"].s() != "1" && wdata["cfutan_flg"].i() != 1) wdata["cfutan_flg"] = 0;';
-const signature = (line: string) => extractArrayIfSignature(line)?.key;
+const signature = (line: string) => extractControlStatementSignature(line)?.key;
 afterEach(() => { setDiffInlineCore(null); setDiffInlineBatchCore(null); });
 
 it.each(["s", "i", "m", "b"])("pairs same-line assignments with %s conversion and nested conditions", (method) => {
@@ -41,7 +41,7 @@ it.each([
   converted.replace('.s()', '.unknown()'),
   converted.replace(') wdata', ') { wdata') + ' }',
 ])("rejects unsupported or incomplete statements: %s", (line) => {
-  expect(extractArrayIfSignature(line)).toBeNull();
+  expect(extractControlStatementSignature(line)).toBeNull();
 });
 
 it.each(["ts", "wasm"] as const)("aligns the supplied case with %s, including distant and anchor-split rows", async (mode) => {

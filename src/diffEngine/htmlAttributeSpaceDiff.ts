@@ -3,7 +3,7 @@ export type InlineRange = { start: number; end: number };
 
 type AttributeRange = { start: number; end: number; name: string };
 
-function findTagRanges(line: string): Array<{ start: number; end: number }> {
+function findTagRanges(line: string, verbatim: boolean): Array<{ start: number; end: number }> {
   const ranges: Array<{ start: number; end: number }> = [];
   let index = 0;
   while (index < line.length) {
@@ -15,14 +15,17 @@ function findTagRanges(line: string): Array<{ start: number; end: number }> {
     let quote: "\"" | "'" | null = null;
     for (; i < line.length; i += 1) {
       const ch = line[i];
+      const doubled = verbatim && ch === '"' && line[i + 1] === '"';
       if (quote) {
         if (ch === quote) {
           quote = null;
         }
+        if (doubled) i += 1;
         continue;
       }
       if (ch === "\"" || ch === "'") {
         quote = ch;
+        if (doubled) i += 1;
         continue;
       }
       if (ch === ">") {
@@ -50,7 +53,8 @@ function isTargetAttribute(name: string): boolean {
 function extractAttributeValueRanges(line: string): AttributeRange[] {
   const ranges: AttributeRange[] = [];
   line = maskTemplateExpressions(line);
-  const tagRanges = findTagRanges(line);
+  const verbatim = /\.(?:append|appendline|appendformat)\s*\(\s*(?:\$@|@\$|@)"/i.test(line);
+  const tagRanges = findTagRanges(line, verbatim);
 
   for (const tag of tagRanges) {
     const content = line.slice(tag.start + 1, tag.end - 1);
@@ -82,7 +86,12 @@ function extractAttributeValueRanges(line: string): AttributeRange[] {
 
       let quote: "\"" | "'" | null = null;
       let escapedQuote = false;
-      if (content[i] === "\\" && (content[i + 1] === "\"" || content[i + 1] === "'")) {
+      let doubledQuote = false;
+      if (verbatim && content[i] === '"' && content[i + 1] === '"') {
+        doubledQuote = true;
+        quote = '"';
+        i += 2;
+      } else if (content[i] === "\\" && (content[i + 1] === "\"" || content[i + 1] === "'")) {
         escapedQuote = true;
         quote = content[i + 1] as "\"" | "'";
         i += 2;
@@ -98,7 +107,13 @@ function extractAttributeValueRanges(line: string): AttributeRange[] {
       const valueStart = i;
       let valueEnd = -1;
       while (i < content.length) {
-        if (escapedQuote) {
+        if (doubledQuote) {
+          if (content[i] === '"' && content[i + 1] === '"') {
+            valueEnd = i;
+            i += 2;
+            break;
+          }
+        } else if (escapedQuote) {
           if (content[i] === "\\" && content[i + 1] === quote) {
             valueEnd = i;
             i += 2;

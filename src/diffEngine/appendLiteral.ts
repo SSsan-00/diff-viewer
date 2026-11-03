@@ -117,10 +117,11 @@ function parseAppendLiteral(
         } else if (c === "}" && line[i + 1] !== "}") {
           depth -= 1;
         }
-        if (c === "\"" && !isVerbatim) {
+        if (c === "\"" || c === "'") {
           if (options.preserveEscapes) {
             pushChar(c, i);
           }
+          const expressionQuote = c;
           i += 1;
           while (i < line.length) {
             if (line[i] === "\\" && i + 1 < line.length) {
@@ -134,7 +135,7 @@ function parseAppendLiteral(
             if (options.preserveEscapes) {
               pushChar(line[i], i);
             }
-            if (line[i] === "\"") {
+            if (line[i] === expressionQuote) {
               i += 1;
               break;
             }
