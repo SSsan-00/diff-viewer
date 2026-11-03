@@ -1,3 +1,4 @@
+import { getInputAttributeDiffParts } from "./htmlStructure";
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
   diffInline,
@@ -434,4 +435,16 @@ describe("diffInline", () => {
       ),
     );
   });
+});
+
+it("uses ordinary diff for changed attribute structure or unsafe input syntax", () => {
+  const base='<input name="foo" class="bar">';
+  for(const other of [
+    '<input class="bar" name="foo">',
+    '<input name="foo" class="bar" disabled>',
+    '<input name="foo" name="bar">',
+    '<input name="foo" class=bar>',
+    '<input name="foo" class="bar>',
+    '<input name="foo" class="bar"><input name="next">',
+  ]) expect(getInputAttributeDiffParts(base,other)).toBeNull();
 });

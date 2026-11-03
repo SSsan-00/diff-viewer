@@ -76,7 +76,7 @@
 - `src/diffEngine/templateIf.ts` PHPタグ付きの単純な `if` と Razor `@if` を厳格に識別し、同一条件だけを対応候補にする。exports: `extractTemplateIfSignature`, `areEquivalentTemplateIfSignatures`。
 - `src/diffEngine/templateIf.test.ts` 対象構文、空白揺れ、左右反転、非対象構文の拒否テスト。
 - `src/diffEngine/controlStatement.ts` if/switch/for、動的キー、配列同士の比較と引数なし `.s()` / `.i()` / `.m()` / `.b()`、比較・論理演算・括弧と同じ行に続く単純な配列代入を識別する。export: `extractControlStatementSignature`。
-- `src/diffEngine/htmlStructure.ts` 埋め込みPHP/Razor式を位置を維持してマスクし、HTMLの対応キーを抽出する。
+- `src/diffEngine/htmlStructure.ts` 埋め込みPHP/Razor式を位置を維持してマスクし、HTMLの対応キーと同構成inputの属性値差分区間を抽出する。
 - `src/diffEngine/controlStatement.test.ts` 同じ行に代入が続く配列条件の解析・TS/WASM対応付けとハイライトの回帰テスト。
 - `src/diffEngine/semanticPairing.test.ts` 配列条件・HTML・コメント対応とハイライトの回帰テスト。
 - `src/diffEngine/diffLines.ts` 行レベル差分（Myers + ユニーク行優先）。exports: `diffLinesFromLines`, `diffLines`。

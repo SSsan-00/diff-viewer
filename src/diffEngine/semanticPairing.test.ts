@@ -5,7 +5,7 @@ import { pairReplace } from "./pairReplace";
 import { extractControlStatementSignature } from "./controlStatement";
 import { diffInlineWithAppendLiteral, diffInlineWithAppendLiteralBatch, setDiffInlineCore, setDiffInlineBatchCore } from "./diffInline";
 import { extractHtmlAttributeSpaceDiffRangesPair } from "./htmlAttributeSpaceDiff";
-import { buildDiffReportHtml } from "../ui/diffReport";
+import { buildReportRowsFromVisualRows, buildDiffReportHtml } from "../ui/diffReport";
 
 afterEach(() => { setDiffInlineCore(null); setDiffInlineBatchCore(null); });
 
@@ -110,4 +110,46 @@ it("keeps control operands, loop updates and dynamic keys distinct", () => {
   expect(key('if(data["foo" + i].s() != "")')).not.toBe(key('if(data["foo" + j].s() != "")'));
   expect(key('switch(data["foo"].s())')).not.toBe(key('switch(data["bar"].s())'));
   for(const invalid of [base.replace('.i()','.I()'),base.replace('.i()','.i(1)'), 'if(data["foo" + i + j].s() != "")', 'switch(data["foo"].s()) trailing()', '<? for($i = 0; $i < 10; $i++) {']) expect(key(invalid)).toBeUndefined();
+});
+
+it.each(["ts", "wasm"] as const)("compares input values within their own attributes with %s", async (mode) => {
+  const engine = await createDiffEngine({mode});
+  expect(engine.getStatus().activeMode).toBe(mode);
+  const value='0123456789012345678901234567890123456789';
+  const left=`<input value="${value}" name="foo" class="bar" data-x="x">`;
+  const right=`<input value="x" name="foo" class="bar" data-x="${value}">`;
+  const ranges = (line: string) => ['value','data-x'].map((name) => {
+    const start=line.indexOf(` ${name}="`)+name.length+3;
+    return {start,end:line.indexOf('"',start)};
+  });
+  const expected={leftRanges:ranges(left),rightRanges:ranges(right)};
+  expect(diffInlineWithAppendLiteral(left,right)).toEqual(expected);
+  expect(diffInlineWithAppendLiteralBatch([{leftLine:left,rightLine:right}])).toEqual([expected]);
+  const prepared=prepareReplaceOpsForDisplay(pairReplace(engine.diffLines(left,right)),{ignoreLeadingFileWhitespace:false});
+  expect(prepared.ops.map((op)=>op.type)).toEqual(['replace']);
+  expect(prepared.displayDiffs[0]?.inline).toEqual(expected);
+  const report=buildReportRowsFromVisualRows([{kind:'replace',leftText:left,rightText:right}])[0];
+  expect(report.leftInlineRanges).toEqual(expected.leftRanges);
+  expect(report.rightInlineRanges).toEqual(expected.rightRanges);
+  for(const [a,b] of [
+    [`<input name='a' class='b'>`, '<input name="a" class="b">'],
+    ['<input name="a" class="b">','<input name="c" class="d">'],
+    ['  <input name="日本🙂" class="a" value="old">','<input name="日本🙂" class="a" value="new">'],
+    [`<input name="foo" value="<?= $data['old'] ?>">`, '<input name="foo" value="@Html.Raw(Model.data["new"])">'],
+  ]) {
+    const inline=diffInlineWithAppendLiteral(a,b,{ignoreLeadingFileWhitespace:true});
+    expect(diffInlineWithAppendLiteralBatch([{leftLine:a,rightLine:b,options:{ignoreLeadingFileWhitespace:true}}])).toEqual([inline]);
+    expect(inline.leftRanges.length+inline.rightRanges.length).toBeGreaterThan(0);
+    if(a.includes("name='a'")) {
+      expect(inline.leftRanges.map((r)=>a.slice(r.start,r.end))).toEqual(["'","'","'","'"]);
+    } else if(b.includes('name="c"')) {
+      expect(inline.leftRanges.map((r)=>a.slice(r.start,r.end))).toEqual(['a','b']);
+      expect(inline.rightRanges.map((r)=>b.slice(r.start,r.end))).toEqual(['c','d']);
+    } else {
+      for(const [line,rs] of [[a,inline.leftRanges],[b,inline.rightRanges]] as const) {
+        const start=line.indexOf(' name="')+7, end=line.indexOf('"',start);
+        expect(rs.some((r)=>r.start<end&&r.end>start)).toBe(false);
+      }
+    }
+  }
 });

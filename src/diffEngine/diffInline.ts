@@ -1,3 +1,4 @@
+import { getInputAttributeDiffParts } from "./htmlStructure";
 import type { InlineDiff, Range } from "./types";
 import { extractAppendLiteralInlineMap } from "./appendLiteral";
 
@@ -350,48 +351,53 @@ export function setDiffInlineBatchCore(diffBatchCore: DiffInlineBatchCore | null
     inputs.map((input) => activeDiffInlineCore(input.leftLine, input.rightLine)));
 }
 
+function prepareInlineParts(leftLine: string, rightLine: string) {
+  return getInputAttributeDiffParts(leftLine, rightLine) ?? [{
+    left: { start: 0, end: leftLine.length },
+    right: { start: 0, end: rightLine.length },
+  }];
+}
+
 export function diffInline(leftLine: string, rightLine: string): InlineDiff {
-  if (leftLine === rightLine) {
-    return { leftRanges: [], rightRanges: [] };
+  if (leftLine === rightLine) return { leftRanges: [], rightRanges: [] };
+  const result: InlineDiff = { leftRanges: [], rightRanges: [] };
+  for (const part of prepareInlineParts(leftLine, rightLine)) {
+    const left = leftLine.slice(part.left.start, part.left.end);
+    const right = rightLine.slice(part.right.start, part.right.end);
+    if (left === right) continue;
+    const inline = activeDiffInlineCore(left, right);
+    result.leftRanges.push(...offsetRanges(inline.leftRanges, part.left.start));
+    result.rightRanges.push(...offsetRanges(inline.rightRanges, part.right.start));
   }
-  return snapInlineDiffToGraphemeBoundaries(
-    leftLine,
-    rightLine,
-    activeDiffInlineCore(leftLine, rightLine),
-  );
+  return snapInlineDiffToGraphemeBoundaries(leftLine, rightLine, result);
 }
 
 export function diffInlineBatch(inputs: DiffInlineBatchInput[]): InlineDiff[] {
-  if (inputs.length === 0) {
-    return [];
-  }
   const changedInputs: DiffInlineBatchInput[] = [];
-  const changedIndexes: number[] = [];
+  const locations: Array<{ index: number; leftOffset: number; rightOffset: number }> = [];
   const results: InlineDiff[] = inputs.map((input, index) => {
-    if (input.leftLine === input.rightLine) {
-      return { leftRanges: [], rightRanges: [] };
+    if (input.leftLine !== input.rightLine) {
+      for (const part of prepareInlineParts(input.leftLine, input.rightLine)) {
+        const leftLine = input.leftLine.slice(part.left.start, part.left.end);
+        const rightLine = input.rightLine.slice(part.right.start, part.right.end);
+        if (leftLine === rightLine) continue;
+        changedInputs.push({ leftLine, rightLine });
+        locations.push({ index, leftOffset: part.left.start, rightOffset: part.right.start });
+      }
     }
-    changedInputs.push(input);
-    changedIndexes.push(index);
     return { leftRanges: [], rightRanges: [] };
   });
-  if (changedInputs.length === 0) {
-    return results;
-  }
+  if (changedInputs.length === 0) return results;
   const changedResults = activeDiffInlineBatchCore(changedInputs);
   if (changedResults.length !== changedInputs.length) {
     throw new Error("Inline diff batch core returned an unexpected result count.");
   }
   changedResults.forEach((inline, changedIndex) => {
-    const resultIndex = changedIndexes[changedIndex];
-    const input = inputs[resultIndex];
-    results[resultIndex] = snapInlineDiffToGraphemeBoundaries(
-      input.leftLine,
-      input.rightLine,
-      inline,
-    );
+    const location = locations[changedIndex];
+    results[location.index].leftRanges.push(...offsetRanges(inline.leftRanges, location.leftOffset));
+    results[location.index].rightRanges.push(...offsetRanges(inline.rightRanges, location.rightOffset));
   });
-  return results;
+  return results.map((result, index) => snapInlineDiffToGraphemeBoundaries(inputs[index].leftLine, inputs[index].rightLine, result));
 }
 
 type RangeMap = {
