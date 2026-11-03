@@ -112,6 +112,79 @@ it("keeps control operands, loop updates and dynamic keys distinct", () => {
   for(const invalid of [base.replace('.i()','.I()'),base.replace('.i()','.i(1)'), 'if(data["foo" + i + j].s() != "")', 'switch(data["foo"].s()) trailing()', '<? for($i = 0; $i < 10; $i++) {']) expect(key(invalid)).toBeUndefined();
 });
 
+it.each(["ts", "wasm"] as const)("pairs converted multiplication, nullable conditions and trailing text with %s", async (mode) => {
+  const engine = await createDiffEngine({mode});
+  expect(engine.getStatus().activeMode).toBe(mode);
+  const pairs = [
+    [`$data['foo'] *= -1;`, 'MathUtil.Multiply(ref data.Ref("foo"), -1);'],
+    [`if((isset($data['foo']) ? $data['foo'] : "") == "1")`, 'if(($data["foo"].s()) == "1")'],
+    [`<? if($data['foo'] != ""){ ?>`, '@if(Model.data["foo"].s() != "")'],
+    ['Xxxx Yyyy', 'Xxxx'],
+    ['DoWork(); // 日本語🙂の注釈', 'DoWork();'],
+    ['DoWork(); /* annotation */', 'DoWork();'],
+    [`if((isset($a['x']) ? $a['x'] : "") == "1") // 日本語🙂`, 'if((a["x"].s()) == "1")'],
+    ['Xxxx '+Array.from({length:40},(_,i) => `word${i}`).join(' '), 'Xxxx'],
+  ];
+  for (const [left,right] of [...pairs.slice(0,3),pairs[6]]) {
+    expect(extractControlStatementSignature(left)?.key).toBeDefined();
+    expect(extractControlStatementSignature(left)?.key).toBe(extractControlStatementSignature(right)?.key);
+  }
+  for (const reverse of [false,true]) {
+    const left = pairs.map((pair) => pair[reverse ? 1 : 0]);
+    const right = pairs.map((pair) => pair[reverse ? 0 : 1]);
+    const shifted = [...Array.from({length:60},(_,i) => `unrelated${i}();`),...right,'done();'];
+    const ops = pairReplace(engine.diffLines([...left,'done();'].join('\n'),shifted.join('\n')));
+    expect(ops.filter((op) => op.type === 'replace').map((op) => [op.leftLineNo,op.rightLineNo])).toEqual(left.map((_,i) => [i,i+60]));
+    expect(engine.diffWithAnchors([...left,'done();'].join('\n'),shifted.join('\n'),[{leftLineNo:left.length,rightLineNo:right.length+60}]).filter((op) => op.type === 'replace')).toHaveLength(pairs.length);
+    const inputs = left.map((leftLine,i) => ({leftLine,rightLine:right[i]}));
+    const inline = diffInlineWithAppendLiteralBatch(inputs);
+    expect(inline).toEqual(inputs.map((p) => diffInlineWithAppendLiteral(p.leftLine,p.rightLine)));
+    const display = prepareReplaceOpsForDisplay(ops,{ignoreLeadingFileWhitespace:false});
+    expect(display.displayDiffs.filter((_,i) => display.ops[i].type === 'replace').map((d) => d?.inline)).toEqual(inline);
+    for (let i=0;i<pairs.length;i++) {
+      const report = buildReportRowsFromVisualRows([{kind:'replace',leftText:left[i],rightText:right[i]}])[0];
+      expect(report.leftInlineRanges).toEqual(inline[i].leftRanges);
+      expect(report.rightInlineRanges).toEqual(inline[i].rightRanges);
+      for (const [line,ranges] of [[left[i],inline[i].leftRanges],[right[i],inline[i].rightRanges]] as const) {
+        for (const range of ranges) {
+          expect(range.start).toBeGreaterThanOrEqual(0);
+          expect(range.end).toBeGreaterThan(range.start);
+          expect(range.end).toBeLessThanOrEqual(line.length);
+        }
+        if (i<3 || i===6) {
+          const key = i===6 ? 'x' : 'foo';
+          const start = line.lastIndexOf(key);
+          expect(ranges.some((r) => r.start<start+key.length && r.end>start)).toBe(false);
+        }
+        if (i<3) {
+          const start = line.lastIndexOf('data');
+          expect(ranges.some((r) => r.start<start+4 && r.end>start)).toBe(false);
+        }
+      }
+      if (i>=3 && i!==6) {
+        const suffix = {start:right[i].length,end:left[i].length};
+        expect(inline[i]).toEqual(reverse
+          ? {leftRanges:[],rightRanges:[{start:left[i].length,end:right[i].length}]}
+          : {leftRanges:[suffix],rightRanges:[]});
+      }
+    }
+  }
+});
+
+it("keeps nullable references and multiplication targets distinct", () => {
+  const key = (line: string) => extractControlStatementSignature(line)?.key;
+  const left = `$data['foo'] *= -1;`;
+  const right = 'MathUtil.Multiply(ref data.Ref("foo"), -1);';
+  expect(key(left)).toBeDefined();
+  for (const other of [right.replace('data.Ref','other.Ref'),right.replace('foo','bar'),right.replace('-1','1')]) expect(key(other)).not.toBe(key(left));
+  for (const invalid of [right.replace('ref ',''),right.replace('Ref','Other'),right.replace('-1','"-1"'),right+' extra();',`if((isset($data['foo']) ? $data['bar'] : "") == "1")`,`if((isset($data['foo']) ? $data['foo'] : "0") == "1")`,'if(/* comment */ data["foo"].s() == "1")']) expect(key(invalid)).toBeUndefined();
+  const nullable = `if((isset($data['foo']) ? $data['foo'] : "") == "1")`;
+  for (const method of ['s','i','m','b']) expect(key(nullable)).toBe(key(`if((Model.data["foo"].${method}()) == "1") /* note */`));
+  for (const [a,b] of [['XxxxYyyy','Xxxx'],['!!! note','!!!']]) {
+    expect(pairReplace([{type:'delete',leftLine:a,leftLineNo:0},{type:'insert',rightLine:b,rightLineNo:0}]).some((op) => op.type === 'replace')).toBe(false);
+  }
+});
+
 it.each(["ts", "wasm"] as const)("compares input values within their own attributes with %s", async (mode) => {
   const engine = await createDiffEngine({mode});
   expect(engine.getStatus().activeMode).toBe(mode);

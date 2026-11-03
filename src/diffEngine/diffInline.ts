@@ -1,4 +1,5 @@
 import { getInputAttributeDiffParts } from "./htmlStructure";
+import { getControlStatementDiffParts } from "./controlStatement";
 import type { InlineDiff, Range } from "./types";
 import { extractAppendLiteralInlineMap } from "./appendLiteral";
 
@@ -352,7 +353,7 @@ export function setDiffInlineBatchCore(diffBatchCore: DiffInlineBatchCore | null
 }
 
 function prepareInlineParts(leftLine: string, rightLine: string) {
-  return getInputAttributeDiffParts(leftLine, rightLine) ?? [{
+  return getInputAttributeDiffParts(leftLine, rightLine) ?? getControlStatementDiffParts(leftLine, rightLine) ?? [{
     left: { start: 0, end: leftLine.length },
     right: { start: 0, end: rightLine.length },
   }];

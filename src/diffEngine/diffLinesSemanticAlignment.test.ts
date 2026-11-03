@@ -298,7 +298,6 @@ describe("semantic alignment across languages", () => {
     'if (search["seldate_from"].s(value) != "")',
     'if (search["seldate_from"].t() != "")',
     'while (search["seldate_from"].s() != "")',
-    'if (search["seldate_from"].s() != "") // note',
     'if (search["seldate_from"].s() != "") return;',
   ])("does not broaden array-check pairing to a different condition: %s", (converted) => {
     const php = `if ($search['seldate_from'] != "")`;
@@ -312,7 +311,6 @@ describe("semantic alignment across languages", () => {
 
   it.each([
     `if ($search['seldate_from'] != "" && $enabled)`,
-    `if ($search['seldate_from'] != "") // note`,
     `if ($search['seldate_from'] != "value")`,
     `if ($search['seldate_from'] == "")`,
     `if ($search['seldate_' . 'from'] != "")`,

@@ -30,7 +30,6 @@ it.each([
 
 it.each([
   converted + ' other = 1;',
-  converted + ' // note',
   converted.replace(' = 0;', ' += 0;'),
   converted.replace(' = 0;', ' = func();'),
   converted.replace(' = 0;', ' = 0'),

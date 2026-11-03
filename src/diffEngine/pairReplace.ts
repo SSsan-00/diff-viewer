@@ -48,6 +48,7 @@ type PreparedPairLine = {
   templateIfSignature: TemplateIfSignature | null;
   htmlKey: string | null;
   commentText: string | null;
+  prefixText: string;
   text: string;
   tokens: string[];
   trimmed: string;
@@ -352,6 +353,7 @@ export function buildPairCandidates(
     return {
       htmlKey: htmlPairKey(text),
       commentText: normalizeCommentText(text),
+      prefixText: text.trim().replace(/\s+/g, " "),
       controlStatementSignature: extractControlStatementSignature(text),
       appendComparableKey: appendComparable.key,
       appendCoreComparableKey: appendComparable.coreKey,
@@ -377,6 +379,7 @@ export function buildPairCandidates(
     return {
       htmlKey: htmlPairKey(text),
       commentText: normalizeCommentText(text),
+      prefixText: text.trim().replace(/\s+/g, " "),
       controlStatementSignature: extractControlStatementSignature(text),
       appendComparableKey: appendComparable.key,
       appendCoreComparableKey: appendComparable.coreKey,
@@ -410,6 +413,7 @@ export function buildPairCandidates(
   for (const entry of [...deletePrepared, ...insertPrepared]) {
     if (entry.htmlKey) entry.tokens.push(`htmlpair:${entry.htmlKey}`);
     if (entry.controlStatementSignature) entry.tokens.push(`control:${entry.controlStatementSignature.key}`);
+    if (entry.prefixText.length >= 3) entry.tokens.push(`lineprefix:${entry.prefixText.slice(0, 3)}`);
     if (entry.commentText) {
       // Prefix buckets keep distant comments searchable without enumerating every prefix.
       entry.tokens.push(`commentprefix:${entry.commentText.slice(0, 3)}`);
@@ -433,9 +437,13 @@ export function buildPairCandidates(
         left.commentText !== right.commentText &&
         (left.commentText.startsWith(right.commentText) || right.commentText.startsWith(left.commentText)) &&
         /[\p{L}\p{N}]/u.test(left.commentText) && /[\p{L}\p{N}]/u.test(right.commentText);
-      if ((left.htmlKey && left.htmlKey === right.htmlKey) || commentPrefix) {
+      const shorter = left.prefixText.length < right.prefixText.length ? left.prefixText : right.prefixText;
+      const longer = left.prefixText.length < right.prefixText.length ? right.prefixText : left.prefixText;
+      const linePrefix = shorter.length >= 3 && /[\p{L}\p{N}]/u.test(shorter) &&
+        longer.startsWith(shorter) && /^(?:\s|\/\/|\/\*|<!--)/.test(longer.slice(shorter.length));
+      if (left.htmlKey && left.htmlKey === right.htmlKey) {
         candidates.push({ deleteIndex: d, insertIndex: i, indentDiff: Math.abs(left.indent - right.indent),
-          score: commentPrefix ? SCORE_THRESHOLD + 1 : TEMPLATE_IF_EXACT_SCORE, distance });
+          score: TEMPLATE_IF_EXACT_SCORE, distance });
         continue;
       }
       if (
@@ -530,10 +538,8 @@ export function buildPairCandidates(
         });
         continue;
       }
-      const scored = scoreLinePair(left.feature, right.feature);
-      if (scored === null) {
-        continue;
-      }
+      const scored = Math.max(scoreLinePair(left.feature, right.feature) ?? 0,
+        commentPrefix || linePrefix ? SCORE_THRESHOLD + 1 : 0);
       if (scored < SCORE_THRESHOLD) {
         continue;
       }
