@@ -185,6 +185,51 @@ it("keeps nullable references and multiplication targets distinct", () => {
   }
 });
 
+it.each(["ts", "wasm"] as const)("keeps body highlights and source coordinates stable across indentation and blank rows with %s", async (mode) => {
+  const engine = await createDiffEngine({mode});
+  expect(engine.getStatus().activeMode).toBe(mode);
+  const pairs = [
+    [`$data['foo'] *= -1;`, 'MathUtil.Multiply(ref data.Ref("foo"), -1);'],
+    ['<input name="foo" class="bar" value="old">','<input name="foo" class="bar" value="new">'],
+    ['sb.AppendLine("same old");','sb.AppendLine("same new");'],
+  ];
+  for (const [left,right] of pairs) for (const ignoreLeadingFileWhitespace of [false,true]) {
+    const options = {ignoreLeadingFileWhitespace};
+    const base = diffInlineWithAppendLiteral(left,right,options);
+    for (const [a,b] of [[' ',''],['\t\t','  '],['',' \t']]) {
+      const leftLine = a+left, rightLine = b+right;
+      const inline = diffInlineWithAppendLiteral(leftLine,rightLine,options);
+      const bodyRanges = (ranges: Array<{start:number;end:number}>, prefix: string) => ranges
+        .filter((r) => r.end>prefix.length)
+        .map((r) => ({start:Math.max(0,r.start-prefix.length),end:r.end-prefix.length}));
+      expect(bodyRanges(inline.leftRanges,a)).toEqual(base.leftRanges);
+      expect(bodyRanges(inline.rightRanges,b)).toEqual(base.rightRanges);
+      for (const [prefix,ranges] of [[a,inline.leftRanges],[b,inline.rightRanges]] as const) {
+        for (let i=0;i<prefix.length;i++) {
+          expect(ranges.some((r) => r.start<=i&&r.end>i)).toBe(!ignoreLeadingFileWhitespace);
+        }
+      }
+      const leftLines = ['', '\t', leftLine, 'done();'];
+      const rightLines = ['  ', '', '', rightLine, 'done();'];
+      for (const anchored of [false,true]) {
+        const ops = anchored
+          ? engine.diffWithAnchors(leftLines.join('\n'),rightLines.join('\r\n'),[{leftLineNo:3,rightLineNo:4}],options)
+          : pairReplace(engine.diffLines(leftLines.join('\n'),rightLines.join('\r\n'),options));
+        const prepared = prepareReplaceOpsForDisplay(ops,options);
+        const index = prepared.ops.findIndex((op) => op.leftLineNo===2&&op.rightLineNo===3);
+        expect(index).toBeGreaterThanOrEqual(0);
+        expect(prepared.ops[index]).toMatchObject({type:'replace',leftLine,rightLine});
+        expect(prepared.displayDiffs[index]?.inline).toEqual(inline);
+        const report = buildReportRowsFromVisualRows(prepared.ops.map((op) => ({kind:op.type,leftText:op.leftLine??'',rightText:op.rightLine??''})),options)[index];
+        expect(report.leftInlineRanges).toEqual(inline.leftRanges);
+        expect(report.rightInlineRanges).toEqual(inline.rightRanges);
+      }
+    }
+  }
+  const line = 'sb.AppendLine("same");';
+  expect(diffInlineWithAppendLiteral('\t\t'+line,'  '+line)).toEqual({leftRanges:[{start:0,end:2}],rightRanges:[{start:0,end:2}]});
+});
+
 it.each(["ts", "wasm"] as const)("compares input values within their own attributes with %s", async (mode) => {
   const engine = await createDiffEngine({mode});
   expect(engine.getStatus().activeMode).toBe(mode);

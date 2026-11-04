@@ -353,10 +353,22 @@ export function setDiffInlineBatchCore(diffBatchCore: DiffInlineBatchCore | null
 }
 
 function prepareInlineParts(leftLine: string, rightLine: string) {
-  return getInputAttributeDiffParts(leftLine, rightLine) ?? getControlStatementDiffParts(leftLine, rightLine) ?? [{
-    left: { start: 0, end: leftLine.length },
-    right: { start: 0, end: rightLine.length },
+  const leftOffset = countLeadingSpacesAndTabs(leftLine);
+  const rightOffset = countLeadingSpacesAndTabs(rightLine);
+  const leftBody = leftLine.slice(leftOffset);
+  const rightBody = rightLine.slice(rightOffset);
+  const parts = getInputAttributeDiffParts(leftBody, rightBody) ?? getControlStatementDiffParts(leftBody, rightBody) ?? [{
+    left: { start: 0, end: leftBody.length },
+    right: { start: 0, end: rightBody.length },
   }];
+  if (leftOffset === 0 && rightOffset === 0) return parts;
+  return [
+    { left: { start: 0, end: leftOffset }, right: { start: 0, end: rightOffset } },
+    ...parts.map((part) => ({
+      left: { start: part.left.start + leftOffset, end: part.left.end + leftOffset },
+      right: { start: part.right.start + rightOffset, end: part.right.end + rightOffset },
+    })),
+  ];
 }
 
 export function diffInline(leftLine: string, rightLine: string): InlineDiff {
@@ -521,10 +533,17 @@ function resolveWrapperRanges(
   if (otherMap.wrapperRanges.length === 0) {
     return currentMap.wrapperRanges;
   }
-  if (extractWrapperText(currentLine, currentMap).slice(currentPrefixOffset) !== extractWrapperText(otherLine, otherMap).slice(otherPrefixOffset)) {
-    return currentMap.wrapperRanges;
+  const currentWrapper = extractWrapperText(currentLine, currentMap);
+  const otherWrapper = extractWrapperText(otherLine, otherMap);
+  if (currentWrapper.slice(currentPrefixOffset) === otherWrapper.slice(otherPrefixOffset)) {
+    return [];
   }
-  return [];
+  const currentIndent = countLeadingSpacesAndTabs(currentWrapper);
+  const otherIndent = countLeadingSpacesAndTabs(otherWrapper);
+  if (currentWrapper.slice(currentIndent) === otherWrapper.slice(otherIndent)) {
+    return diffInline(currentWrapper.slice(0, currentIndent), otherWrapper.slice(0, otherIndent)).leftRanges;
+  }
+  return currentMap.wrapperRanges;
 }
 
 function extractWrapperText(line: string, map: RangeMap): string {
