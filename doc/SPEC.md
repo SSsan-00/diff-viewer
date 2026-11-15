@@ -838,6 +838,63 @@ Myers の結果は基本的に `insert`/`delete` の列として得られるた�
 - インポート後はファイル名/ファイルカード/file-local行番号を復元するが、元ファイルへの保存/再読み込みハンドルは未接続として扱う
 - ワークスペース上限（10件）と名前の最大長（25文字）は通常のワークスペース操作と同じ制約を適用する
 
+#### 11.2.1 ワークスペースJSON v1
+
+トップレベルには `"kind": "diff-viewer-workspace"`、数値の `"version": 1`、オブジェクトの `workspace` が必須。`workspace` 内の項目は用途に応じて指定する。
+
+| `workspace` の項目 | 内容 | 省略時 |
+| --- | --- | --- |
+| `name` | 表示名。前後の空白を除いて1〜25文字 | `Workspace`（空文字も同じ。空白だけの名前はエラー） |
+| `leftText`, `rightText` | 左右ペインの本文をそれぞれ1つの文字列で指定。生成時は改行を `\n` にそろえる | 空文字 |
+| `leftSegments`, `rightSegments` | ペイン内のファイル境界の配列。複数ファイルのファイル名やファイル内行番号を表示する場合に指定する | `[]` |
+| `leftActiveFile`, `rightActiveFile` | 選択中のファイル名。対応する segment の `fileName` を指定する | `null` |
+| `leftCursor`, `rightCursor` | カーソル位置 `{ "lineNumber": 1, "column": 1 }`。行・列ともに1始まり | `null` |
+| `leftScrollTop`, `rightScrollTop` | 縦スクロール位置（ピクセル） | `null` |
+| `anchors` | アンカー状態。手動アンカーを設定する場合は `manualAnchors` に `{ "leftLineNo": 0, "rightLineNo": 0 }` 形式の項目を並べる | アンカーなし |
+
+`anchors` 内の項目も省略できる。`manualAnchors` と要確認状態の `staleManualAnchors` は `[]`、`autoAnchor`、`suppressedAutoAnchorKey`、`pendingLeftLineNo`、`pendingRightLineNo`、`selectedAnchorKey` は `null` になる。自動アンカーは読み込み後の差分再計算で判定される。ワークスペースの ID は読み込み時に新規採番する。
+
+##### ファイル境界とアンカー座標
+
+- 各 segment には正の整数の `startLine`（ペイン全体の1始まりの開始行）、`lineCount`（行数）、`fileIndex`（読み込み順の1始まりのファイル番号）を指定する。`fileName`（文字列）と `endsWithNewline`（真偽値）は省略可能。ファイルカードに表示する名前は `fileName` で指定し、ファイル自体の末尾改行の有無は `endsWithNewline` に記録する。
+- segments は開始行順に並べ、各範囲 `startLine` 〜 `startLine + lineCount - 1` を重ねず、ペイン本文の行数に収める。復元時に範囲や順序が不正なペインは、本文を復元し、segments を空にする。
+- ファイルを連結するときは、前のファイルに末尾改行がなければ区切りの `\n` を補う。末尾改行があればその改行を使い、そこで生じる空行は最終ファイル以外の `lineCount` に含めない。最終ファイルに末尾改行があれば、末尾の空行もそのファイルの `lineCount` に含める。[連結方法](#1033-連結方法改行ルール)を参照。
+- `manualAnchors` の左右の行番号は、連結済みの**ペイン全体で0始まり**の整数。画面に表示するファイル内行番号は1始まりなので、JSON に設定する値は `startLine + ファイル内行番号 - 2` で求める。
+
+##### そのままインポートできる最小例
+
+左ペインの2行を、右ペインの `a.txt` と `b.txt` の先頭行にそれぞれ対応付ける。`a.txt` の本文は `A` で末尾改行がなく、連結時に区切りを補うので `startLine: 1`、`lineCount: 1`、`endsWithNewline: false`。元の本文が `A\n` の場合も連結後の本文と境界は同じで、`endsWithNewline` が `true` になる。最終ファイル `b.txt` の本文は `B\n` で、末尾の空行を含むため `startLine: 2`、`lineCount: 2` になる。2つ目のアンカーの右側は、画面では `b.txt` の1行目、JSON では `rightLineNo: 1`。
+
+```json
+{
+  "kind": "diff-viewer-workspace",
+  "version": 1,
+  "workspace": {
+    "leftText": "A\nB",
+    "rightText": "A\nB\n",
+    "rightSegments": [
+      { "startLine": 1, "lineCount": 1, "fileIndex": 1, "fileName": "a.txt", "endsWithNewline": false },
+      { "startLine": 2, "lineCount": 2, "fileIndex": 2, "fileName": "b.txt", "endsWithNewline": true }
+    ],
+    "anchors": {
+      "manualAnchors": [
+        { "leftLineNo": 0, "rightLineNo": 0 },
+        { "leftLineNo": 1, "rightLineNo": 1 }
+      ]
+    }
+  }
+}
+```
+
+##### 読み込み操作と検証
+
+| JSON の種類 | 読み込み操作 | アンカーが無効な場合 |
+| --- | --- | --- |
+| ワークスペース（`diff-viewer-workspace`） | 上の例を UTF-8 の `.json` ファイルに保存する。画面上部のワークスペース名をクリックし、一覧右上の `＋` の左にある `⇧`（インポート）から開く | 範囲外・重複・順序逆転があってもワークスペースを追加する。差分再計算時に該当するアンカーを警告し、差分から除外する |
+| アンカー単体（`diff-viewer-anchors`、`version: 1`） | 対象の本文とファイルを開き、アンカーパネルの `インポート` から開く。`file` と `line` はどちらも1始まりで、`line` はファイル内行番号 | ファイル番号や行番号が範囲外の場合は読み込みに失敗し、既存のアンカーを維持する。重複・順序逆転は読み込み後に警告し、該当するアンカーを差分から除外する |
+
+順序は JSON 配列の並び順に関係なく、左行の昇順で並べたときに右行が厳密に増加するかで判定する。アンカー単体のファイル数と左右反転の条件は [8.4 手動アンカーのインポート / エクスポート](#84-手動アンカーのインポート--エクスポート)を参照。
+
 ### 11.3 復元タイミング
 
 - 起動時（初回ロード時）に保存があれば自動で復元する
