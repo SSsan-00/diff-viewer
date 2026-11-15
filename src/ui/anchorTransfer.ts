@@ -83,24 +83,19 @@ function resolveFileLine(
   if (fileLine.file < 1 || fileLine.line < 1) {
     return null;
   }
-  const absoluteLineNo = fileLine.line - 1;
-  if (segments.length === 0) {
-    if (fileLine.file !== 1 || absoluteLineNo >= lineCount) {
-      return null;
-    }
-    return absoluteLineNo;
+  const firstSegment = segments[0];
+  if (
+    !firstSegment ||
+    (segments.length === 1 && firstSegment.fileIndex === 1 && firstSegment.startLine === 1)
+  ) {
+    return fileLine.file === 1 && fileLine.line <= lineCount ? fileLine.line - 1 : null;
   }
   const segment = segments.find((item) => item.fileIndex === fileLine.file);
-  if (segment) {
-    const oneBasedLineNo = segment.startLine + fileLine.line - 1;
-    if (oneBasedLineNo >= 1 && oneBasedLineNo <= lineCount) {
-      return oneBasedLineNo - 1;
-    }
+  if (!segment || fileLine.line > segment.lineCount) {
+    return null;
   }
-  if (absoluteLineNo < lineCount) {
-    return absoluteLineNo;
-  }
-  return null;
+  const oneBasedLineNo = segment.startLine + fileLine.line - 1;
+  return oneBasedLineNo >= 1 && oneBasedLineNo <= lineCount ? oneBasedLineNo - 1 : null;
 }
 
 function normalizeTransferLine(value: unknown): AnchorTransferLine | null {

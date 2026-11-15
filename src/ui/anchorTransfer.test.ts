@@ -75,7 +75,41 @@ describe("anchor transfer", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("uses the editor line when the file-local segment count is shorter than the current content", () => {
+  it.each([
+    { file: 1, line: 5 },
+    { file: 2, line: 7 },
+    { file: 99, line: 1 },
+  ])("rejects out-of-range coordinates in a multi-file pane ($file:$line)", (right) => {
+    const payload = buildAnchorTransferPayload(
+      [{ leftLineNo: 0, rightLineNo: 0 }],
+      { leftSegments, rightSegments },
+    );
+    payload.anchors.push({ left: { file: 1, line: 2 }, right });
+
+    expect(resolveImportedAnchors(payload, {
+      leftSegments,
+      rightSegments,
+      leftLineCount: 5,
+      rightLineCount: 10,
+    })).toEqual({ ok: false, reason: "range" });
+  });
+
+  it("resolves both sides of a file boundary as file-local coordinates", () => {
+    const anchors = [
+      { leftLineNo: 0, rightLineNo: 3 },
+      { leftLineNo: 1, rightLineNo: 4 },
+    ];
+    const payload = buildAnchorTransferPayload(anchors, { leftSegments, rightSegments });
+
+    expect(resolveImportedAnchors(payload, {
+      leftSegments,
+      rightSegments,
+      leftLineCount: 5,
+      rightLineCount: 10,
+    })).toEqual({ ok: true, swapped: false, anchors });
+  });
+
+  it("uses the editor line when a single file's segment is shorter than the current content", () => {
     const payload = {
       kind: "diff-viewer-anchors",
       version: 1,
